@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
 	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/embed_data"
 	models2 "github.com/meysamhadeli/codai/markdown_generators/models"
 	"github.com/meysamhadeli/codai/utils"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -143,17 +143,11 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					continue
 				}
 
-				tempResult, err := ioutil.ReadFile(rootDependencies.RootPath + "/prompts/code_result.tmpl")
-				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-					continue
-				}
-
 				// Combine the relevant code into a single string
 				code := strings.Join(relevantCode, "\n---------\n\n")
 
 				// Create the final prompt for the AI
-				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n%s", code), string(tempResult))
+				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n%s", code), string(embed_data.CodeResultTemplate))
 				userInputPrompt := fmt.Sprintf("Here is my request:\n%s", userInput)
 
 				var suggestion models2.Suggestion

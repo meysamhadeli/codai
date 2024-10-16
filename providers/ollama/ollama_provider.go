@@ -29,11 +29,12 @@ func NewOllamaProvider() contracts.IAIProvider {
 	return &OllamaProvider{
 		embeddingURL:        "http://localhost:11434/v1/embeddings",
 		chatURL:             "http://localhost:11434/v1/chat/completions",
-		maxCompletionTokens: 4096,
+		maxCompletionTokens: 16000,
 		chatModel:           "llama3.1",
 		embeddingModel:      "all-minilm:l6-v2",
 		stream:              false,
 		encodingFormat:      "float",
+		temperature:         0.2,
 	}
 }
 
