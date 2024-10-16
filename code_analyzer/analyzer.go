@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/embed_data"
 	"github.com/meysamhadeli/codai/utils"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/csharp"
@@ -105,6 +105,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 	var parser *sitter.Parser
 	var lang *sitter.Language
+	var query []byte
 
 	language := isSupportedLanguage(filePath)
 
@@ -114,10 +115,12 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 		parser = sitter.NewParser()
 		parser.SetLanguage(csharp.GetLanguage())
 		lang = csharp.GetLanguage()
+		query = embed_data.CSharpQuery
 	//case "golang":
 	//	parser = sitter.NewParser()
 	//	parser.SetLanguage(golang.GetLanguage())
 	//	lang = golang.GetLanguage()
+	//	query = embed_data.GolangQuery
 	default:
 		// If the language doesn't match, process the original source code directly
 		elements = append(elements, filePath)
@@ -128,20 +131,9 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	// Parse the source code
 	tree := parser.Parse(nil, sourceCode)
 
-	rootPath, err := utils.GetRootPath()
-	if err != nil {
-		log.Fatalf("Failed to get root path: %v", err)
-	}
-
-	// Load the Tree-sitter queries for the specified language
-	tresSitter, err := ioutil.ReadFile(fmt.Sprintf("%s/tree-sitter/queries/%s.scm", rootPath, language))
-	if err != nil {
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-	}
-
 	// Parse JSON data into a map
 	queries := make(map[string]string)
-	err = json.Unmarshal(tresSitter, &queries)
+	err := json.Unmarshal([]byte(query), &queries)
 	if err != nil {
 		log.Fatalf("Failed to parse JSON: %v", err)
 	}
