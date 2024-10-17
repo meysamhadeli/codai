@@ -11,17 +11,17 @@ import (
 	"os/exec"
 )
 
-type MarkdownGenerator struct {
+type MarkdownConfig struct {
 	Theme      string
 	DiffViewer string
 }
 
 // NewMarkdownGenerator NewCodeAnalyzer initializes a new CodeAnalyzer.
-func NewMarkdownGenerator(theme string, diffViewer string) contracts.IMarkdownGenerator {
-	return &MarkdownGenerator{Theme: theme, DiffViewer: diffViewer}
+func NewMarkdownGenerator(config *MarkdownConfig) contracts.IMarkdownGenerator {
+	return &MarkdownConfig{Theme: config.Theme, DiffViewer: config.DiffViewer}
 }
 
-func (m *MarkdownGenerator) GenerateMarkdown(results string) error {
+func (m *MarkdownConfig) GenerateMarkdown(results string) error {
 
 	out, err := glamour.Render(results, m.Theme)
 	if err != nil {
@@ -32,7 +32,7 @@ func (m *MarkdownGenerator) GenerateMarkdown(results string) error {
 }
 
 // GenerateDiff Run diff to show the difference between original file and temp file
-func (m *MarkdownGenerator) GenerateDiff(change models.CodeChange) error {
+func (m *MarkdownConfig) GenerateDiff(change models.CodeChange) error {
 	originalFilePath := change.RelativePath
 	tempFilePath := originalFilePath + ".tmp"
 

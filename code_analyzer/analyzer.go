@@ -19,12 +19,12 @@ import (
 
 // CodeAnalyzer handles the analysis of project files.
 type CodeAnalyzer struct {
-	ProjectDir string
+	Cwd string
 }
 
 // NewCodeAnalyzer initializes a new CodeAnalyzer.
-func NewCodeAnalyzer(config string) contracts.ICodeAnalyzer {
-	return &CodeAnalyzer{ProjectDir: config}
+func NewCodeAnalyzer(cwd string) contracts.ICodeAnalyzer {
+	return &CodeAnalyzer{Cwd: cwd}
 }
 
 // ApplyChanges Apply changes by replacing original files with the temp files
