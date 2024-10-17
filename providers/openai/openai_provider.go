@@ -10,41 +10,42 @@ import (
 	"github.com/meysamhadeli/codai/providers/models"
 	"io/ioutil"
 	"net/http"
-	"os"
 )
 
-// OpenAPIProvider implements the Provider interface for OpenAPI.
-type OpenAPIProvider struct {
-	embeddingURL        string
-	chatURL             string
-	embeddingModel      string
-	chatModel           string
-	stream              bool
-	maxCompletionTokens int
-	temperature         float32
-	encodingFormat      string
-	apiKey              string
+// OpenAPIConfig implements the Provider interface for OpenAPI.
+type OpenAPIConfig struct {
+	EmbeddingURL        string
+	ChatCompletionURL   string
+	EmbeddingModel      string
+	ChatCompletionModel string
+	Stream              bool
+	MaxCompletionTokens int
+	Temperature         float32
+	EncodingFormat      string
+	ApiKey              string
 }
 
 // NewOpenAPIProvider initializes a new OpenAPIProvider.
-func NewOpenAPIProvider() contracts.IAIProvider {
-	return &OpenAPIProvider{
-		embeddingURL:        "https://api.openai.com/v1/embeddings",
-		chatURL:             "https://api.openai.com/v1/chat/completions",
-		maxCompletionTokens: 4096,
-		chatModel:           "gpt-4o",
-		embeddingModel:      "text-embedding-ada-002",
-		stream:              false,
-		encodingFormat:      "float",
+func NewOpenAPIProvider(config *OpenAPIConfig) contracts.IAIProvider {
+	return &OpenAPIConfig{
+		EmbeddingURL:        config.EmbeddingURL,
+		ChatCompletionURL:   config.ChatCompletionURL,
+		EmbeddingModel:      config.EmbeddingModel,
+		ChatCompletionModel: config.ChatCompletionModel,
+		Stream:              config.Stream,
+		MaxCompletionTokens: config.MaxCompletionTokens,
+		Temperature:         config.Temperature,
+		EncodingFormat:      config.EncodingFormat,
+		ApiKey:              config.ApiKey,
 	}
 }
 
-func (openAIProvider *OpenAPIProvider) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
+func (openAIProvider *OpenAPIConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
 	// Create the request payload
 	requestBody := models.EmbeddingRequest{
 		Input:          prompt,
-		Model:          openAIProvider.embeddingModel,
-		EncodingFormat: openAIProvider.encodingFormat,
+		Model:          openAIProvider.EmbeddingModel,
+		EncodingFormat: openAIProvider.EncodingFormat,
 	}
 
 	// Convert the request payload to JSON
@@ -54,16 +55,14 @@ func (openAIProvider *OpenAPIProvider) EmbeddingRequest(ctx context.Context, pro
 	}
 
 	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", openAIProvider.embeddingURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", openAIProvider.EmbeddingURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	apiKey := os.Getenv("OPENAI_API_KEY")
-
 	// Set required headers
-	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", openAIProvider.ApiKey)
 
 	// Make the HTTP request
 	client := &http.Client{}
@@ -99,20 +98,20 @@ func (openAIProvider *OpenAPIProvider) EmbeddingRequest(ctx context.Context, pro
 	return &embeddingResponse, nil
 }
 
-func (openAIProvider *OpenAPIProvider) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
+func (openAIProvider *OpenAPIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
 
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
-		Model: openAIProvider.chatModel,
+		Model: openAIProvider.ChatCompletionModel,
 		Messages: []models.Message{
 			{Role: "system", Content: prompt},
 			{Role: "user", Content: userInput},
 		},
 		StreamOptions: models.StreamOptions{
-			Stream: openAIProvider.stream,
+			Stream: openAIProvider.Stream,
 		},
-		MaxCompletionTokens: openAIProvider.maxCompletionTokens,
-		Temperature:         openAIProvider.temperature,
+		MaxCompletionTokens: openAIProvider.MaxCompletionTokens,
+		Temperature:         openAIProvider.Temperature,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -121,14 +120,14 @@ func (openAIProvider *OpenAPIProvider) ChatCompletionRequest(ctx context.Context
 	}
 
 	// Create a new HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", openAIProvider.chatURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", openAIProvider.ChatCompletionURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openAIProvider.apiKey))
+	req.Header.Set("api-key", openAIProvider.ApiKey)
 
 	// Create an HTTP client and send the request
 	client := &http.Client{}

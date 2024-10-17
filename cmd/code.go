@@ -24,12 +24,13 @@ var codeCmd = &cobra.Command{
 	Short: "Run the code subcommand",
 	Long:  `The 'code' subcommand executes coding-related operations using Codai.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		rootDependencies := handleRootCommand()
+		rootDependencies := handleRootCommand(cmd)
 		handleCodeCommand(rootDependencies) // Pass standard input by default
 	},
 }
 
 func handleCodeCommand(rootDependencies *RootDependencies) {
+
 	// Create a context with cancel function
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -37,7 +38,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	// Channel to signal when the application should shut down
 	done := make(chan bool)
 
-	go utils.GracefulShutdown(cancel, done, func() {
+	go utils.GracefulShutdown(done, func() {
 		err := utils.CleanupTempFiles(rootDependencies.Cwd)
 		if err != nil {
 			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
@@ -235,7 +236,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	// Wait for the shutdown signal
 	select {
 	case <-done:
-		fmt.Println("Application shutting down...")
+		fmt.Println(lipgloss_color.Red.Render("Application shutting down"))
 		return
 	}
 }

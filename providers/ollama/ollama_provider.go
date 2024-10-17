@@ -12,39 +12,39 @@ import (
 	"net/http"
 )
 
-// OllamaProvider implements the Provider interface for Ollama.
-type OllamaProvider struct {
-	embeddingURL        string
-	chatURL             string
-	embeddingModel      string
-	chatModel           string
-	stream              bool
-	maxCompletionTokens int
-	temperature         float32
-	encodingFormat      string
+// OllamaConfig implements the Provider interface for Ollama.
+type OllamaConfig struct {
+	EmbeddingURL        string
+	ChatCompletionURL   string
+	MaxCompletionTokens int
+	EmbeddingModel      string
+	ChatCompletionModel string
+	Stream              bool
+	Temperature         float32
+	EncodingFormat      string
 }
 
 // NewOllamaProvider initializes a new OllamaProvider.
-func NewOllamaProvider() contracts.IAIProvider {
-	return &OllamaProvider{
-		embeddingURL:        "http://localhost:11434/v1/embeddings",
-		chatURL:             "http://localhost:11434/v1/chat/completions",
-		maxCompletionTokens: 16000,
-		chatModel:           "llama3.1",
-		embeddingModel:      "all-minilm:l6-v2",
-		stream:              false,
-		encodingFormat:      "float",
-		temperature:         0.2,
+func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
+	return &OllamaConfig{
+		EmbeddingURL:        config.EmbeddingURL,
+		ChatCompletionURL:   config.ChatCompletionURL,
+		MaxCompletionTokens: config.MaxCompletionTokens,
+		ChatCompletionModel: config.ChatCompletionModel,
+		EmbeddingModel:      config.EmbeddingModel,
+		Stream:              config.Stream,
+		EncodingFormat:      config.EncodingFormat,
+		Temperature:         config.Temperature,
 	}
 }
 
-func (ollamaProvider *OllamaProvider) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
+func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
 
 	// Create the request payload
 	requestBody := models.EmbeddingRequest{
 		Input:          prompt,
-		Model:          ollamaProvider.embeddingModel,
-		EncodingFormat: ollamaProvider.encodingFormat,
+		Model:          ollamaProvider.EmbeddingModel,
+		EncodingFormat: ollamaProvider.EncodingFormat,
 	}
 
 	// Convert the request payload to JSON
@@ -54,7 +54,7 @@ func (ollamaProvider *OllamaProvider) EmbeddingRequest(ctx context.Context, prom
 	}
 
 	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.embeddingURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.EmbeddingURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
@@ -96,20 +96,20 @@ func (ollamaProvider *OllamaProvider) EmbeddingRequest(ctx context.Context, prom
 	return &embeddingResponse, nil
 }
 
-func (ollamaProvider *OllamaProvider) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
+func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
 
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
-		Model: ollamaProvider.chatModel,
+		Model: ollamaProvider.ChatCompletionModel,
 		Messages: []models.Message{
 			{Role: "system", Content: prompt},
 			{Role: "user", Content: userInput},
 		},
 		StreamOptions: models.StreamOptions{
-			Stream: ollamaProvider.stream,
+			Stream: ollamaProvider.Stream,
 		},
-		MaxCompletionTokens: ollamaProvider.maxCompletionTokens,
-		Temperature:         ollamaProvider.temperature,
+		MaxCompletionTokens: ollamaProvider.MaxCompletionTokens,
+		Temperature:         ollamaProvider.Temperature,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -118,7 +118,7 @@ func (ollamaProvider *OllamaProvider) ChatCompletionRequest(ctx context.Context,
 	}
 
 	// Create a new HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.chatURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.ChatCompletionURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}

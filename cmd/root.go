@@ -26,8 +26,6 @@ type RootDependencies struct {
 	Config          *config.Config
 }
 
-var rootDependencies = &RootDependencies{}
-
 // RootCmd represents the 'context' command
 var rootCmd = &cobra.Command{
 	Use:   "codai",
@@ -35,14 +33,14 @@ var rootCmd = &cobra.Command{
 	Long: `Codai is a command-line interface (CLI) application that helps with coding and chatting
 by providing an AI-powered assistant for development assistance and communication.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		rootDependencies.Config = config.LoadConfigs(cmd)
-		handleRootCommand()
+		handleRootCommand(cmd)
 	},
 }
 
-func handleRootCommand() *RootDependencies {
+func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	var err error
+	var rootDependencies = &RootDependencies{}
 
 	// Get current working directory
 	rootDependencies.Cwd, err = os.Getwd()
@@ -51,8 +49,10 @@ func handleRootCommand() *RootDependencies {
 		return nil
 	}
 
+	rootDependencies.Config = config.LoadConfigs(cmd)
+
 	// Initialize Markdown
-	rootDependencies.Markdown = markdown_generators.NewMarkdownGenerator("dracula", "git")
+	rootDependencies.Markdown = markdown_generators.NewMarkdownGenerator(rootDependencies.Config.MarkdownConfig)
 
 	// Initialize Analyzer
 	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd)
@@ -61,7 +61,9 @@ func handleRootCommand() *RootDependencies {
 	rootDependencies.Store = embedding_store.NewEmbeddingStoreModel()
 
 	// Create a provider using the factory
-	rootDependencies.CurrentProvider, err = providers.ProviderFactory("ollama")
+
+	rootDependencies.CurrentProvider, err = providers.ProviderFactory(rootDependencies.Config.AIProviderConfig)
+
 	if err != nil {
 		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
 	}
@@ -78,6 +80,8 @@ func Execute() {
 }
 
 func init() {
+	config.InitFlags(rootCmd)
+
 	// Register subcommands
 	rootCmd.AddCommand(codeCmd)
 	rootCmd.AddCommand(chatCmd)
