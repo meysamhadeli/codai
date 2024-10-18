@@ -12,9 +12,9 @@ import (
 
 // Config represents the structure of the configuration file
 type Config struct {
-	Version          string
-	MarkdownConfig   *markdown_generators.MarkdownConfig
-	AIProviderConfig *providers.AIProviderConfig
+	Version          string                              `mapstructure:"version"`
+	MarkdownConfig   *markdown_generators.MarkdownConfig `mapstructure:"markdown_config"`
+	AIProviderConfig *providers.AIProviderConfig         `mapstructure:"ai_provider_config"`
 }
 
 // Default configuration values
@@ -24,7 +24,6 @@ var defaultConfig = Config{
 		ProviderName:        "ollama",
 		EmbeddingURL:        "http://localhost:11434/v1/embeddings",
 		ChatCompletionURL:   "http://localhost:11434/v1/chat/completions",
-		MaxCompletionTokens: 16000,
 		ChatCompletionModel: "llama3.1",
 		EmbeddingModel:      "all-minilm:l6-v2",
 		Stream:              false,
@@ -46,19 +45,18 @@ func LoadConfigs(rootCmd *cobra.Command) *Config {
 	var config *Config
 
 	// Set default values using Viper
-	viper.SetDefault("Version", defaultConfig.Version)
-	viper.SetDefault("MarkdownConfig.DiffViewer", defaultConfig.MarkdownConfig.DiffViewer)
-	viper.SetDefault("MarkdownConfig.Theme", defaultConfig.MarkdownConfig.Theme)
-	viper.SetDefault("AIProviderConfig.ProviderName", defaultConfig.AIProviderConfig.ProviderName)
-	viper.SetDefault("AIProviderConfig.EmbeddingURL", defaultConfig.AIProviderConfig.EmbeddingURL)
-	viper.SetDefault("AIProviderConfig.ChatCompletionURL", defaultConfig.AIProviderConfig.ChatCompletionURL)
-	viper.SetDefault("AIProviderConfig.MaxCompletionTokens", defaultConfig.AIProviderConfig.MaxCompletionTokens)
-	viper.SetDefault("AIProviderConfig.ChatCompletionModel", defaultConfig.AIProviderConfig.ChatCompletionModel)
-	viper.SetDefault("AIProviderConfig.EmbeddingModel", defaultConfig.AIProviderConfig.EmbeddingModel)
-	viper.SetDefault("AIProviderConfig.Stream", defaultConfig.AIProviderConfig.Stream)
-	viper.SetDefault("AIProviderConfig.EncodingFormat", defaultConfig.AIProviderConfig.EncodingFormat)
-	viper.SetDefault("AIProviderConfig.Temperature", defaultConfig.AIProviderConfig.Temperature)
-	viper.SetDefault("AIProviderConfig.ApiKey", defaultConfig.AIProviderConfig.ApiKey)
+	viper.SetDefault("version", defaultConfig.Version)
+	viper.SetDefault("markdown_config.diff_viewer", defaultConfig.MarkdownConfig.DiffViewer)
+	viper.SetDefault("markdown_config.Theme", defaultConfig.MarkdownConfig.Theme)
+	viper.SetDefault("ai_provider_config.provider_name", defaultConfig.AIProviderConfig.ProviderName)
+	viper.SetDefault("ai_provider_config.embedding_url", defaultConfig.AIProviderConfig.EmbeddingURL)
+	viper.SetDefault("ai_provider_config.chat_completion_url", defaultConfig.AIProviderConfig.ChatCompletionURL)
+	viper.SetDefault("ai_provider_config.chat_completion_model", defaultConfig.AIProviderConfig.ChatCompletionModel)
+	viper.SetDefault("ai_provider_config.embedding_model", defaultConfig.AIProviderConfig.EmbeddingModel)
+	viper.SetDefault("ai_provider_config.stream", defaultConfig.AIProviderConfig.Stream)
+	viper.SetDefault("ai_provider_config.encoding_format", defaultConfig.AIProviderConfig.EncodingFormat)
+	viper.SetDefault("ai_provider_config.temperature", defaultConfig.AIProviderConfig.Temperature)
+	viper.SetDefault("ai_provider_config.api_key", defaultConfig.AIProviderConfig.ApiKey)
 
 	// Check if the user provided a config file
 	if cfgFile != "" {
@@ -83,19 +81,18 @@ func LoadConfigs(rootCmd *cobra.Command) *Config {
 
 // bindFlags binds the CLI flags to configuration values.
 func bindFlags(rootCmd *cobra.Command) {
-	_ = viper.BindPFlag("Version", rootCmd.Flags().Lookup("version"))
-	_ = viper.BindPFlag("MarkdownConfig.DiffViewer", rootCmd.Flags().Lookup("diff-viewer"))
-	_ = viper.BindPFlag("MarkdownConfig.Theme", rootCmd.Flags().Lookup("theme"))
-	_ = viper.BindPFlag("AIProviderConfig.ProviderName", rootCmd.Flags().Lookup("provider-name"))
-	_ = viper.BindPFlag("AIProviderConfig.EmbeddingURL", rootCmd.Flags().Lookup("embedding-url"))
-	_ = viper.BindPFlag("AIProviderConfig.ChatCompletionURL", rootCmd.Flags().Lookup("chat-completion-url"))
-	_ = viper.BindPFlag("AIProviderConfig.MaxCompletionTokens", rootCmd.Flags().Lookup("max-completion-tokens"))
-	_ = viper.BindPFlag("AIProviderConfig.ChatCompletionModel", rootCmd.Flags().Lookup("chat-completion-model"))
-	_ = viper.BindPFlag("AIProviderConfig.EmbeddingModel", rootCmd.Flags().Lookup("embedding-model"))
-	_ = viper.BindPFlag("AIProviderConfig.Stream", rootCmd.Flags().Lookup("stream"))
-	_ = viper.BindPFlag("AIProviderConfig.EncodingFormat", rootCmd.Flags().Lookup("encoding-format"))
-	_ = viper.BindPFlag("AIProviderConfig.Temperature", rootCmd.Flags().Lookup("temperature"))
-	_ = viper.BindPFlag("AIProviderConfig.ApiKey", rootCmd.Flags().Lookup("api-key"))
+	_ = viper.BindPFlag("version", rootCmd.Flags().Lookup("version"))
+	_ = viper.BindPFlag("markdown_config.DiffViewer", rootCmd.Flags().Lookup("diff_viewer"))
+	_ = viper.BindPFlag("markdown_config.Theme", rootCmd.Flags().Lookup("theme"))
+	_ = viper.BindPFlag("ai_provider_config.provider_name", rootCmd.Flags().Lookup("provider_name"))
+	_ = viper.BindPFlag("ai_provider_config.embedding_url", rootCmd.Flags().Lookup("embedding_url"))
+	_ = viper.BindPFlag("ai_provider_config.chat_completion_url", rootCmd.Flags().Lookup("chat_completion_url"))
+	_ = viper.BindPFlag("ai_provider_config.chat_completion_model", rootCmd.Flags().Lookup("chat_completion_model"))
+	_ = viper.BindPFlag("ai_provider_config.embedding_model", rootCmd.Flags().Lookup("embedding_model"))
+	_ = viper.BindPFlag("ai_provider_config.stream", rootCmd.Flags().Lookup("stream"))
+	_ = viper.BindPFlag("ai_provider_config.encoding_format", rootCmd.Flags().Lookup("encoding_format"))
+	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
+	_ = viper.BindPFlag("ai_provider_config.api_key", rootCmd.Flags().Lookup("api_key"))
 }
 
 // InitFlags initializes the flags for the root command.
@@ -103,16 +100,15 @@ func InitFlags(rootCmd *cobra.Command) {
 	// Use PersistentFlags so that these flags are available in all subcommands
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (optional)")
 	rootCmd.PersistentFlags().StringP("version", "v", defaultConfig.Version, "Version of the service")
-	rootCmd.PersistentFlags().String("diff-viewer", defaultConfig.MarkdownConfig.DiffViewer, "Diff viewer for markdown")
+	rootCmd.PersistentFlags().String("diff_viewer", defaultConfig.MarkdownConfig.DiffViewer, "Diff viewer for markdown")
 	rootCmd.PersistentFlags().StringP("theme", "t", defaultConfig.MarkdownConfig.Theme, "Markdown theme")
-	rootCmd.PersistentFlags().StringP("provider-name", "p", defaultConfig.AIProviderConfig.ProviderName, "Provider Name")
-	rootCmd.PersistentFlags().String("embedding-url", defaultConfig.AIProviderConfig.EmbeddingURL, "Embedding URL")
-	rootCmd.PersistentFlags().String("chat-completion-url", defaultConfig.AIProviderConfig.ChatCompletionURL, "Chat Completion URL")
-	rootCmd.PersistentFlags().Int("max-completion-tokens", defaultConfig.AIProviderConfig.MaxCompletionTokens, "Max Completion Tokens")
-	rootCmd.PersistentFlags().String("chat-completion-model", defaultConfig.AIProviderConfig.ChatCompletionModel, "Chat Completion Model")
-	rootCmd.PersistentFlags().String("embedding-model", defaultConfig.AIProviderConfig.EmbeddingModel, "Embedding Model")
+	rootCmd.PersistentFlags().StringP("provider_name", "p", defaultConfig.AIProviderConfig.ProviderName, "Provider Name")
+	rootCmd.PersistentFlags().String("embedding_url", defaultConfig.AIProviderConfig.EmbeddingURL, "Embedding URL")
+	rootCmd.PersistentFlags().String("chat_completion_url", defaultConfig.AIProviderConfig.ChatCompletionURL, "Chat Completion URL")
+	rootCmd.PersistentFlags().String("chat_completion_model", defaultConfig.AIProviderConfig.ChatCompletionModel, "Chat Completion Model")
+	rootCmd.PersistentFlags().String("embedding_model", defaultConfig.AIProviderConfig.EmbeddingModel, "Embedding Model")
 	rootCmd.PersistentFlags().Bool("stream", defaultConfig.AIProviderConfig.Stream, "Stream")
-	rootCmd.PersistentFlags().String("encoding-format", defaultConfig.AIProviderConfig.EncodingFormat, "Encoding Format")
+	rootCmd.PersistentFlags().String("encoding_format", defaultConfig.AIProviderConfig.EncodingFormat, "Encoding Format")
 	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Temperature")
-	rootCmd.PersistentFlags().String("api-key", defaultConfig.AIProviderConfig.ApiKey, "Api-Key")
+	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "ApiKey")
 }

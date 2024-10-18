@@ -16,7 +16,6 @@ import (
 type OllamaConfig struct {
 	EmbeddingURL        string
 	ChatCompletionURL   string
-	MaxCompletionTokens int
 	EmbeddingModel      string
 	ChatCompletionModel string
 	Stream              bool
@@ -29,7 +28,6 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 	return &OllamaConfig{
 		EmbeddingURL:        config.EmbeddingURL,
 		ChatCompletionURL:   config.ChatCompletionURL,
-		MaxCompletionTokens: config.MaxCompletionTokens,
 		ChatCompletionModel: config.ChatCompletionModel,
 		EmbeddingModel:      config.EmbeddingModel,
 		Stream:              config.Stream,
@@ -102,14 +100,17 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 	reqBody := models.ChatCompletionRequest{
 		Model: ollamaProvider.ChatCompletionModel,
 		Messages: []models.Message{
-			{Role: "system", Content: prompt},
-			{Role: "user", Content: userInput},
+			{
+				Role:    "system",
+				Content: prompt,
+			},
+			{
+				Role:    "user",
+				Content: userInput,
+			},
 		},
-		StreamOptions: models.StreamOptions{
-			Stream: ollamaProvider.Stream,
-		},
-		MaxCompletionTokens: ollamaProvider.MaxCompletionTokens,
-		Temperature:         ollamaProvider.Temperature,
+		Stream:      ollamaProvider.Stream,
+		Temperature: &ollamaProvider.Temperature,
 	}
 
 	jsonData, err := json.Marshal(reqBody)

@@ -8,16 +8,15 @@ import (
 )
 
 type AIProviderConfig struct {
-	ProviderName        string
-	EmbeddingURL        string
-	ChatCompletionURL   string
-	EmbeddingModel      string
-	ChatCompletionModel string
-	Stream              bool
-	MaxCompletionTokens int
-	Temperature         float32
-	EncodingFormat      string
-	ApiKey              string
+	ProviderName        string  `mapstructure:"provider_name"`
+	EmbeddingURL        string  `mapstructure:"embedding_url"`
+	ChatCompletionURL   string  `mapstructure:"chat_completion_url"`
+	EmbeddingModel      string  `mapstructure:"embedding_model"`
+	ChatCompletionModel string  `mapstructure:"chat_completion_model"`
+	Stream              bool    `mapstructure:"stream"`
+	Temperature         float32 `mapstructure:"temperature"`
+	EncodingFormat      string  `mapstructure:"encoding_format"`
+	ApiKey              string  `mapstructure:"api_key"`
 }
 
 // ProviderFactory creates a Provider based on the given provider config.
@@ -28,19 +27,17 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			Stream:              config.Stream,
 			Temperature:         config.Temperature,
 			EncodingFormat:      config.EncodingFormat,
-			MaxCompletionTokens: config.MaxCompletionTokens,
 			ChatCompletionModel: config.ChatCompletionModel,
 			EmbeddingModel:      config.EmbeddingModel,
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
 		}), nil
-	case "openapi":
+	case "openai":
 
-		return openai.NewOpenAPIProvider(&openai.OpenAPIConfig{
+		return openai.NewOpenAIProvider(&openai.OpenAIConfig{
 			Stream:              config.Stream,
 			Temperature:         config.Temperature,
 			EncodingFormat:      config.EncodingFormat,
-			MaxCompletionTokens: config.MaxCompletionTokens,
 			ChatCompletionModel: config.ChatCompletionModel,
 			EmbeddingModel:      config.EmbeddingModel,
 			ChatCompletionURL:   config.ChatCompletionURL,
