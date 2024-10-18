@@ -12,8 +12,8 @@ import (
 )
 
 type MarkdownConfig struct {
-	Theme      string
-	DiffViewer string
+	Theme      string `mapstructure:"theme"`
+	DiffViewer string `mapstructure:"diff_viewer"`
 }
 
 // NewMarkdownGenerator NewCodeAnalyzer initializes a new CodeAnalyzer.

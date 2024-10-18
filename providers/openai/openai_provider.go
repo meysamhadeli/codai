@@ -12,35 +12,33 @@ import (
 	"net/http"
 )
 
-// OpenAPIConfig implements the Provider interface for OpenAPI.
-type OpenAPIConfig struct {
+// OpenAIConfig implements the Provider interface for OpenAPI.
+type OpenAIConfig struct {
 	EmbeddingURL        string
 	ChatCompletionURL   string
 	EmbeddingModel      string
 	ChatCompletionModel string
 	Stream              bool
-	MaxCompletionTokens int
 	Temperature         float32
 	EncodingFormat      string
 	ApiKey              string
 }
 
-// NewOpenAPIProvider initializes a new OpenAPIProvider.
-func NewOpenAPIProvider(config *OpenAPIConfig) contracts.IAIProvider {
-	return &OpenAPIConfig{
+// NewOpenAIProvider initializes a new OpenAPIProvider.
+func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
+	return &OpenAIConfig{
 		EmbeddingURL:        config.EmbeddingURL,
 		ChatCompletionURL:   config.ChatCompletionURL,
 		EmbeddingModel:      config.EmbeddingModel,
 		ChatCompletionModel: config.ChatCompletionModel,
 		Stream:              config.Stream,
-		MaxCompletionTokens: config.MaxCompletionTokens,
 		Temperature:         config.Temperature,
 		EncodingFormat:      config.EncodingFormat,
 		ApiKey:              config.ApiKey,
 	}
 }
 
-func (openAIProvider *OpenAPIConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
+func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
 	// Create the request payload
 	requestBody := models.EmbeddingRequest{
 		Input:          prompt,
@@ -98,20 +96,23 @@ func (openAIProvider *OpenAPIConfig) EmbeddingRequest(ctx context.Context, promp
 	return &embeddingResponse, nil
 }
 
-func (openAIProvider *OpenAPIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
+func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
 
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
 		Model: openAIProvider.ChatCompletionModel,
 		Messages: []models.Message{
-			{Role: "system", Content: prompt},
-			{Role: "user", Content: userInput},
+			{
+				Role:    "system",
+				Content: prompt,
+			},
+			{
+				Role:    "user",
+				Content: userInput,
+			},
 		},
-		StreamOptions: models.StreamOptions{
-			Stream: openAIProvider.Stream,
-		},
-		MaxCompletionTokens: openAIProvider.MaxCompletionTokens,
-		Temperature:         openAIProvider.Temperature,
+		Stream:      openAIProvider.Stream,
+		Temperature: &openAIProvider.Temperature,
 	}
 
 	jsonData, err := json.Marshal(reqBody)
