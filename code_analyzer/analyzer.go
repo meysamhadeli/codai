@@ -107,7 +107,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	var lang *sitter.Language
 	var query []byte
 
-	language := isSupportedLanguage(filePath)
+	language := utils.GetSupportedLanguage(filePath)
 
 	// Determine the parser and language to use
 	switch language {
@@ -167,16 +167,4 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	}
 
 	return elements
-}
-
-func isSupportedLanguage(path string) string {
-	// Use a switch statement to check for file extensions
-	switch {
-	case strings.HasSuffix(path, ".cs"):
-		return "csharp"
-	case strings.HasSuffix(path, ".go"):
-		return "golang"
-	default:
-		return "" // Return empty string if no match
-	}
 }

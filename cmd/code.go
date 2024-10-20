@@ -154,6 +154,12 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				var aiResponse string
 
 				chatRequestOperation := func() error {
+
+					err := rootDependencies.Markdown.GenerateMarkdown("### Explanation\n")
+					if err != nil {
+						return fmt.Errorf("%v", err)
+					}
+
 					// Step 7: Send the relevant code and user input to the AI API
 					aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, prompt)
 					if err != nil {
@@ -171,7 +177,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					continue
 				}
 
-				changes, err := rootDependencies.Markdown.ExtractCodeChanges(aiResponse, "csharp")
+				changes, err := rootDependencies.Markdown.ExtractCodeChanges(aiResponse)
 				if err != nil {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
 					continue
