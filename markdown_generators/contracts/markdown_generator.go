@@ -7,4 +7,5 @@ import (
 type IMarkdownGenerator interface {
 	GenerateMarkdown(results string) error
 	GenerateDiff(change models.CodeChange) error
+	ExtractCodeChanges(text, language string) ([]models.CodeChange, error)
 }
