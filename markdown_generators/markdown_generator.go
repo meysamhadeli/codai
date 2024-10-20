@@ -18,7 +18,7 @@ type MarkdownConfig struct {
 	DiffViewer string `mapstructure:"diff_viewer"`
 }
 
-func (m *MarkdownConfig) ExtractCodeChanges(text, language string) ([]models.CodeChange, error) {
+func (m *MarkdownConfig) ExtractCodeChanges(text string) ([]models.CodeChange, error) {
 	// Validate the input text
 	if text == "" {
 		return nil, errors.New("input text is empty")
@@ -28,7 +28,8 @@ func (m *MarkdownConfig) ExtractCodeChanges(text, language string) ([]models.Cod
 	scanner := bufio.NewScanner(strings.NewReader(text))
 
 	// Define markers for starting and ending code blocks
-	startMarker := fmt.Sprintf("```%s", language)
+	startMarkerCSharp := fmt.Sprintf("```%s", "csharp")
+	startMarkerGo := fmt.Sprintf("```%s", "go")
 	endMarker := "```"
 
 	var currentFile string
@@ -39,7 +40,7 @@ func (m *MarkdownConfig) ExtractCodeChanges(text, language string) ([]models.Cod
 		line := scanner.Text()
 
 		// Detect the start or end of a code block
-		if strings.TrimSpace(line) == startMarker {
+		if strings.TrimSpace(line) == startMarkerCSharp || strings.TrimSpace(line) == startMarkerGo {
 			// Start a new code block
 			inCodeBlock = true
 		} else if strings.TrimSpace(line) == endMarker {
