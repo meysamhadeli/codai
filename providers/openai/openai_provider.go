@@ -21,7 +21,6 @@ type OpenAIConfig struct {
 	ChatCompletionURL   string
 	EmbeddingModel      string
 	ChatCompletionModel string
-	Stream              bool
 	Temperature         float32
 	EncodingFormat      string
 	ApiKey              string
@@ -34,7 +33,6 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		ChatCompletionURL:   config.ChatCompletionURL,
 		EmbeddingModel:      config.EmbeddingModel,
 		ChatCompletionModel: config.ChatCompletionModel,
-		Stream:              config.Stream,
 		Temperature:         config.Temperature,
 		EncodingFormat:      config.EncodingFormat,
 		ApiKey:              config.ApiKey,

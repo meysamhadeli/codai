@@ -21,7 +21,6 @@ type OllamaConfig struct {
 	ChatCompletionURL   string
 	EmbeddingModel      string
 	ChatCompletionModel string
-	Stream              bool
 	Temperature         float32
 	EncodingFormat      string
 }
@@ -33,7 +32,6 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		ChatCompletionURL:   config.ChatCompletionURL,
 		ChatCompletionModel: config.ChatCompletionModel,
 		EmbeddingModel:      config.EmbeddingModel,
-		Stream:              config.Stream,
 		EncodingFormat:      config.EncodingFormat,
 		Temperature:         config.Temperature,
 	}
@@ -112,7 +110,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 				Content: userInput,
 			},
 		},
-		Stream:      ollamaProvider.Stream,
+		Stream:      true, // Enable streaming
 		Temperature: &ollamaProvider.Temperature,
 	}
 

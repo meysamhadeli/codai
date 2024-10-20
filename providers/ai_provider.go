@@ -24,7 +24,6 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 	switch config.ProviderName {
 	case "ollama":
 		return ollama.NewOllamaProvider(&ollama.OllamaConfig{
-			Stream:              config.Stream,
 			Temperature:         config.Temperature,
 			EncodingFormat:      config.EncodingFormat,
 			ChatCompletionModel: config.ChatCompletionModel,
@@ -35,7 +34,6 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 	case "openai":
 
 		return openai.NewOpenAIProvider(&openai.OpenAIConfig{
-			Stream:              config.Stream,
 			Temperature:         config.Temperature,
 			EncodingFormat:      config.EncodingFormat,
 			ChatCompletionModel: config.ChatCompletionModel,
