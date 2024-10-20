@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,8 +9,10 @@ import (
 	"fmt"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 // OllamaConfig implements the Provider interface for Ollama.
@@ -94,7 +97,7 @@ func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt
 	return &embeddingResponse, nil
 }
 
-func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (*models.ChatCompletionResponse, error) {
+func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (string, error) {
 
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
@@ -115,13 +118,13 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	// Create a new HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.ChatCompletionURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return "", fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set headers
@@ -133,24 +136,53 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 	if err != nil {
 		// Check if the context was canceled
 		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, fmt.Errorf("request canceled: %v", err)
+			return "", fmt.Errorf("request canceled: %v", err)
 		}
-		return nil, fmt.Errorf("error sending request: %v", err)
+		return "", fmt.Errorf("error sending request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %v", err)
+	// Create a buffered reader for reading the response stream
+	reader := bufio.NewReader(resp.Body)
+
+	var resultBuilder strings.Builder
+
+	for {
+		// Read the response line by line
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", fmt.Errorf("error reading stream: %v", err)
+		}
+
+		// Check for the end of the stream
+		if line == "data: [DONE]\n" {
+			break // Stop processing if we hit the end signal
+		}
+
+		if strings.HasPrefix(line, "data: ") {
+			// Trim the "data: " prefix to get the actual JSON part
+			jsonPart := strings.TrimPrefix(line, "data: ")
+
+			// Parse the JSON to extract the response structure
+			var response models.ChatCompletionResponse
+			if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
+				return "", fmt.Errorf("error unmarshalling chunk: %v", err)
+			}
+
+			// Safely extract the content from the response
+			if len(response.Choices) > 0 {
+				content := response.Choices[0].Delta.Content
+				resultBuilder.WriteString(content)
+				fmt.Print(content) // Optionally print the content
+			}
+		}
 	}
 
-	// Unmarshal the response into the response struct
-	var chatResponse models.ChatCompletionResponse
-	err = json.Unmarshal(body, &chatResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling response: %v", err)
-	}
+	fmt.Println()
 
-	return &chatResponse, nil
+	// Return the final result or suggestions
+	return resultBuilder.String(), nil
 }

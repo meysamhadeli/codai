@@ -1,6 +1,7 @@
 package markdown_generators
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -9,11 +10,74 @@ import (
 	"github.com/meysamhadeli/codai/markdown_generators/models"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type MarkdownConfig struct {
 	Theme      string `mapstructure:"theme"`
 	DiffViewer string `mapstructure:"diff_viewer"`
+}
+
+func (m *MarkdownConfig) ExtractCodeChanges(text, language string) ([]models.CodeChange, error) {
+	// Validate the input text
+	if text == "" {
+		return nil, errors.New("input text is empty")
+	}
+
+	var changes []models.CodeChange
+	scanner := bufio.NewScanner(strings.NewReader(text))
+
+	// Define markers for starting and ending code blocks
+	startMarker := fmt.Sprintf("```%s", language)
+	endMarker := "```"
+
+	var currentFile string
+	var currentCode strings.Builder
+	inCodeBlock := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Detect the start or end of a code block
+		if strings.TrimSpace(line) == startMarker {
+			// Start a new code block
+			inCodeBlock = true
+		} else if strings.TrimSpace(line) == endMarker {
+			// End of a code block
+			if inCodeBlock && currentFile != "" && currentCode.Len() > 0 {
+				// Add the completed CodeChange
+				changes = append(changes, models.CodeChange{
+					RelativePath: strings.TrimSpace(currentFile),
+					Code:         strings.TrimSpace(currentCode.String()),
+				})
+			} else if inCodeBlock && currentFile == "" {
+				// If we reach the end without a file path
+				return nil, errors.New("code block ended without a file path")
+			}
+
+			// Reset for the next block
+			inCodeBlock = false
+			currentCode.Reset()
+			currentFile = ""
+		} else if strings.HasPrefix(line, "// File: ") && inCodeBlock {
+			// Capture the file path inside the code block
+			currentFile = strings.TrimSpace(strings.TrimPrefix(line, "// File: "))
+			if currentFile == "" {
+				// If the file path is empty
+				return nil, errors.New("empty file path found")
+			}
+		} else if inCodeBlock {
+			// Capture code lines inside the current code block
+			currentCode.WriteString(line + "\n")
+		}
+	}
+
+	// Check for any scanning errors
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error while scanning text: %v", err)
+	}
+
+	return changes, nil
 }
 
 // NewMarkdownGenerator NewCodeAnalyzer initializes a new CodeAnalyzer.

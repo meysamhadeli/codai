@@ -3,12 +3,10 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"encoding/xml"
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
 	"github.com/meysamhadeli/codai/constants/lipgloss_color"
 	"github.com/meysamhadeli/codai/embed_data"
-	models2 "github.com/meysamhadeli/codai/markdown_generators/models"
 	"github.com/meysamhadeli/codai/utils"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -65,7 +63,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					return
 				}
 
-				spinner, _ := pterm.DefaultSpinner.Start("Retrieve data from server...")
+				spinner, _ := pterm.DefaultSpinner.Start("Process the context files...")
 
 				// Get all data files from the root directory
 				allDataFiles, err := rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
@@ -144,6 +142,8 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					continue
 				}
 
+				spinner.Stop()
+
 				// Combine the relevant code into a single string
 				code := strings.Join(relevantCode, "\n---------\n\n")
 
@@ -151,18 +151,13 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n%s", code), string(embed_data.CodeResultTemplate))
 				userInputPrompt := fmt.Sprintf("Here is my request:\n%s", userInput)
 
-				var suggestion models2.Suggestion
+				var aiResponse string
 
 				chatRequestOperation := func() error {
 					// Step 7: Send the relevant code and user input to the AI API
-					aiResponse, err := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, prompt)
+					aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, prompt)
 					if err != nil {
 						return fmt.Errorf("failed to get response from AI: %v", err)
-					}
-
-					// Unmarshal the Suggestion part
-					if err := xml.Unmarshal([]byte(aiResponse.Choices[0].Message.Content), &suggestion); err != nil {
-						return fmt.Errorf("failed to unmarshal response from AI: %v", aiResponse.Choices[0].Message.Content)
 					}
 
 					return nil
@@ -172,61 +167,55 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				err = utils.RetryWithBackoff(chatRequestOperation, 3)
 
 				if err != nil {
-					spinner.Stop()
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
 					continue
 				}
 
-				spinner.Stop()
+				changes, err := rootDependencies.Markdown.ExtractCodeChanges(aiResponse, "csharp")
+				if err != nil {
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					continue
+				}
 
-				if suggestion.Explanations != "" {
-					err = rootDependencies.Markdown.GenerateMarkdown(fmt.Sprintf("### EXPLANATIONS\n%s", suggestion.Explanations))
+				var tempFiles []string
+
+				// Prepare temp files for using comparing in diff
+				for _, change := range changes {
+					tempPath, err := utils.WriteToTempFile(change.RelativePath, change.Code)
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to print results: %v", err)))
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to write temp file: %v", err)))
+						continue
+					}
+					tempFiles = append(tempFiles, tempPath)
+				}
+
+				// Run diff after applying changes to temp files
+				for _, change := range changes {
+					err = rootDependencies.Markdown.GenerateDiff(change)
+					if err != nil {
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error running file diff: %v", err)))
 						continue
 					}
 
-					var tempFiles []string
-
-					// Prepare temp files for using comparing in diff
-					for _, change := range suggestion.CodeChanges.CodeChange {
-						tempPath, err := utils.WriteToTempFile(change.RelativePath, change.Code)
-						if err != nil {
-							fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to write temp file: %v", err)))
-							continue
-						}
-						tempFiles = append(tempFiles, tempPath)
+					// Prompt the user to accept or reject the changes
+					promptAccepted, err := utils.PromptUser(change.RelativePath)
+					if err != nil {
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
+						continue
 					}
 
-					// Run diff after applying changes to temp files
-					for _, change := range suggestion.CodeChanges.CodeChange {
-						err = rootDependencies.Markdown.GenerateDiff(change)
+					if promptAccepted {
+
+						err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
 						if err != nil {
-							fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error running file diff: %v", err)))
+							fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error applying changes: %v", err)))
 							continue
 						}
 
-						// Prompt the user to accept or reject the changes
+						fmt.Println(lipgloss_color.Green.Render(fmt.Sprintf("Changes applied and saved for `%s`.\n", change.RelativePath)))
 
-						promptAccepted, err := utils.PromptUser(change.RelativePath)
-						if err != nil {
-							fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
-							continue
-						}
-
-						if promptAccepted {
-
-							err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
-							if err != nil {
-								fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error applying changes: %v", err)))
-								continue
-							}
-
-							fmt.Println(lipgloss_color.Green.Render(fmt.Sprintf("Changes applied and saved for `%s`.\n", change.RelativePath)))
-
-						} else {
-							fmt.Println(lipgloss_color.Orange.Render(fmt.Sprintf("Changes for `%s` is discarded. No files were modified.\n", change.RelativePath)))
-						}
+					} else {
+						fmt.Println(lipgloss_color.Orange.Render(fmt.Sprintf("Changes for `%s` is discarded. No files were modified.\n", change.RelativePath)))
 					}
 				}
 			}
