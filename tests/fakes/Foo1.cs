@@ -1,4 +1,4 @@
-namespace BuildingBlocks.EventStoreDB.Projections;
+namespace HelloNameSpace;
 
 // We have class Foo1 here.
 public class Foo1
