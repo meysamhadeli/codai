@@ -132,6 +132,9 @@ func (m *MarkdownConfig) GenerateDiff(change models.CodeChange) error {
 			var exitError *exec.ExitError
 			if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
 
+				if diffOut.String() == "" {
+					return fmt.Errorf("error cli diff for %s: %v", originalFilePath, err)
+				}
 				// Print the diff with the styled background
 				err = m.GenerateMarkdown(fmt.Sprintf("### DIFF\n\n```%s```", diffOut.String()))
 				if err != nil {
