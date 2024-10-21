@@ -5,12 +5,30 @@ import (
 	"github.com/meysamhadeli/codai/embedding_store/contracts"
 	"math"
 	"sort"
+	"sync"
 )
 
 // EmbeddingStore holds the embeddings and their corresponding code chunks.
 type EmbeddingStore struct {
 	EmbeddingsStore map[string][]float64
 	CodeStore       map[string]string
+	mu              sync.Mutex // Mutex to ensure safe concurrent access
+}
+
+func (store *EmbeddingStore) FindThresholdByModel(modelName string) float64 {
+
+	switch modelName {
+	case "all-minilm:l6-v2":
+		return 0.22
+	case "mxbai-embed-large":
+		return 0.48
+	case "text-embedding-3-large":
+		return 0.4
+	case "text-embedding-3-small":
+		return 0.4
+	default:
+		return 0.3
+	}
 }
 
 // NewEmbeddingStoreModel initializes a new CodeEmbeddingStoreModel.
@@ -23,6 +41,9 @@ func NewEmbeddingStoreModel() contracts.IEmbeddingStore {
 
 // Save the embeddings and the corresponding code to the in-memory store.
 func (store *EmbeddingStore) Save(key string, code string, embeddings []float64) {
+	store.mu.Lock()         // Lock the map before writing
+	defer store.mu.Unlock() // Unlock after the function finishes
+
 	if len(embeddings) > 0 {
 		store.EmbeddingsStore[key] = embeddings
 		store.CodeStore[key] = code
@@ -45,13 +66,15 @@ func (store *EmbeddingStore) CosineSimilarity(vec1, vec2 []float64) float64 {
 }
 
 // FindRelevantChunks retrieves the relevant code chunks from the embedding store based on a similarity threshold.
-func (store *EmbeddingStore) FindRelevantChunks(queryEmbedding []float64, topN int, threshold float64) []string {
+func (store *EmbeddingStore) FindRelevantChunks(queryEmbedding []float64, topN int, embeddingModel string) []string {
 	type similarityResult struct {
 		FileName   string
 		Similarity float64
 	}
 
 	var results []similarityResult
+
+	threshold := store.FindThresholdByModel(embeddingModel)
 
 	// Calculate similarity for each stored embedding
 	for fileName, storedEmbedding := range store.EmbeddingsStore {

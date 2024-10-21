@@ -1,5 +1,7 @@
 package cmd
 
+import _ "embed"
+
 import (
 	"bytes"
 	"os"
@@ -25,8 +27,8 @@ func TestCodeCommand(t *testing.T) {
 	codeCmd.SetOut(&buf)
 	codeCmd.SetErr(&buf)
 
-	// Simulate command-line arguments
-	os.Args = []string{"codai", "code"} // Simulate calling 'codai code'
+	// Simulate command-line arguments including the config file
+	os.Args = []string{"codai", "code"} // Pass config file argument
 
 	// Execute the command
 	err := codeCmd.Execute()

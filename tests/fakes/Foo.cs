@@ -1,8 +1,8 @@
-namespace BuildingBlocks.EventStoreDB.Projections;
-
+namespace HelloNameSpace
+{
 // We have class Foo here.
 public class Foo
-{
+  {
     // We have method start here.
     public void Start()
     {
@@ -10,4 +10,5 @@ public class Foo
         Console.WriteLine("byyyyyyyyy");
         Console.WriteLine("heyyyyyyyyy");
     }
+  }
 }

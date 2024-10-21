@@ -8,5 +8,5 @@ var CodeResultTemplate []byte
 //go:embed tree-sitter/queries/csharp.scm
 var CSharpQuery []byte
 
-//go:embed tree-sitter/queries/golang.scm
+//go:embed tree-sitter/queries/go.scm
 var GolangQuery []byte

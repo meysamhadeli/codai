@@ -8,7 +8,7 @@ func GetSupportedLanguage(path string) string {
 	case strings.HasSuffix(path, ".cs"):
 		return "csharp"
 	case strings.HasSuffix(path, ".go"):
-		return "golang"
+		return "go"
 	default:
 		return "" // Return empty string if no match
 	}

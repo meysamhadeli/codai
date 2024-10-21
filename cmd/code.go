@@ -63,7 +63,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					return
 				}
 
-				spinner, _ := pterm.DefaultSpinner.Start("Process the context files...")
+				spinner, _ := pterm.DefaultSpinner.Start("Loading context...")
 
 				// Get all data files from the root directory
 				allDataFiles, err := rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
@@ -126,10 +126,9 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
 					topN := -1
-					threshold := 0.2
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					relevantCode = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, threshold)
+					relevantCode = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel)
 					return nil
 				}
 
