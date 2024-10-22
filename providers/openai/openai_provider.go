@@ -24,6 +24,7 @@ type OpenAIConfig struct {
 	Temperature         float32
 	EncodingFormat      string
 	ApiKey              string
+	Threshold           float64
 }
 
 // NewOpenAIProvider initializes a new OpenAPIProvider.
@@ -35,6 +36,7 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		ChatCompletionModel: config.ChatCompletionModel,
 		Temperature:         config.Temperature,
 		EncodingFormat:      config.EncodingFormat,
+		Threshold:           config.Threshold,
 		ApiKey:              config.ApiKey,
 	}
 }
