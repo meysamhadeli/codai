@@ -21,10 +21,14 @@ func (store *EmbeddingStore) FindThresholdByModel(modelName string) float64 {
 		return 0.22
 	case "mxbai-embed-large":
 		return 0.5
+	case "nomic-embed-text":
+		return 0.5
 	case "text-embedding-3-large":
 		return 0.4
 	case "text-embedding-3-small":
 		return 0.4
+	case "text-embedding-ada-002":
+		return 0.77
 	default:
 		return 0.3
 	}
