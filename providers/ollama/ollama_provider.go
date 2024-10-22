@@ -23,6 +23,7 @@ type OllamaConfig struct {
 	ChatCompletionModel string
 	Temperature         float32
 	EncodingFormat      string
+	Threshold           float64
 }
 
 // NewOllamaProvider initializes a new OllamaProvider.
@@ -34,6 +35,7 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		EmbeddingModel:      config.EmbeddingModel,
 		EncodingFormat:      config.EncodingFormat,
 		Temperature:         config.Temperature,
+		Threshold:           config.Threshold,
 	}
 }
 

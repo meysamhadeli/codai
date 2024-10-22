@@ -29,6 +29,7 @@ var defaultConfig = Config{
 		Stream:              true,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
+		Threshold:           0,
 		ApiKey:              "",
 	},
 	MarkdownConfig: &markdown_generators.MarkdownConfig{
@@ -56,6 +57,7 @@ func LoadConfigs(rootCmd *cobra.Command) *Config {
 	viper.SetDefault("ai_provider_config.stream", defaultConfig.AIProviderConfig.Stream)
 	viper.SetDefault("ai_provider_config.encoding_format", defaultConfig.AIProviderConfig.EncodingFormat)
 	viper.SetDefault("ai_provider_config.temperature", defaultConfig.AIProviderConfig.Temperature)
+	viper.SetDefault("ai_provider_config.threshold", defaultConfig.AIProviderConfig.Threshold)
 	viper.SetDefault("ai_provider_config.api_key", defaultConfig.AIProviderConfig.ApiKey)
 
 	// Check if the user provided a config file
@@ -92,6 +94,7 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.stream", rootCmd.Flags().Lookup("stream"))
 	_ = viper.BindPFlag("ai_provider_config.encoding_format", rootCmd.Flags().Lookup("encoding_format"))
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
+	_ = viper.BindPFlag("ai_provider_config.threshold", rootCmd.Flags().Lookup("threshold"))
 	_ = viper.BindPFlag("ai_provider_config.api_key", rootCmd.Flags().Lookup("api_key"))
 }
 
@@ -110,5 +113,6 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().Bool("stream", defaultConfig.AIProviderConfig.Stream, "Stream")
 	rootCmd.PersistentFlags().String("encoding_format", defaultConfig.AIProviderConfig.EncodingFormat, "Encoding Format")
 	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Temperature")
+	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Threshold")
 	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "ApiKey")
 }

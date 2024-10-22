@@ -128,7 +128,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					topN := -1
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					relevantCode = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel)
+					relevantCode = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
 					return nil
 				}
 

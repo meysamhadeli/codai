@@ -16,6 +16,7 @@ type AIProviderConfig struct {
 	Stream              bool    `mapstructure:"stream"`
 	Temperature         float32 `mapstructure:"temperature"`
 	EncodingFormat      string  `mapstructure:"encoding_format"`
+	Threshold           float64 `mapstructure:"threshold"`
 	ApiKey              string  `mapstructure:"api_key"`
 }
 
@@ -30,6 +31,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			EmbeddingModel:      config.EmbeddingModel,
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
+			Threshold:           config.Threshold,
 		}), nil
 	case "openai":
 
@@ -41,6 +43,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
 			ApiKey:              config.ApiKey,
+			Threshold:           config.Threshold,
 		}), nil
 	default:
 
