@@ -9,6 +9,7 @@ import (
 	"github.com/meysamhadeli/codai/utils"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/csharp"
+	"github.com/smacker/go-tree-sitter/golang"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -116,11 +117,11 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 		parser.SetLanguage(csharp.GetLanguage())
 		lang = csharp.GetLanguage()
 		query = embed_data.CSharpQuery
-	//case "golang":
-	//	parser = sitter.NewParser()
-	//	parser.SetLanguage(golang.GetLanguage())
-	//	lang = golang.GetLanguage()
-	//	query = embed_data.GolangQuery
+	case "go":
+		parser = sitter.NewParser()
+		parser.SetLanguage(golang.GetLanguage())
+		lang = golang.GetLanguage()
+		query = embed_data.GolangQuery
 	default:
 		// If the language doesn't match, process the original source code directly
 		elements = append(elements, filePath)
@@ -133,7 +134,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 	// Parse JSON data into a map
 	queries := make(map[string]string)
-	err := json.Unmarshal([]byte(query), &queries)
+	err := json.Unmarshal(query, &queries)
 	if err != nil {
 		log.Fatalf("Failed to parse JSON: %v", err)
 	}

@@ -25,7 +25,7 @@ var defaultConfig = Config{
 		EmbeddingURL:        "http://localhost:11434/v1/embeddings",
 		ChatCompletionURL:   "http://localhost:11434/v1/chat/completions",
 		ChatCompletionModel: "deepseek-coder-v2",
-		EmbeddingModel:      "all-minilm:l6-v2",
+		EmbeddingModel:      "nomic-embed-text",
 		Stream:              true,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
