@@ -6,6 +6,6 @@ var (
 	BlueSky = lipgloss.NewStyle().Foreground(lipgloss.Color("#00BFFF"))
 	Red     = lipgloss.NewStyle().Foreground(lipgloss.Color("197"))
 	Green   = lipgloss.NewStyle().Foreground(lipgloss.Color("43"))
-	Orange  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF4500"))
+	Yellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FCF55F"))
 	Violet  = lipgloss.NewStyle().Foreground(lipgloss.Color("#7F00FF"))
 )

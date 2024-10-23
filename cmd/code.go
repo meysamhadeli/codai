@@ -51,6 +51,10 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			case <-ctx.Done(): // Stop input loop when the context is canceled
 				return
 			default:
+				err := utils.CleanupTempFiles(rootDependencies.Cwd)
+				if err != nil {
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
+				}
 				// Get user input
 				fmt.Println(lipgloss_color.BlueSky.Render("Please enter your request for code assis with ai:"))
 				userInput, err := reader.ReadString('\n')
@@ -177,6 +181,11 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					continue
 				}
 
+				if changes == nil {
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model %s. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
+					continue
+				}
+
 				var tempFiles []string
 
 				// Prepare temp files for using comparing in diff
@@ -193,7 +202,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				for _, change := range changes {
 					err = rootDependencies.Markdown.GenerateDiff(change)
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error for applying file diff: %v", err)))
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model %s. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
 						continue
 					}
 
@@ -215,7 +224,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 						fmt.Println(lipgloss_color.Green.Render(fmt.Sprintf("Changes applied and saved for `%s`.\n", change.RelativePath)))
 
 					} else {
-						fmt.Println(lipgloss_color.Orange.Render(fmt.Sprintf("Changes for `%s` is discarded. No files were modified.\n", change.RelativePath)))
+						fmt.Println(lipgloss_color.Yellow.Render(fmt.Sprintf("Changes for `%s` is discarded. No files were modified.\n", change.RelativePath)))
 					}
 				}
 			}

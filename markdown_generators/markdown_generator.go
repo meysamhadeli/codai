@@ -28,6 +28,7 @@ func (m *MarkdownConfig) ExtractCodeChanges(text string) ([]models.CodeChange, e
 	scanner := bufio.NewScanner(strings.NewReader(text))
 
 	// Define markers for starting and ending code blocks
+	startMarkerDiff := fmt.Sprintf("```%s", "diff")
 	startMarkerCSharp := fmt.Sprintf("```%s", "csharp")
 	startMarkerGo := fmt.Sprintf("```%s", "go")
 	endMarker := "```"
@@ -40,7 +41,9 @@ func (m *MarkdownConfig) ExtractCodeChanges(text string) ([]models.CodeChange, e
 		line := scanner.Text()
 
 		// Detect the start or end of a code block
-		if strings.TrimSpace(line) == startMarkerCSharp || strings.TrimSpace(line) == startMarkerGo {
+		if strings.TrimSpace(line) == startMarkerCSharp ||
+			strings.TrimSpace(line) == startMarkerGo ||
+			strings.TrimSpace(line) == startMarkerDiff {
 			// Start a new code block
 			inCodeBlock = true
 		} else if strings.TrimSpace(line) == endMarker {
@@ -132,9 +135,6 @@ func (m *MarkdownConfig) GenerateDiff(change models.CodeChange) error {
 			var exitError *exec.ExitError
 			if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
 
-				if diffOut.String() == "" {
-					return fmt.Errorf("error cli diff for %s: %v", originalFilePath, err)
-				}
 				// Print the diff with the styled background
 				err = m.GenerateMarkdown(fmt.Sprintf("### DIFF\n\n```%s```", diffOut.String()))
 				if err != nil {
