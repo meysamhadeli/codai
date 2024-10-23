@@ -60,9 +60,9 @@ func (m *MarkdownConfig) ExtractCodeChanges(text string) ([]models.CodeChange, e
 			inCodeBlock = false
 			currentCode.Reset()
 			currentFile = ""
-		} else if strings.HasPrefix(line, "// File: ") && inCodeBlock {
+		} else if strings.HasPrefix(line, "// relative path: ") && inCodeBlock {
 			// Capture the file path inside the code block
-			currentFile = strings.TrimSpace(strings.TrimPrefix(line, "// File: "))
+			currentFile = strings.TrimSpace(strings.TrimPrefix(line, "// relative path: "))
 			if currentFile == "" {
 				// If the file path is empty
 				return nil, errors.New("empty file path found")
