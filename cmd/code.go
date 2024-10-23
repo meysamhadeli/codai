@@ -176,13 +176,9 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				}
 
 				changes, err := rootDependencies.Markdown.ExtractCodeChanges(aiResponse)
-				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-					continue
-				}
 
-				if changes == nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model %s. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
+				if err != nil || changes == nil {
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model `%s`. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
 					continue
 				}
 
@@ -202,7 +198,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				for _, change := range changes {
 					err = rootDependencies.Markdown.GenerateDiff(change)
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model %s. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model `%s` for file `%s`. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel, change.RelativePath)))
 						continue
 					}
 
