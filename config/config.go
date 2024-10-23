@@ -48,7 +48,7 @@ func LoadConfigs(rootCmd *cobra.Command) *Config {
 	// Set default values using Viper
 	viper.SetDefault("version", defaultConfig.Version)
 	viper.SetDefault("markdown_config.diff_viewer", defaultConfig.MarkdownConfig.DiffViewer)
-	viper.SetDefault("markdown_config.Theme", defaultConfig.MarkdownConfig.Theme)
+	viper.SetDefault("markdown_config.theme", defaultConfig.MarkdownConfig.Theme)
 	viper.SetDefault("ai_provider_config.provider_name", defaultConfig.AIProviderConfig.ProviderName)
 	viper.SetDefault("ai_provider_config.embedding_url", defaultConfig.AIProviderConfig.EmbeddingURL)
 	viper.SetDefault("ai_provider_config.chat_completion_url", defaultConfig.AIProviderConfig.ChatCompletionURL)
@@ -84,8 +84,8 @@ func LoadConfigs(rootCmd *cobra.Command) *Config {
 // bindFlags binds the CLI flags to configuration values.
 func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("version", rootCmd.Flags().Lookup("version"))
-	_ = viper.BindPFlag("markdown_config.DiffViewer", rootCmd.Flags().Lookup("diff_viewer"))
-	_ = viper.BindPFlag("markdown_config.Theme", rootCmd.Flags().Lookup("theme"))
+	_ = viper.BindPFlag("markdown_config.diff_viewer", rootCmd.Flags().Lookup("diff_viewer"))
+	_ = viper.BindPFlag("markdown_config.theme", rootCmd.Flags().Lookup("theme"))
 	_ = viper.BindPFlag("ai_provider_config.provider_name", rootCmd.Flags().Lookup("provider_name"))
 	_ = viper.BindPFlag("ai_provider_config.embedding_url", rootCmd.Flags().Lookup("embedding_url"))
 	_ = viper.BindPFlag("ai_provider_config.chat_completion_url", rootCmd.Flags().Lookup("chat_completion_url"))

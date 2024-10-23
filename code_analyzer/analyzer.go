@@ -54,6 +54,8 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 			return err
 		}
 
+		relativePath, err := filepath.Rel(rootDir, path)
+
 		// Check if the current directory or file should be skipped based on default ignore patterns
 		if utils.IsDefaultIgnored(path) {
 			// Skip the directory or file
@@ -68,8 +70,6 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 		// Ensure that the current entry is a file, not a directory
 		if !d.IsDir() {
 
-			// Check if the file is ignored by any patterns
-			relativePath, err := filepath.Rel(rootDir, path)
 			if err != nil {
 				return err
 			}
@@ -79,15 +79,15 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 			}
 
 			// Read the file content
-			content, err := ioutil.ReadFile(path)
+			content, err := ioutil.ReadFile(relativePath)
 			if err != nil {
-				return fmt.Errorf("failed to read file: %s, error: %w", path, err)
+				return fmt.Errorf("failed to read file: %s, error: %w", relativePath, err)
 			}
 
-			codeParts := analyzer.ProcessFile(path, content)
+			codeParts := analyzer.ProcessFile(relativePath, content)
 
 			// Append the file data to the result
-			result = append(result, models.FileData{Path: path, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
+			result = append(result, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
 		}
 
 		return nil

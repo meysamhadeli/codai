@@ -90,7 +90,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 							fileEmbedding := fileEmbeddingResponse.Data[0].Embedding
 
 							// Save embeddings to the embedding store
-							rootDependencies.Store.Save(dataFile.Path, dataFile.Code, fileEmbedding)
+							rootDependencies.Store.Save(dataFile.RelativePath, dataFile.Code, fileEmbedding)
 							return nil
 						}
 
@@ -147,7 +147,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				code := strings.Join(relevantCode, "\n---------\n\n")
 
 				// Create the final prompt for the AI
-				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n%s", code), string(embed_data.CodeResultTemplate))
+				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n\n%s", code), string(embed_data.CodeBlockTemplate))
 				userInputPrompt := fmt.Sprintf("Here is my request:\n%s", userInput)
 
 				var aiResponse string
@@ -193,7 +193,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				for _, change := range changes {
 					err = rootDependencies.Markdown.GenerateDiff(change)
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error running file diff: %v", err)))
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error for applying file diff: %v", err)))
 						continue
 					}
 

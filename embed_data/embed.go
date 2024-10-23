@@ -2,8 +2,8 @@ package embed_data
 
 import _ "embed"
 
-//go:embed prompts/code_result.tmpl
-var CodeResultTemplate []byte
+//go:embed prompts/code_block_prompt.tmpl
+var CodeBlockTemplate []byte
 
 //go:embed tree-sitter/queries/csharp.scm
 var CSharpQuery []byte
