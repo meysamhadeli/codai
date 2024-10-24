@@ -36,7 +36,7 @@ ai_provider_config:
   chat_completion_model: "deepseek-coder-v2"
   temperature: 0.2
 ```
-If you wish to customize your configuration, you can create your own config.yml file and place it in the root directory of each project you want to analyze with AI-Agent. If no configuration file is provided, AI-Agent will use the default settings.
+If you wish to customize your configuration, you can create your own config.yml file and place it in the root directory of each project you want to analyze with codai. If no configuration file is provided, codai will use the default settings.
 
 You can also specify a configuration file from any directory by using the following CLI command:
 ```bash
@@ -49,10 +49,10 @@ codai code --provider_name openapi --temperature 0.8
 This flexibility allows you to customize config of codai on the fly.
 
 How to Run
-To use **codai** as your code assistant, navigate to the directory where you want to apply AI-Agent and run the following command:
+To use **codai** as your code assistant, navigate to the directory where you want to apply codai and run the following command:
 
 ```bash
-ai-agent code
+codai code
 ```
 This will initiate the AI assistant to help you with your coding tasks with undrestanding the context of your code.
 
