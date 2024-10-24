@@ -13,7 +13,7 @@ func PromptUser(path string) (bool, error) {
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf(lipgloss_color.Violet.Render(fmt.Sprintf("Do you want to accept the changes for %s? (y/n): ", path)))
+		fmt.Printf(lipgloss_color.Violet.Render(fmt.Sprintf("Do you want to accept the changes for file: `%s`? (y/n): ", path)))
 
 		fmt.Print()
 		input, _ := reader.ReadString('\n')

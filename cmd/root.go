@@ -8,8 +8,6 @@ import (
 	"github.com/meysamhadeli/codai/constants/lipgloss_color"
 	"github.com/meysamhadeli/codai/embedding_store"
 	contracts_store "github.com/meysamhadeli/codai/embedding_store/contracts"
-	"github.com/meysamhadeli/codai/markdown_generators"
-	contracts_markdown "github.com/meysamhadeli/codai/markdown_generators/contracts"
 	"github.com/meysamhadeli/codai/providers"
 	contracts_provider "github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/spf13/cobra"
@@ -21,7 +19,6 @@ type RootDependencies struct {
 	CurrentProvider contracts_provider.IAIProvider
 	Store           contracts_store.IEmbeddingStore
 	Analyzer        contracts_analyzer.ICodeAnalyzer
-	Markdown        contracts_markdown.IMarkdownGenerator
 	Cwd             string
 	Config          *config.Config
 }
@@ -29,9 +26,8 @@ type RootDependencies struct {
 // RootCmd represents the 'context' command
 var rootCmd = &cobra.Command{
 	Use:   "codai",
-	Short: "Codai CLI for coding and chatting",
-	Long: `Codai is a command-line interface (CLI) application that helps with coding and chatting
-by providing an AI-powered assistant for development assistance and communication.`,
+	Short: "codai CLI for coding and chatting",
+	Long:  `codai is a CLI tool that assists developers by providing intelligent code suggestions, refactoring, and code reviews based on the full context of your project. It supports multiple LLMs, including GPT-3.5, GPT-4, and Ollama, to streamline daily development tasks.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		handleRootCommand(cmd)
 	},
@@ -50,9 +46,6 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 	}
 
 	rootDependencies.Config = config.LoadConfigs(cmd)
-
-	// Initialize Markdown
-	rootDependencies.Markdown = markdown_generators.NewMarkdownGenerator(rootDependencies.Config.MarkdownConfig)
 
 	// Initialize Analyzer
 	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd)

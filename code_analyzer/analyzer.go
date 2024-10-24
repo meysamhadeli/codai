@@ -2,6 +2,7 @@ package code_analyzer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
@@ -15,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -168,4 +170,43 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	}
 
 	return elements
+}
+
+func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) ([]models.CodeChange, error) {
+	// Validate the input text
+	if text == "" {
+		return nil, errors.New("input text is empty")
+	}
+
+	// Regex to match the relative file path (e.g., **File: tests\fakes\Foo.cs**)
+	filePathPattern := regexp.MustCompile(`\*\*File:\s*(.+?)\*\*`)
+	// Regex to match code blocks (we don't care about language now, just the code content)
+	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
+
+	var codeChanges []models.CodeChange
+
+	// Find all file path matches
+	filePathMatches := filePathPattern.FindAllStringSubmatch(text, -1)
+	// Find all code block matches
+	codeMatches := codeBlockPattern.FindAllStringSubmatch(text, -1)
+
+	// Ensure there is a one-to-one correspondence between file paths and code blocks
+	if len(filePathMatches) == len(codeMatches) {
+		for i, match := range filePathMatches {
+			// Extract relative path
+			relativePath := strings.TrimSpace(match[1])
+
+			// Extract the code block content
+			code := strings.TrimSpace(codeMatches[i][1])
+
+			// Create a new CodeChange struct and append it to the array
+			codeChange := models.CodeChange{
+				RelativePath: relativePath,
+				Code:         code,
+			}
+			codeChanges = append(codeChanges, codeChange)
+		}
+	}
+
+	return codeChanges, nil
 }
