@@ -103,7 +103,7 @@ Enable the AI to modify several files at the same time, making it easier to hand
 💳 Token Management:
 Track and represent the token consumption for each request, providing transparency on how many tokens are used, which helps in managing API costs effectively.
 
-🗺️ Plan
+## 🗺️ Plan
 🌀 This project is a work in progress; new features will be added over time. 🌀
 
 I will try to add new features in the [Issues](https://github.com/meysamhadeli/codai/issues) section of this app.
