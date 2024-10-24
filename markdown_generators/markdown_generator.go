@@ -1,7 +1,6 @@
 package markdown_generators
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"github.com/meysamhadeli/codai/markdown_generators/models"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -24,64 +24,37 @@ func (m *MarkdownConfig) ExtractCodeChanges(text string) ([]models.CodeChange, e
 		return nil, errors.New("input text is empty")
 	}
 
-	var changes []models.CodeChange
-	scanner := bufio.NewScanner(strings.NewReader(text))
+	// Regex to match the relative file path (e.g., **File: tests\fakes\Foo.cs**)
+	filePathPattern := regexp.MustCompile(`\*\*File:\s*(.+?)\*\*`)
+	// Regex to match code blocks (we don't care about language now, just the code content)
+	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
 
-	// Define markers for starting and ending code blocks
-	startMarkerDiff := fmt.Sprintf("```%s", "diff")
-	startMarkerCSharp := fmt.Sprintf("```%s", "csharp")
-	startMarkerGo := fmt.Sprintf("```%s", "go")
-	endMarker := "```"
+	var codeChanges []models.CodeChange
 
-	var currentFile string
-	var currentCode strings.Builder
-	inCodeBlock := false
+	// Find all file path matches
+	filePathMatches := filePathPattern.FindAllStringSubmatch(text, -1)
+	// Find all code block matches
+	codeMatches := codeBlockPattern.FindAllStringSubmatch(text, -1)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	// Ensure there is a one-to-one correspondence between file paths and code blocks
+	if len(filePathMatches) == len(codeMatches) {
+		for i, match := range filePathMatches {
+			// Extract relative path
+			relativePath := strings.TrimSpace(match[1])
 
-		// Detect the start or end of a code block
-		if strings.TrimSpace(line) == startMarkerCSharp ||
-			strings.TrimSpace(line) == startMarkerGo ||
-			strings.TrimSpace(line) == startMarkerDiff {
-			// Start a new code block
-			inCodeBlock = true
-		} else if strings.TrimSpace(line) == endMarker {
-			// End of a code block
-			if inCodeBlock && currentFile != "" && currentCode.Len() > 0 {
-				// Add the completed CodeChange
-				changes = append(changes, models.CodeChange{
-					RelativePath: strings.TrimSpace(currentFile),
-					Code:         strings.TrimSpace(currentCode.String()),
-				})
-			} else if inCodeBlock && currentFile == "" {
-				// If we reach the end without a file path
-				return nil, errors.New("code block ended without a file path")
+			// Extract the code block content
+			code := strings.TrimSpace(codeMatches[i][1])
+
+			// Create a new CodeChange struct and append it to the array
+			codeChange := models.CodeChange{
+				RelativePath: relativePath,
+				Code:         code,
 			}
-
-			// Reset for the next block
-			inCodeBlock = false
-			currentCode.Reset()
-			currentFile = ""
-		} else if strings.HasPrefix(line, "// relative path: ") && inCodeBlock {
-			// Capture the file path inside the code block
-			currentFile = strings.TrimSpace(strings.TrimPrefix(line, "// relative path: "))
-			if currentFile == "" {
-				// If the file path is empty
-				return nil, errors.New("empty file path found")
-			}
-		} else if inCodeBlock {
-			// Capture code lines inside the current code block
-			currentCode.WriteString(line + "\n")
+			codeChanges = append(codeChanges, codeChange)
 		}
 	}
 
-	// Check for any scanning errors
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error while scanning text: %v", err)
-	}
-
-	return changes, nil
+	return codeChanges, nil
 }
 
 // NewMarkdownGenerator NewCodeAnalyzer initializes a new CodeAnalyzer.
