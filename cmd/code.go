@@ -19,8 +19,10 @@ import (
 // CodeCmd: codai code
 var codeCmd = &cobra.Command{
 	Use:   "code",
-	Short: "Run the code subcommand",
-	Long:  `The 'code' subcommand executes coding-related operations using Codai.`,
+	Short: "Run the stateless AI-powered code assistant for various coding tasks.",
+	Long: `The 'code' subcommand allows users to leverage a stateless AI assistant for a range of coding tasks. 
+This AI can suggest new code, refactor existing code, review code for improvements, and even suggest new features 
+based on the current project context.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		rootDependencies := handleRootCommand(cmd)
 		handleCodeCommand(rootDependencies) // Pass standard input by default
@@ -175,7 +177,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					continue
 				}
 
-				changes, err := rootDependencies.Markdown.ExtractCodeChanges(aiResponse)
+				changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponse)
 
 				if err != nil || changes == nil {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model `%s`. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
@@ -196,11 +198,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 				// Run diff after applying changes to temp files
 				for _, change := range changes {
-					err = rootDependencies.Markdown.GenerateDiff(change)
-					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model `%s` for file `%s`. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel, change.RelativePath)))
-						continue
-					}
 
 					// Prompt the user to accept or reject the changes
 					promptAccepted, err := utils.PromptUser(change.RelativePath)
