@@ -9,7 +9,7 @@ LLM models**, including **GPT-3.5**, **GPT-4**, **Ollama**, and more.
 To install **codai** globally, you can use the following command:
 
 ```bash
-go install github.com/your-username/ai-agent@latest
+go install github.com/meysamhadeli/codai@latest
 ```
 
 ### ⚙️ Set Environment Variables
