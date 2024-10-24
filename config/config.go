@@ -36,7 +36,7 @@ var defaultConfig = Config{
 var cfgFile string
 
 // LoadConfigs initializes the configuration from file, flags, and environment variables, and returns the final config.
-func LoadConfigs(rootCmd *cobra.Command) *Config {
+func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	var config *Config
 
 	// Set default values using Viper
@@ -65,6 +65,23 @@ func LoadConfigs(rootCmd *cobra.Command) *Config {
 			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
 			os.Exit(1)
 		}
+	}
+
+	// Check if the user provided a config file via CLI
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Automatically look for 'config.yml' in the working directory if no CLI file is provided
+		viper.SetConfigName("config") // name of config file (without extension)
+		viper.SetConfigType("yml")    // Required if file extension is not yaml/yml
+		viper.AddConfigPath(cwd)      // Look for config in the current working directory
+	}
+
+	// Read the configuration file if available
+	err := viper.ReadInConfig()
+	if err != nil {
+		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
+		os.Exit(1)
 	}
 
 	// Bind CLI flags to override config values

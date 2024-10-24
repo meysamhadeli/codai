@@ -45,7 +45,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 		return nil
 	}
 
-	rootDependencies.Config = config.LoadConfigs(cmd)
+	rootDependencies.Config = config.LoadConfigs(cmd, rootDependencies.Cwd)
 
 	// Initialize Analyzer
 	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd)
