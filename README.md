@@ -1,9 +1,9 @@
 # codai
 
-**codai** is a powerful **AI code assistant** designed to help developers efficiently manage their daily tasks through **CLI**, such as **adding new features**, **refactoring**,
-and performing **detailed code reviews**. What makes **codai** stand out is its **deep understanding of the entire context of your project**, 
-enabling it to **analyze your code base** and **suggest improvements** or **new code** based on that context. This AI-powered tool **supports multiple
-LLM models**, including **GPT-3.5**, **GPT-4**, **Ollama**, and more.
+> **codai is a powerful AI code assistant designed to help developers efficiently manage their daily tasks through CLI, such as adding new features, refactoring,
+and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, 
+enabling it to analyze your code base and suggest improvements or new code based on that context. This AI-powered tool supports multiple
+LLM models, including GPT-3.5, GPT-4, Ollama, and more.**
 
 ## 🚀 Get Started
 To install **codai** globally, you can use the following command:
