@@ -58,49 +58,49 @@ This will initiate the AI assistant to help you with your coding tasks with undr
 
 ## ✨ Features
 
-🧠 Intelligent Code Suggestions:
+🧠 **Intelligent Code Suggestions:**
 Provide context-aware code completion and suggestions as you type.
 
-➕ Add New Features or Test Cases:
+➕ **Add New Features or Test Cases:**
 Suggest new features or generate test cases based on existing code, helping to enhance functionality and ensure code reliability.
 
-🔄 Code Refactoring:
+🔄 **Code Refactoring:**
 Provide specific suggestions to improve the structure and efficiency of existing code, making it cleaner and easier to maintain.
 
-🐛 Describe a Bug:
+🐛 **Describe a Bug:**
 Users can describe bugs in their code, allowing the AI to analyze the issue and provide targeted suggestions for resolution or debugging steps.
 
-✅ Code Review Assistance:
+✅ **Code Review Assistance:**
 Analyze code and identify potential bugs, providing suggestions to refactor for cleaner and better-performing code.
 
-✔️ Direct Code Acceptance:
+✔️ **Direct Code Acceptance:**
 After receiving code suggestions from the AI, users can directly accept changes, which will be applied immediately to the codebase.
 
-📚 Documentation Generation:
+📚 **Documentation Generation:**
 Automatically generate documentation based on the codebase, including function descriptions, parameter details, and usage examples.
 
-🌐 Multi-Language Support:
+🌐 **Multi-Language Support:**
 Support for various programming languages (C#, Go) to cater to a wider range of developers. (We will support other language soon)
 
-⚙️ Customizable Config:
+⚙️ **Customizable Config:**
 Allow users to customize settings through a config file (e.g., changing AI provider, tuning temperature settings).
 
-📊 Project Context Awareness:
+📊 **Project Context Awareness:**
 Maintain awareness of the entire project context to provide more accurate suggestions.
 
-🌳 Full Project Context Summarization: 
+🌳 **Full Project Context Summarization:** 
 Summarize the full context of your codebase using Tree-sitter for accurate and efficient code analysis.
 
-🔍 RAG System Implementation:
+🔍 **RAG System Implementation:**
 Implement a Retrieval-Augmented Generation system to improve the relevance and accuracy of code suggestions by retrieving relevant context from the project.
 
-⚡ Support variety of LLM models:
+⚡ **Support variety of LLM models:**
 Work with advanced LLM models like GPT-3.5, GPT-4, and Ollama, ensuring high-quality suggestions and interactions.
 
-🗂️ Edit Multiple Files at Once:
+🗂️ **Edit Multiple Files at Once:**
 Enable the AI to modify several files at the same time, making it easier to handle complex requests that need changes in different areas of the code.
 
-💳 Token Management:
+💳 **Token Management:**
 Track and represent the token consumption for each request, providing transparency on how many tokens are used, which helps in managing API costs effectively.
 
 ## 🗺️ Plan
