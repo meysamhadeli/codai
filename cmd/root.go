@@ -21,13 +21,15 @@ type RootDependencies struct {
 	Analyzer        contracts_analyzer.ICodeAnalyzer
 	Cwd             string
 	Config          *config.Config
+	ChatHistory     contracts_provider.IChatHistory
+	TokenManagement contracts_provider.ITokenManagement
 }
 
 // RootCmd represents the 'context' command
 var rootCmd = &cobra.Command{
 	Use:   "codai",
 	Short: "codai CLI for coding and chatting",
-	Long:  `codai is a CLI tool that assists developers by providing intelligent code suggestions, refactoring, and code reviews based on the full context of your project. It supports multiple LLMs, including GPT-3.5, GPT-4, and Ollama, to streamline daily development tasks.`,
+	Long:  `codai is a CLI tool that assists developers by providing intelligent code suggestions, refactoring, and code reviews based on the full context of your project. It operates in a session-based manner, allowing for continuous context throughout interactions. Codai supports multiple LLMs, including GPT-3.5, GPT-4, and Ollama, to streamline daily development tasks.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		handleRootCommand(cmd)
 	},
@@ -47,13 +49,13 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.Config = config.LoadConfigs(cmd, rootDependencies.Cwd)
 
-	// Initialize Analyzer
+	rootDependencies.TokenManagement = providers.NewTokenManager(rootDependencies.Config.AIProviderConfig.MaxTokens)
+
+	rootDependencies.ChatHistory = providers.NewChatHistory()
+
 	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd)
 
-	// Initialize the embedding store model
 	rootDependencies.Store = embedding_store.NewEmbeddingStoreModel()
-
-	// Create a provider using the factory
 
 	rootDependencies.CurrentProvider, err = providers.ProviderFactory(rootDependencies.Config.AIProviderConfig)
 

@@ -25,6 +25,7 @@ type OpenAIConfig struct {
 	Temperature         float32
 	EncodingFormat      string
 	ApiKey              string
+	MaxTokens           int
 	Threshold           float64
 	BufferingTheme      string
 }
@@ -38,6 +39,7 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		ChatCompletionModel: config.ChatCompletionModel,
 		Temperature:         config.Temperature,
 		EncodingFormat:      config.EncodingFormat,
+		MaxTokens:           config.MaxTokens,
 		Threshold:           config.Threshold,
 		ApiKey:              config.ApiKey,
 		BufferingTheme:      config.BufferingTheme,
@@ -102,14 +104,17 @@ func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt
 	return &embeddingResponse, nil
 }
 
-func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (string, error) {
+func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string, history string) (string, error) {
+
+	finalPrompt := fmt.Sprintf("%s\n\n%s\n\n", history, prompt)
+
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
 		Model: openAIProvider.ChatCompletionModel,
 		Messages: []models.Message{
 			{
 				Role:    "system",
-				Content: prompt,
+				Content: finalPrompt,
 			},
 			{
 				Role:    "user",

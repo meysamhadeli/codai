@@ -24,6 +24,7 @@ type OllamaConfig struct {
 	ChatCompletionModel string
 	Temperature         float32
 	EncodingFormat      string
+	MaxTokens           int
 	Threshold           float64
 	BufferingTheme      string
 }
@@ -37,6 +38,7 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		EmbeddingModel:      config.EmbeddingModel,
 		EncodingFormat:      config.EncodingFormat,
 		Temperature:         config.Temperature,
+		MaxTokens:           config.MaxTokens,
 		Threshold:           config.Threshold,
 		BufferingTheme:      config.BufferingTheme,
 	}
@@ -100,7 +102,9 @@ func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt
 	return &embeddingResponse, nil
 }
 
-func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (string, error) {
+func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string, history string) (string, error) {
+
+	finalPrompt := fmt.Sprintf("%s\n\n%s\n\n", history, prompt)
 
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
@@ -108,7 +112,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		Messages: []models.Message{
 			{
 				Role:    "system",
-				Content: prompt,
+				Content: finalPrompt,
 			},
 			{
 				Role:    "user",

@@ -25,6 +25,7 @@ var defaultConfig = Config{
 		ChatCompletionModel: "deepseek-coder-v2",
 		EmbeddingModel:      "nomic-embed-text",
 		Stream:              true,
+		MaxTokens:           999999999,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
 		Threshold:           0,
@@ -52,6 +53,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	viper.SetDefault("ai_provider_config.temperature", defaultConfig.AIProviderConfig.Temperature)
 	viper.SetDefault("ai_provider_config.threshold", defaultConfig.AIProviderConfig.Threshold)
 	viper.SetDefault("ai_provider_config.buffering_theme", defaultConfig.AIProviderConfig.BufferingTheme)
+	viper.SetDefault("ai_provider_config.max_tokens", defaultConfig.AIProviderConfig.MaxTokens)
 	viper.SetDefault("ai_provider_config.api_key", defaultConfig.AIProviderConfig.ApiKey)
 
 	// Automatically read environment variables
@@ -110,6 +112,7 @@ func bindEnv() {
 	viper.BindEnv("ai_provider_config.temperature")
 	viper.BindEnv("ai_provider_config.threshold")
 	viper.BindEnv("ai_provider_config.buffering_theme")
+	viper.BindEnv("ai_provider_config.max_tokens")
 	viper.BindEnv("ai_provider_config.api_key")
 }
 
@@ -125,6 +128,7 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
 	_ = viper.BindPFlag("ai_provider_config.threshold", rootCmd.Flags().Lookup("threshold"))
 	_ = viper.BindPFlag("ai_provider_config.buffering_theme", rootCmd.Flags().Lookup("buffering_theme"))
+	_ = viper.BindPFlag("ai_provider_config.max_tokens", rootCmd.Flags().Lookup("max_tokens"))
 	_ = viper.BindPFlag("ai_provider_config.api_key", rootCmd.Flags().Lookup("api_key"))
 }
 
@@ -143,5 +147,6 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused.")
 	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems (e.g., for retrieving related data in a RAG system). Higher values will require closer matches.")
 	rootCmd.PersistentFlags().String("buffering_theme", defaultConfig.AIProviderConfig.BufferingTheme, "Set customize theme for buffering response from ai. (e.g., 'dracula', 'light', 'dark')")
+	rootCmd.PersistentFlags().Int("max_tokens", defaultConfig.AIProviderConfig.MaxTokens, "Specifies the Maximum number of token can be used by AI model in request.")
 	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "The API key used to authenticate with the AI service provider.")
 }

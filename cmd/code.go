@@ -10,7 +10,6 @@ import (
 	"github.com/meysamhadeli/codai/utils"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"io"
 	"os"
 	"strings"
 	"sync"
@@ -19,10 +18,11 @@ import (
 // CodeCmd: codai code
 var codeCmd = &cobra.Command{
 	Use:   "code",
-	Short: "Run the stateless AI-powered code assistant for various coding tasks.",
-	Long: `The 'code' subcommand allows users to leverage a stateless AI assistant for a range of coding tasks. 
-This AI can suggest new code, refactor existing code, review code for improvements, and even suggest new features 
-based on the current project context.`,
+	Short: "Run the AI-powered code assistant for various coding tasks within a session.",
+	Long: `The 'code' subcommand allows users to leverage a session-based AI assistant for a range of coding tasks. 
+This assistant can suggest new code, refactor existing code, review code for improvements, and even propose new features 
+based on the current project context. Each interaction is part of a session, allowing for continuous context and 
+improved responses throughout the user experience.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		rootDependencies := handleRootCommand(cmd)
 		handleCodeCommand(rootDependencies) // Pass standard input by default
@@ -43,6 +43,8 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 		if err != nil {
 			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
 		}
+	}, func() {
+		rootDependencies.ChatHistory.ClearHistory()
 	})
 
 	// Launch the user input handler in a goroutine
@@ -58,15 +60,11 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
 				}
 				// Get user input
-				fmt.Println(lipgloss_color.BlueSky.Render("Please enter your request for code assis with ai:"))
-				userInput, err := reader.ReadString('\n')
 
+				userInput, err := utils.InputPrompt(reader)
 				if err != nil {
-					if err == io.EOF {
-						return // Exit gracefully on EOF
-					}
-					fmt.Println("Error reading input:", err)
-					return
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					continue
 				}
 
 				spinner, _ := pterm.DefaultSpinner.Start("Loading context...")
@@ -155,16 +153,28 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				// Create the final prompt for the AI
 				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n\n%s", code), string(embed_data.CodeBlockTemplate))
 				userInputPrompt := fmt.Sprintf("Here is my request:\n%s", userInput)
+				chatHistory := strings.Join(rootDependencies.ChatHistory.GetHistory(), "\n\n")
+
+				// Count tokens for the user input and prompt
+				totalTokens := rootDependencies.TokenManagement.CountTokens(userInputPrompt) + rootDependencies.TokenManagement.CountTokens(prompt) + rootDependencies.TokenManagement.CountTokens(chatHistory)
+
+				// Check if enough tokens are available
+				if err := rootDependencies.TokenManagement.UseTokens(totalTokens); err != nil {
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error: %v", err)))
+					continue
+				}
 
 				var aiResponse string
 
 				chatRequestOperation := func() error {
 
 					// Step 7: Send the relevant code and user input to the AI API
-					aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, prompt)
+					aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, prompt, chatHistory)
 					if err != nil {
 						return fmt.Errorf("failed to get response from AI: %v", err)
 					}
+
+					rootDependencies.ChatHistory.AddToHistory(userInput+prompt, aiResponse)
 
 					return nil
 				}
@@ -200,7 +210,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				for _, change := range changes {
 
 					// Prompt the user to accept or reject the changes
-					promptAccepted, err := utils.PromptUser(change.RelativePath)
+					promptAccepted, err := utils.ConfirmPrompt(change.RelativePath)
 					if err != nil {
 						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
 						continue
@@ -220,6 +230,9 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 						fmt.Println(lipgloss_color.Yellow.Render(fmt.Sprintf("Changes for `%s` is discarded. No files were modified.\n", change.RelativePath)))
 					}
 				}
+
+				// Display token usage details in a boxed format after each AI request
+				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ChatCompletionModel)
 			}
 		}
 	}()

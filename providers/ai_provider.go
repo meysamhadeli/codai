@@ -16,6 +16,7 @@ type AIProviderConfig struct {
 	Stream              bool    `mapstructure:"stream"`
 	Temperature         float32 `mapstructure:"temperature"`
 	EncodingFormat      string  `mapstructure:"encoding_format"`
+	MaxTokens           int     `mapstructure:"max_tokens"`
 	Threshold           float64 `mapstructure:"threshold"`
 	ApiKey              string  `mapstructure:"api_key"`
 	BufferingTheme      string  `mapstructure:"buffering_theme"`
@@ -32,6 +33,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			EmbeddingModel:      config.EmbeddingModel,
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
+			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
 			BufferingTheme:      config.BufferingTheme,
 		}), nil
@@ -45,6 +47,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
 			ApiKey:              config.ApiKey,
+			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
 			BufferingTheme:      config.BufferingTheme,
 		}), nil

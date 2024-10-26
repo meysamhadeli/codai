@@ -1,6 +1,6 @@
 # codai
 
-> **codai is a powerful AI code assistant designed to help developers efficiently manage their daily tasks through CLI, such as adding new features, refactoring,
+> **codai is a powerful AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, 
 enabling it to analyze your code base and suggest improvements or new code based on that context. This AI-powered tool supports multiple
 LLM models, including GPT-3.5, GPT-4, Ollama, and more.**
@@ -80,7 +80,7 @@ After receiving code suggestions from the AI, users can directly accept changes,
 Automatically generate documentation based on the codebase, including function descriptions, parameter details, and usage examples.
 
 🌐 **Multi-Language Support:**
-Support for various programming languages (C#, Go) to cater to a wider range of developers. (We will support other language soon)
+Support for various programming languages `(C#, Go)` to cater to a wider range of developers. (We will support other languages soon...)
 
 ⚙️ **Customizable Config:**
 Allow users to customize settings through a config file (e.g., changing AI provider, tuning temperature settings).
@@ -95,7 +95,7 @@ Summarize the full context of your codebase using Tree-sitter for accurate and e
 Implement a Retrieval-Augmented Generation system to improve the relevance and accuracy of code suggestions by retrieving relevant context from the project.
 
 ⚡ **Support variety of LLM models:**
-Work with advanced LLM models like GPT-3.5, GPT-4, and Ollama, ensuring high-quality suggestions and interactions.
+Work with advanced LLM models like `GPT-3.5, GPT-4, and Ollama`, ensuring high-quality suggestions and interactions.
 
 🗂️ **Edit Multiple Files at Once:**
 Enable the AI to modify several files at the same time, making it easier to handle complex requests that need changes in different areas of the code.
