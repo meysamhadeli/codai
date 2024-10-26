@@ -25,7 +25,7 @@ var defaultConfig = Config{
 		ChatCompletionModel: "deepseek-coder-v2",
 		EmbeddingModel:      "nomic-embed-text",
 		Stream:              true,
-		MaxTokens:           999999999,
+		MaxTokens:           128000,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
 		Threshold:           0,
