@@ -18,6 +18,7 @@ type AIProviderConfig struct {
 	EncodingFormat      string  `mapstructure:"encoding_format"`
 	Threshold           float64 `mapstructure:"threshold"`
 	ApiKey              string  `mapstructure:"api_key"`
+	BufferingTheme      string  `mapstructure:"buffering_theme"`
 }
 
 // ProviderFactory creates a Provider based on the given provider config.
@@ -32,6 +33,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
 			Threshold:           config.Threshold,
+			BufferingTheme:      config.BufferingTheme,
 		}), nil
 	case "openai":
 
@@ -44,6 +46,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			EmbeddingURL:        config.EmbeddingURL,
 			ApiKey:              config.ApiKey,
 			Threshold:           config.Threshold,
+			BufferingTheme:      config.BufferingTheme,
 		}), nil
 	default:
 

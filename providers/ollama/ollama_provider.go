@@ -25,6 +25,7 @@ type OllamaConfig struct {
 	Temperature         float32
 	EncodingFormat      string
 	Threshold           float64
+	BufferingTheme      string
 }
 
 // NewOllamaProvider initializes a new OllamaProvider.
@@ -37,6 +38,7 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		EncodingFormat:      config.EncodingFormat,
 		Temperature:         config.Temperature,
 		Threshold:           config.Threshold,
+		BufferingTheme:      config.BufferingTheme,
 	}
 }
 
@@ -180,7 +182,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 			if len(response.Choices) > 0 {
 				content := response.Choices[0].Delta.Content
 				resultBuilder.WriteString(content)
-				utils.RenderAndPrintMarkdown(content, &inCodeBlock, &buffer)
+				utils.RenderAndPrintMarkdown(content, &inCodeBlock, &buffer, ollamaProvider.BufferingTheme)
 			}
 		}
 	}
