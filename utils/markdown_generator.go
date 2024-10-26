@@ -8,7 +8,7 @@ import (
 )
 
 // RenderAndPrintMarkdown renders Markdown with syntax highlighting using Glamour
-func RenderAndPrintMarkdown(content string, inCodeBlock *bool, buffer *strings.Builder) {
+func RenderAndPrintMarkdown(content string, inCodeBlock *bool, buffer *strings.Builder, theme string) {
 	if content == "" {
 		return
 	}
@@ -34,7 +34,7 @@ func RenderAndPrintMarkdown(content string, inCodeBlock *bool, buffer *strings.B
 		buffer.Reset()
 
 		// Using Glamour to render Markdown with syntax highlighting
-		rendered, err := glamour.NewTermRenderer(glamour.WithStylePath("dracula"))
+		rendered, err := glamour.NewTermRenderer(glamour.WithStylePath(theme))
 		if err != nil {
 			log.Printf("Error creating renderer: %v", err)
 			return

@@ -26,6 +26,7 @@ type OpenAIConfig struct {
 	EncodingFormat      string
 	ApiKey              string
 	Threshold           float64
+	BufferingTheme      string
 }
 
 // NewOpenAIProvider initializes a new OpenAPIProvider.
@@ -39,6 +40,7 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		EncodingFormat:      config.EncodingFormat,
 		Threshold:           config.Threshold,
 		ApiKey:              config.ApiKey,
+		BufferingTheme:      config.BufferingTheme,
 	}
 }
 
@@ -182,7 +184,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 			if len(response.Choices) > 0 {
 				content := response.Choices[0].Delta.Content
 				resultBuilder.WriteString(content)
-				utils.RenderAndPrintMarkdown(content, &inCodeBlock, &buffer)
+				utils.RenderAndPrintMarkdown(content, &inCodeBlock, &buffer, openAIProvider.BufferingTheme)
 			}
 		}
 	}

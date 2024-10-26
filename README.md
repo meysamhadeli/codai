@@ -27,7 +27,6 @@ $env:API_KEY="your_api_key""
 ### 🔧 Configuration
 **codai** requires a `config.yml` file in the root of your working directory to analyze your project. By default, the `config.yml` contains the following values:
 ```yml
-version: "1.0"
 ai_provider_config:
   provider_name: "ollama"
   embedding_url: "http://localhost:11434/v1/embeddings"
@@ -35,6 +34,7 @@ ai_provider_config:
   chat_completion_url: "http://localhost:11434/v1/chat/completions"
   chat_completion_model: "deepseek-coder-v2"
   temperature: 0.2
+  buffering_theme: "dracula"
 ```
 If you wish to customize your configuration, you can create your own config.yml file and place it in the root directory of each project you want to analyze with codai. If no configuration file is provided, codai will use the default settings.
 
