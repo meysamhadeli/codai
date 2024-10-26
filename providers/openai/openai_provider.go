@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
+	"github.com/meysamhadeli/codai/utils"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -144,6 +145,9 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 	}
 	defer resp.Body.Close()
 
+	var buffer strings.Builder
+	inCodeBlock := false
+
 	// Create a buffered reader for reading the response stream
 	reader := bufio.NewReader(resp.Body)
 
@@ -178,7 +182,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 			if len(response.Choices) > 0 {
 				content := response.Choices[0].Delta.Content
 				resultBuilder.WriteString(content)
-				fmt.Print(content)
+				utils.RenderAndPrintMarkdown(content, &inCodeBlock, &buffer)
 			}
 		}
 	}
