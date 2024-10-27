@@ -57,7 +57,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.Store = embedding_store.NewEmbeddingStoreModel()
 
-	rootDependencies.CurrentProvider, err = providers.ProviderFactory(rootDependencies.Config.AIProviderConfig)
+	rootDependencies.CurrentProvider, err = providers.ProviderFactory(rootDependencies.Config.AIProviderConfig, rootDependencies.TokenManagement)
 
 	if err != nil {
 		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))

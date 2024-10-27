@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"fmt"
 	"github.com/meysamhadeli/codai/providers/contracts"
 )
 
@@ -15,9 +14,8 @@ func (ch *chatHistory) GetHistory() []string {
 }
 
 // AddToHistory Method to add conversation to the session history
-func (ch *chatHistory) AddToHistory(prompt, response string) {
-	entry := fmt.Sprintf("User: %s\nAI: %s", prompt, response)
-	ch.History = append(ch.History, entry)
+func (ch *chatHistory) AddToHistory(prompt string) {
+	ch.History = append(ch.History, prompt)
 }
 
 // ClearHistory Method to clear the chat session history

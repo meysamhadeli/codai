@@ -1,7 +1,7 @@
 package contracts
 
 type IChatHistory interface {
-	AddToHistory(prompt, response string)
+	AddToHistory(prompt string)
 	ClearHistory()
 	GetHistory() []string
 }

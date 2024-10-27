@@ -10,7 +10,7 @@ import (
 )
 
 // ConfirmPrompt PromptUser prompts the user to accept or reject the changes with a charming interface
-func ConfirmPrompt(path string) (bool, error) {
+func ConfirmPrompt(path string) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Define charming styles for the prompt
@@ -28,10 +28,10 @@ func ConfirmPrompt(path string) (bool, error) {
 
 		if input == "y" || input == "Y" {
 			fmt.Println(responseStyle.Render("✔️ Changes accepted!"))
-			return true, nil
+			return nil
 		} else if input == "n" || input == "N" {
 			fmt.Println(negativeStyle.Render("❌ Changes rejected."))
-			return false, nil
+			return nil
 		}
 
 		// Invalid input, ask again with charm
