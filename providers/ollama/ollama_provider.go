@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/meysamhadeli/codai/constants/lipgloss_color"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
 	"github.com/meysamhadeli/codai/utils"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -27,6 +29,7 @@ type OllamaConfig struct {
 	MaxTokens           int
 	Threshold           float64
 	BufferingTheme      string
+	TokenManagement     contracts.ITokenManagement
 }
 
 // NewOllamaProvider initializes a new OllamaProvider.
@@ -41,10 +44,22 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		MaxTokens:           config.MaxTokens,
 		Threshold:           config.Threshold,
 		BufferingTheme:      config.BufferingTheme,
+		TokenManagement:     config.TokenManagement,
 	}
 }
 
 func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
+
+	// Count tokens for the user input and prompt
+	totalChatTokens, err := ollamaProvider.TokenManagement.CountTokens(prompt, ollamaProvider.ChatCompletionModel)
+	if err != nil {
+		return nil, fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+	}
+
+	// Check if enough tokens are available
+	if err := ollamaProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
+		return nil, fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("Error: %v", err)))
+	}
 
 	// Create the request payload
 	requestBody := models.EmbeddingRequest{
@@ -102,9 +117,18 @@ func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt
 	return &embeddingResponse, nil
 }
 
-func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string, history string) (string, error) {
+func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (string, error) {
 
-	finalPrompt := fmt.Sprintf("%s\n\n%s\n\n", history, prompt)
+	// Count tokens for the user input and prompt
+	totalChatTokens, err := ollamaProvider.TokenManagement.CountTokens(fmt.Sprintf("%s%s", prompt, userInput), ollamaProvider.ChatCompletionModel)
+	if err != nil {
+		return "", fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+	}
+
+	// Check if enough tokens are available
+	if err := ollamaProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
+		return "", fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("Error: %v", err)))
+	}
 
 	// Prepare the request body
 	reqBody := models.ChatCompletionRequest{
@@ -112,7 +136,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		Messages: []models.Message{
 			{
 				Role:    "system",
-				Content: finalPrompt,
+				Content: prompt,
 			},
 			{
 				Role:    "user",
@@ -149,16 +173,14 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 	}
 	defer resp.Body.Close()
 
-	var buffer strings.Builder
-	inCodeBlock := false
-
-	// Create a buffered reader for reading the response stream
 	reader := bufio.NewReader(resp.Body)
+	var sectionBuilder strings.Builder // Accumulate content for each section
+	var resultBuilder strings.Builder  // Accumulate full result for return
 
-	var resultBuilder strings.Builder
+	inCodeBlock := false // Track if we are inside a code block
 
+	// Process each chunk as it arrives
 	for {
-		// Read the response line by line
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
@@ -167,32 +189,59 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 			return "", fmt.Errorf("error reading stream: %v", err)
 		}
 
-		// Check for the end of the stream
+		// Check for end of the stream
 		if line == "data: [DONE]\n" {
-			break // Stop processing if we hit the end signal
+			break
 		}
 
 		if strings.HasPrefix(line, "data: ") {
-			// Trim the "data: " prefix to get the actual JSON part
+			// Trim the "data: " prefix
 			jsonPart := strings.TrimPrefix(line, "data: ")
 
-			// Parse the JSON to extract the response structure
+			// Parse JSON response
 			var response models.ChatCompletionResponse
 			if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
 				return "", fmt.Errorf("error unmarshalling chunk: %v", err)
 			}
 
-			// Safely extract the content from the response
+			var codeBlockRegex = regexp.MustCompile("(?m)^```[a-zA-Z]*$")
+
+			// Extract content from the response
 			if len(response.Choices) > 0 {
 				content := response.Choices[0].Delta.Content
-				resultBuilder.WriteString(content)
-				utils.RenderAndPrintMarkdown(content, &inCodeBlock, &buffer, ollamaProvider.BufferingTheme)
+				resultBuilder.WriteString(content) // Accumulate full result for return
+
+				// Check for triple backtick boundaries
+				if strings.Contains(content, fmt.Sprintf("```%s", codeBlockRegex)) {
+					// Toggle inCodeBlock status when we detect backticks
+					inCodeBlock = !inCodeBlock
+					sectionBuilder.WriteString(content) // Add the boundary marker
+
+					// If we just finished a code block, render and print the section
+					if !inCodeBlock {
+						section := sectionBuilder.String()
+						sectionBuilder.Reset() // Reset for the next section
+
+						// Render and print markdown for the current section
+						if err := utils.RenderAndPrintMarkdown(section, ollamaProvider.BufferingTheme); err != nil {
+							return "", err
+						}
+					}
+				} else {
+					// Continue accumulating content within the section
+					sectionBuilder.WriteString(content)
+				}
 			}
 		}
 	}
 
-	fmt.Println()
+	// Render any remaining content in the section builder
+	if sectionBuilder.Len() > 0 {
+		if err := utils.RenderAndPrintMarkdown(sectionBuilder.String(), ollamaProvider.BufferingTheme); err != nil {
+			return "", err
+		}
+	}
 
-	// Return the final result or suggestions
+	// Return the accumulated full result
 	return resultBuilder.String(), nil
 }

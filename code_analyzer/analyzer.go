@@ -172,14 +172,15 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	return elements
 }
 
+// ExtractCodeChanges extracts code changes from the given text.
 func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) ([]models.CodeChange, error) {
 	// Validate the input text
 	if text == "" {
 		return nil, errors.New("input text is empty")
 	}
 
-	// Regex to match the relative file path (e.g., **File: tests\fakes\Foo.cs**)
-	filePathPattern := regexp.MustCompile(`\*\*File:\s*(.+?)\*\*`)
+	// Regex to match the relative file path (e.g., File: tests\fakes\Foo.cs)
+	filePathPattern := regexp.MustCompile(`(?i)[^*]*?File:\s*([^\n*]+?\.[^\s*]+)`) // Matches any characters before 'File:'
 	// Regex to match code blocks (we don't care about language now, just the code content)
 	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
 

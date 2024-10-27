@@ -6,6 +6,6 @@ import (
 )
 
 type IAIProvider interface {
-	ChatCompletionRequest(ctx context.Context, userInput string, prompt string, history string) (string, error)
+	ChatCompletionRequest(ctx context.Context, userInput string, prompt string) (string, error)
 	EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error)
 }

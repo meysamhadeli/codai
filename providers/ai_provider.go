@@ -23,7 +23,7 @@ type AIProviderConfig struct {
 }
 
 // ProviderFactory creates a Provider based on the given provider config.
-func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
+func ProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenManagement) (contracts.IAIProvider, error) {
 	switch config.ProviderName {
 	case "ollama":
 		return ollama.NewOllamaProvider(&ollama.OllamaConfig{
@@ -36,6 +36,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
 			BufferingTheme:      config.BufferingTheme,
+			TokenManagement:     tokenManagement,
 		}), nil
 	case "openai":
 
@@ -50,6 +51,7 @@ func ProviderFactory(config *AIProviderConfig) (contracts.IAIProvider, error) {
 			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
 			BufferingTheme:      config.BufferingTheme,
+			TokenManagement:     tokenManagement,
 		}), nil
 	default:
 

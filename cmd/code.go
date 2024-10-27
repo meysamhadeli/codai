@@ -59,8 +59,8 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				if err != nil {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
 				}
-				// Get user input
 
+				// Get user input
 				userInput, err := utils.InputPrompt(reader)
 				if err != nil {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
@@ -153,28 +153,18 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				// Create the final prompt for the AI
 				prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n\n%s", code), string(embed_data.CodeBlockTemplate))
 				userInputPrompt := fmt.Sprintf("Here is my request:\n%s", userInput)
-				chatHistory := strings.Join(rootDependencies.ChatHistory.GetHistory(), "\n\n")
-
-				// Count tokens for the user input and prompt
-				totalTokens := rootDependencies.TokenManagement.CountTokens(userInputPrompt) + rootDependencies.TokenManagement.CountTokens(prompt) + rootDependencies.TokenManagement.CountTokens(chatHistory)
-
-				// Check if enough tokens are available
-				if err := rootDependencies.TokenManagement.UseTokens(totalTokens); err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error: %v", err)))
-					continue
-				}
+				history := strings.Join(rootDependencies.ChatHistory.GetHistory(), "\n\n")
+				finalPrompt := fmt.Sprintf("%s\n\n%s\n\n", history, prompt)
 
 				var aiResponse string
 
 				chatRequestOperation := func() error {
 
 					// Step 7: Send the relevant code and user input to the AI API
-					aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, prompt, chatHistory)
+					aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
 					if err != nil {
 						return fmt.Errorf("failed to get response from AI: %v", err)
 					}
-
-					rootDependencies.ChatHistory.AddToHistory(userInput+prompt, aiResponse)
 
 					return nil
 				}
@@ -186,6 +176,8 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
 					continue
 				}
+
+				rootDependencies.ChatHistory.AddToHistory(fmt.Sprintf("%s\n\n%s\n\n%s\n\n", prompt, userInputPrompt, aiResponse))
 
 				changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponse)
 
@@ -210,24 +202,10 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				for _, change := range changes {
 
 					// Prompt the user to accept or reject the changes
-					promptAccepted, err := utils.ConfirmPrompt(change.RelativePath)
+					err := utils.ConfirmPrompt(change.RelativePath)
 					if err != nil {
 						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
 						continue
-					}
-
-					if promptAccepted {
-
-						err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
-						if err != nil {
-							fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error applying changes: %v", err)))
-							continue
-						}
-
-						fmt.Println(lipgloss_color.Green.Render(fmt.Sprintf("Changes applied and saved for `%s`.\n", change.RelativePath)))
-
-					} else {
-						fmt.Println(lipgloss_color.Yellow.Render(fmt.Sprintf("Changes for `%s` is discarded. No files were modified.\n", change.RelativePath)))
 					}
 				}
 
