@@ -86,9 +86,9 @@ func (tm *tokenManager) UseEmbeddingTokens(count int) error {
 	return nil
 }
 
-func (tm *tokenManager) DisplayTokens(model string) {
+func (tm *tokenManager) DisplayTokens(model string, embeddingModel string) {
 	used, available, total := tm.usedTokens, tm.AvailableTokens(), tm.maxTokens
-	tokenInfo := fmt.Sprintf("Used Tokens: %d | Available Tokens: %d | Total Tokens (%s): %d | Used Embedding Tokens: %d", used, available, model, total, tm.usedEmbeddingTokens)
+	tokenInfo := fmt.Sprintf("Used Tokens: %d | Available Tokens: %d | Total Tokens (%s): %d | Used Embedding Tokens (%s): %d", used, available, model, total, embeddingModel, tm.usedEmbeddingTokens)
 
 	tokenBox := boxStyle.Render(tokenInfo)
 	fmt.Println(tokenBox)

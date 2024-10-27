@@ -210,7 +210,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				}
 
 				// Display token usage details in a boxed format after each AI request
-				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ChatCompletionModel)
+				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel)
 			}
 		}
 	}()

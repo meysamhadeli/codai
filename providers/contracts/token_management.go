@@ -5,5 +5,5 @@ type ITokenManagement interface {
 	AvailableTokens() int
 	UseTokens(count int) error
 	UseEmbeddingTokens(count int) error
-	DisplayTokens(model string)
+	DisplayTokens(model string, embeddingModel string)
 }
