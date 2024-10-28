@@ -182,7 +182,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponse)
 
 				if err != nil || changes == nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during apply code suggestion with LLM model `%s`. Please try using another LLM model, such as GPT-3.5 or GPT-4.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during fetching data from LLM model `%s`. Please try again with more context and keywords in your request.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
 					continue
 				}
 
