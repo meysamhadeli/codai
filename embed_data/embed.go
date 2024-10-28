@@ -9,4 +9,16 @@ var CodeBlockTemplate []byte
 var CSharpQuery []byte
 
 //go:embed tree-sitter/queries/go.scm
-var GolangQuery []byte
+var GoQuery []byte
+
+//go:embed tree-sitter/queries/python.scm
+var PythonQuery []byte
+
+//go:embed tree-sitter/queries/java.scm
+var JavaQuery []byte
+
+//go:embed tree-sitter/queries/javascript.scm
+var JavascriptQuery []byte
+
+//go:embed tree-sitter/queries/typescript.scm
+var TypescriptQuery []byte

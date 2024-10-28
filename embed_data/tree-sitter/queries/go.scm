@@ -6,4 +6,3 @@
     "definition.struct": "(type_declaration (type_spec name: name: (type_identifier) @name type: (struct_type)))"
 }
 
-

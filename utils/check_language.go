@@ -9,6 +9,14 @@ func GetSupportedLanguage(path string) string {
 		return "csharp"
 	case strings.HasSuffix(path, ".go"):
 		return "go"
+	case strings.HasSuffix(path, ".ts"):
+		return "typescript"
+	case strings.HasSuffix(path, ".js"):
+		return "javascript"
+	case strings.HasSuffix(path, ".py"):
+		return "python"
+	case strings.HasSuffix(path, ".java"):
+		return "java"
 	default:
 		return "" // Return empty string if no match
 	}
