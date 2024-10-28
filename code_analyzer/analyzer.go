@@ -11,6 +11,10 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/csharp"
 	"github.com/smacker/go-tree-sitter/golang"
+	"github.com/smacker/go-tree-sitter/java"
+	"github.com/smacker/go-tree-sitter/javascript"
+	"github.com/smacker/go-tree-sitter/python"
+	"github.com/smacker/go-tree-sitter/typescript/typescript"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -111,19 +115,34 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	var query []byte
 
 	language := utils.GetSupportedLanguage(filePath)
+	parser = sitter.NewParser()
 
 	// Determine the parser and language to use
 	switch language {
 	case "csharp":
-		parser = sitter.NewParser()
 		parser.SetLanguage(csharp.GetLanguage())
 		lang = csharp.GetLanguage()
 		query = embed_data.CSharpQuery
 	case "go":
-		parser = sitter.NewParser()
 		parser.SetLanguage(golang.GetLanguage())
 		lang = golang.GetLanguage()
-		query = embed_data.GolangQuery
+		query = embed_data.GoQuery
+	case "python":
+		parser.SetLanguage(python.GetLanguage())
+		lang = python.GetLanguage()
+		query = embed_data.PythonQuery
+	case "java":
+		parser.SetLanguage(java.GetLanguage())
+		lang = java.GetLanguage()
+		query = embed_data.JavaQuery
+	case "javascript":
+		parser.SetLanguage(javascript.GetLanguage())
+		lang = javascript.GetLanguage()
+		query = embed_data.JavascriptQuery
+	case "typescript":
+		parser.SetLanguage(typescript.GetLanguage())
+		lang = typescript.GetLanguage()
+		query = embed_data.TypescriptQuery
 	default:
 		// If the language doesn't match, process the original source code directly
 		elements = append(elements, filePath)

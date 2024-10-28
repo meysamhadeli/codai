@@ -81,7 +81,7 @@ After receiving code suggestions from the AI, users can directly accept changes,
 Automatically generate documentation based on the codebase, including function descriptions, parameter details, and usage examples.
 
 🌐 **Multi-Language Support:**
-Support for various programming languages `(C#, Go)` to cater to a wider range of developers. (We will support other languages soon...)
+Support for various programming languages `(C#, Go, Python, Java, Javascript, Typescript)` to cater to a wider range of developers.
 
 ⚙️ **Customizable Config:**
 Allow users to customize settings through a config file (e.g., changing AI provider, tuning temperature settings).
