@@ -12,7 +12,7 @@ import (
 type EmbeddingStore struct {
 	EmbeddingsStore map[string][]float64
 	CodeStore       map[string]string
-	mu              sync.Mutex // Mutex to synchronize access
+	mu              sync.RWMutex
 }
 
 func (store *EmbeddingStore) FindThresholdByModel(modelName string) float64 {
@@ -42,11 +42,23 @@ func NewEmbeddingStoreModel() contracts.IEmbeddingStore {
 	}
 }
 
-// Save the embeddings and the corresponding code to the in-memory store.
+// Save stores the embeddings and corresponding code in the store. If the existing code is different, it updates the entry.
 func (store *EmbeddingStore) Save(key string, code string, embeddings []float64) {
-	store.mu.Lock()         // Lock before writing to the maps
+	store.mu.Lock()         // Lock for writing
 	defer store.mu.Unlock() // Unlock after the write operation
 
+	// Check if embedding already exists
+	existingCode, codeExists := store.CodeStore[key]
+
+	if codeExists {
+		if existingCode != code {
+			store.EmbeddingsStore[key] = embeddings // Always update embeddings if the new code is different
+			store.CodeStore[key] = code
+		}
+		return // If code is like before skip that.
+	}
+
+	// Store new embeddings and code if the key does not exist
 	if len(embeddings) > 0 {
 		store.EmbeddingsStore[key] = embeddings
 		store.CodeStore[key] = code
