@@ -173,6 +173,11 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 	}
 	defer resp.Body.Close()
 
+	// Check if the response status is not 200
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+	}
+
 	reader := bufio.NewReader(resp.Body)
 	var sectionBuilder strings.Builder // Accumulate content for each section
 	var resultBuilder strings.Builder  // Accumulate full result for return

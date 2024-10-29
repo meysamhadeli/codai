@@ -11,7 +11,7 @@ import (
 
 // Define styles for the box
 var (
-	boxStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(1, 2).Align(lipgloss.Center)
+	boxStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).PaddingLeft(1).PaddingRight(1).BorderLeft(false).BorderRight(false).Align(lipgloss.Center)
 )
 
 // TokenManager implementation
