@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/meysamhadeli/codai/constants/lipgloss_color"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,19 +13,23 @@ func GracefulShutdown(done chan bool, TempFilesCleanup func(), chatHistoryCleanU
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start a goroutine to handle the signals
 	go func() {
-		<-sigs // Block until a signal is received
-		fmt.Println("Received shutdown signal")
-		TempFilesCleanup()
-		chatHistoryCleanUp()
-		done <- true // Signal the application to exit
+		for {
+			select {
+			case <-sigs:
+				fmt.Println("Received shutdown signal")
+				done <- true // Signal the application to exit
+				TempFilesCleanup()
+				chatHistoryCleanUp()
+				return
+			}
+		}
 	}()
 
 	// Defer the recovery function to handle panics
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Recovered from panic:", r)
+			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Recovered from panic: %v", r)))
 			TempFilesCleanup()
 			chatHistoryCleanUp()
 			done <- true // Signal the application to exit
