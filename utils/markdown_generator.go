@@ -1,20 +1,16 @@
 package utils
 
 import (
-	"fmt"
-	"github.com/charmbracelet/glamour"
+	"github.com/alecthomas/chroma/v2/quick"
+	"os"
 )
 
 // RenderAndPrintMarkdown handles the rendering of markdown content,
-func RenderAndPrintMarkdown(content string, theme string) error {
-	// Render markdown using Glamour
-	md, err := glamour.Render(content, theme)
+func RenderAndPrintMarkdown(content string, language string, theme string) error {
+
+	err := quick.Highlight(os.Stdout, content, language, "terminal256", theme)
 	if err != nil {
-		return fmt.Errorf("error rendering markdown: %v", err)
+		return err
 	}
-
-	// Print the rendered markdown
-	fmt.Print(md)
-
 	return nil
 }

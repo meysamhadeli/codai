@@ -31,7 +31,16 @@ var rootCmd = &cobra.Command{
 	Short: "codai CLI for coding and chatting",
 	Long:  `codai is a CLI tool that assists developers by providing intelligent code suggestions, refactoring, and code reviews based on the full context of your project. It operates in a session-based manner, allowing for continuous context throughout interactions. Codai supports multiple LLMs, including GPT-3.5, GPT-4, and Ollama, to streamline daily development tasks.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		handleRootCommand(cmd)
+		// Check if any arguments or subcommands were provided
+		if len(args) == 0 {
+			err := cmd.Help() // Display help if no subcommand or argument is provided
+			if err != nil {
+				return
+			}
+		} else {
+			// Run the handleRootCommand if arguments are provided
+			handleRootCommand(cmd)
+		}
 	},
 }
 

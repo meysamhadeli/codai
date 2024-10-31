@@ -14,7 +14,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"regexp"
 	"strings"
 )
 
@@ -179,10 +178,8 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 	}
 
 	reader := bufio.NewReader(resp.Body)
-	var sectionBuilder strings.Builder // Accumulate content for each section
-	var resultBuilder strings.Builder  // Accumulate full result for return
-
-	inCodeBlock := false // Track if we are inside a code block
+	var resultBuilder strings.Builder
+	var markdownBuffer strings.Builder // Buffer for accumulating chunks
 
 	// Process each chunk as it arrives
 	for {
@@ -194,59 +191,49 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 			return "", fmt.Errorf("error reading stream: %v", err)
 		}
 
-		// Check for end of the stream
 		if line == "data: [DONE]\n" {
 			break
 		}
 
 		if strings.HasPrefix(line, "data: ") {
-			// Trim the "data: " prefix
+			// Trim the "data: " prefix and parse JSON
 			jsonPart := strings.TrimPrefix(line, "data: ")
-
-			// Parse JSON response
 			var response models.ChatCompletionResponse
 			if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
 				return "", fmt.Errorf("error unmarshalling chunk: %v", err)
 			}
 
-			var codeBlockRegex = regexp.MustCompile("(?m)^```[a-zA-Z]*$")
-
-			// Extract content from the response
 			if len(response.Choices) > 0 {
 				content := response.Choices[0].Delta.Content
-				resultBuilder.WriteString(content) // Accumulate full result for return
+				resultBuilder.WriteString(content) // Gather full result for final return
 
-				// Check for triple backtick boundaries
-				if strings.Contains(content, fmt.Sprintf("```%s", codeBlockRegex)) {
-					// Toggle inCodeBlock status when we detect backticks
-					inCodeBlock = !inCodeBlock
-					sectionBuilder.WriteString(content) // Add the boundary marker
+				// Accumulate content in the markdown buffer
+				markdownBuffer.WriteString(content)
 
-					// If we just finished a code block, render and print the section
-					if !inCodeBlock {
-						section := sectionBuilder.String()
-						sectionBuilder.Reset() // Reset for the next section
+				// Process complete Markdown blocks (indicated by double newlines)
+				if strings.Contains(content, "\n") {
+					blockContent := markdownBuffer.String()
+					markdownBuffer.Reset()
 
-						// Render and print markdown for the current section
-						if err := utils.RenderAndPrintMarkdown(section, ollamaProvider.BufferingTheme); err != nil {
-							return "", err
-						}
+					language := utils.DetectLanguageFromCodeBlock(blockContent)
+					err := utils.RenderAndPrintMarkdown(blockContent, language, ollamaProvider.BufferingTheme)
+					if err != nil {
+						return "", err
 					}
-				} else {
-					// Continue accumulating content within the section
-					sectionBuilder.WriteString(content)
 				}
 			}
 		}
 	}
 
-	// Render any remaining content in the section builder
-	if sectionBuilder.Len() > 0 {
-		if err := utils.RenderAndPrintMarkdown(sectionBuilder.String(), ollamaProvider.BufferingTheme); err != nil {
+	// Flush remaining content in the buffer
+	if markdownBuffer.Len() > 0 {
+		blockContent := markdownBuffer.String()
+		language := utils.DetectLanguageFromCodeBlock(blockContent)
+		err := utils.RenderAndPrintMarkdown(blockContent, language, ollamaProvider.BufferingTheme)
+		if err != nil {
 			return "", err
 		}
 	}
 
-	// Return the accumulated full result
 	return resultBuilder.String(), nil
 }
