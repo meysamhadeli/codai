@@ -19,7 +19,6 @@ type AIProviderConfig struct {
 	MaxTokens           int     `mapstructure:"max_tokens"`
 	Threshold           float64 `mapstructure:"threshold"`
 	ApiKey              string  `mapstructure:"api_key"`
-	BufferingTheme      string  `mapstructure:"buffering_theme"`
 }
 
 // ProviderFactory creates a Provider based on the given provider config.
@@ -35,7 +34,6 @@ func ProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenM
 			EmbeddingURL:        config.EmbeddingURL,
 			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
-			BufferingTheme:      config.BufferingTheme,
 			TokenManagement:     tokenManagement,
 		}), nil
 	case "openai":
@@ -50,7 +48,6 @@ func ProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenM
 			ApiKey:              config.ApiKey,
 			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
-			BufferingTheme:      config.BufferingTheme,
 			TokenManagement:     tokenManagement,
 		}), nil
 	default:

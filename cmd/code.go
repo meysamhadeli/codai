@@ -11,8 +11,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 // CodeCmd: codai code
@@ -37,28 +39,19 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	// Channel to signal when the application should shut down
 	done := make(chan bool)
+	sigs := make(chan os.Signal, 1)
 
-	go utils.GracefulShutdown(done, func() {
-		err := utils.CleanupTempFiles(rootDependencies.Cwd)
-		if err != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
-		}
-	}, func() {
-		rootDependencies.ChatHistory.ClearHistory()
-	})
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	// Launch the user input handler in a goroutine
 	go func() {
 		reader := bufio.NewReader(os.Stdin)
-		for {
 
+		for {
 			err := utils.CleanupTempFiles(rootDependencies.Cwd)
 			if err != nil {
 				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
 			}
-
-			// Create a new spinner with custom color and custom shape
-			//spinner := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgGray)).WithRemoveWhenDone(true)
 
 			// Get user input
 			userInput, err := utils.InputPrompt(reader)
@@ -67,7 +60,12 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				continue
 			}
 
-			spinner, _ := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgGray)).Start("Loading context...")
+			spinner, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgGray)).Start("Loading context...")
+
+			if err != nil {
+				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+				continue
+			}
 
 			// Get all data files from the root directory
 			allDataFiles, err := rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
@@ -156,14 +154,29 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			history := strings.Join(rootDependencies.ChatHistory.GetHistory(), "\n\n")
 			finalPrompt := fmt.Sprintf("%s\n\n%s\n\n", history, prompt)
 
-			var aiResponse string
+			var aiResponseBuilder strings.Builder
 
 			chatRequestOperation := func() error {
 
 				// Step 7: Send the relevant code and user input to the AI API
-				aiResponse, err = rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
-				if err != nil {
-					return fmt.Errorf("failed to get response from AI: %v", err)
+				responseChan := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
+
+				// Iterate over response channel to handle streamed data or errors.
+				for response := range responseChan {
+					if response.Err != nil {
+						return fmt.Errorf("failed to get response from AI: %v", response.Err)
+					}
+
+					if response.Done {
+						return nil
+					}
+
+					aiResponseBuilder.WriteString(response.Content)
+
+					language := utils.DetectLanguageFromCodeBlock(response.Content)
+					if err := utils.RenderAndPrintMarkdown(response.Content, language, rootDependencies.Config.Theme); err != nil {
+						return fmt.Errorf("error rendering markdown", err)
+					}
 				}
 
 				return nil
@@ -177,12 +190,12 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				continue
 			}
 
-			rootDependencies.ChatHistory.AddToHistory(fmt.Sprintf("%s\n\n%s\n\n%s\n\n", prompt, userInputPrompt, aiResponse))
+			rootDependencies.ChatHistory.AddToHistory(fmt.Sprintf("%s\n\n%s\n\n%s\n\n", prompt, userInputPrompt, aiResponseBuilder.String()))
 
-			changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponse)
+			changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
 			if err != nil || changes == nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during fetching data from LLM model `%s`. Please try again with more context and keywords in your request.", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
+				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during applying code block from respone model `%s`. `Relative Path` dose not have the correct format!", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
 				continue
 			}
 
@@ -227,10 +240,17 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 		}
 	}()
 
-	// Wait for the shutdown signal
+	go utils.GracefulShutdown(done, sigs, func() {
+		err := utils.CleanupTempFiles(rootDependencies.Cwd)
+		if err != nil {
+			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
+		}
+	}, func() {
+		rootDependencies.ChatHistory.ClearHistory()
+	})
+
 	select {
 	case <-done:
-		fmt.Println(lipgloss_color.Red.Render("Application shutting down"))
 		return
 	}
 }
