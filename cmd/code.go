@@ -202,11 +202,24 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			for _, change := range changes {
 
 				// Prompt the user to accept or reject the changes
-				err := utils.ConfirmPrompt(change.RelativePath)
+				promptAccepted, err := utils.ConfirmPrompt(change.RelativePath)
 				if err != nil {
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
 					continue
 				}
+
+				if promptAccepted {
+					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
+					if err != nil {
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error applying changes: %v", err)))
+						continue
+					}
+					fmt.Println(lipgloss_color.Green.Render("✔️ Changes accepted!"))
+
+				} else {
+					fmt.Println(lipgloss_color.Red.Render("❌ Changes rejected."))
+				}
+
 			}
 
 			// Display token usage details in a boxed format after each AI request

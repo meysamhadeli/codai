@@ -49,6 +49,8 @@ codai code --provider_name openapi --temperature 0.8
 ```
 This flexibility allows you to customize config of codai on the fly.
 
+> Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `buffering theme` in `codai`.
+
 How to Run
 To use **codai** as your code assistant, navigate to the directory where you want to apply codai and run the following command:
 

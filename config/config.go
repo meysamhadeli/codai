@@ -69,11 +69,6 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
 			os.Exit(1)
 		}
-	}
-
-	// Check if the user provided a config file via CLI
-	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
 	} else {
 		// Automatically look for 'config.yml' in the working directory if no CLI file is provided
 		viper.SetConfigName("config") // name of config file (without extension)
@@ -82,8 +77,10 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	}
 
 	// Read the configuration file if available
-	err := viper.ReadInConfig()
-	if err != nil {
+	if err := viper.ReadInConfig(); err == nil {
+
+	} else if cfgFile != "" {
+		// If a specific config file was set but not found, show error and exit
 		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
 		os.Exit(1)
 	}

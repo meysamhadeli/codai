@@ -1,0 +1,32 @@
+# This workflow will build and test golang project
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+  pull_request:
+    branches: ["main"]
+
+jobs:
+
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.23
+
+      - name: build
+        working-directory: ./
+        run: go build -v ./...
+
+      - name: test
+        working-directory: ./
+        run: go test -v ./...
