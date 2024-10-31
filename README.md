@@ -33,8 +33,8 @@ ai_provider_config:
   chat_completion_url: "http://localhost:11434/v1/chat/completions"
   chat_completion_model: "deepseek-coder-v2"
   temperature: 0.2
-  buffering_theme: "dracula"
   max_tokens: 128000
+theme:   "dracula",
 ```
 If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of each project you want to analyze with codai. If no configuration file is provided, codai will use the default settings.
 
@@ -48,7 +48,26 @@ codai code --provider_name openapi --temperature 0.8
 ```
 This flexibility allows you to customize config of codai on the fly.
 
-> Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `buffering theme` in `codai`.
+> Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
+
+## LLM Models
+### Best Models
+The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4`, `GPT-4o`, and `GPT-4o mini`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
+
+### Local Models
+In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like `DeepSeek-Coder-v2`, `CodeLlama`, and `Mistral`. These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
+
+## RAG (Retrieval-Augmented Generation)
+The codai uses `RAG` (Retrieval-Augmented Generation) to enhance code suggestions by `embedding` and retrieving the `most relevant information` based on user input.
+In this app, RAG is used to generate embeddings base on `whole context of code`, allowing the AI to find and surface the most relevant information dynamically.
+By connecting to an embedding model, codai retrieves contextually relevant content, which is then sent along with the user’s query to the code-suggestion AI model, leading to more accurate and useful responses.
+
+### OpenAI Embedding Models
+The codai can utilize `OpenAI’s embedding models` to retrieve the `most relevant content`. The current recommended model for `code context` is `text-embedding-ada-002`, known for its high performance and capability in capturing semantic relationships, making it an excellent choice for accurate and efficient embedding retrieval.
+
+### Ollama Embedding Models
+The codai also supports `Ollama embedding models`, allowing `local embedding` generation and retrieval. A suitable option here is the `nomic-embed-text model`, which provides efficient embedding generation locally, aiding in effective RAG-based retrieval `for relevant code context`.
+
 
 How to Run
 To use **codai** as your code assistant, navigate to the directory where you want to apply codai and run the following command:
@@ -57,6 +76,9 @@ To use **codai** as your code assistant, navigate to the directory where you wan
 codai code
 ```
 This will initiate the AI assistant to help you with your coding tasks with undrestanding the context of your code.
+
+## LLM Models
+codai works well with models that are 
 
 ## ✨ Features
 

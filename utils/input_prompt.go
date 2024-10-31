@@ -17,12 +17,15 @@ func InputPrompt(reader *bufio.Reader) (string, error) {
 
 	// Read user input
 	userInput, err := reader.ReadString('\n')
+	if userInput == "" {
+		return "", nil
+	}
+
 	if err != nil {
 		if err == io.EOF {
 			return "", nil
 		}
-		fmt.Println(lipgloss_color.Red.Render("🚫 Error reading input: "), err)
-		return userInput, nil
+		return "", fmt.Errorf(lipgloss_color.Red.Render("🚫 Error reading input: "))
 	}
 
 	return strings.TrimSpace(userInput), nil
