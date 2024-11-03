@@ -10,27 +10,39 @@ categories:
   - title: 🚀 Features
     labels:
       - feature
+      - feat
+  - title: ♻️ Enhancement
+    labels:
+      - enhancement
+      - refactor
   - title: 🐛 Bug Fixes
     labels:
       - fix
       - bug
-  - title: 🧪 Test
-    labels:
-      - test
   - title: 👷 CI
     labels:
       - ci
-  - title: ♻️ Refactor
+      - ci-cd
+      - devops
+  - title: ⚠️ Breaking Changes
     labels:
-      - changed
-      - enhancement
-      - refactor
+      - breaking-changes
+      - major
   - title: ⛔️ Deprecated
     labels:
       - deprecated
+  - title: 🗑 Removed
+    labels:
+      - removed
   - title: 🔐 Security
     labels:
       - security
+  - title: 🎨 Style & Formatting
+    labels:
+      - style
+  - title: 🧪 Test
+    labels:
+      - test
   - title: 📄 Documentation
     labels:
       - docs
@@ -38,53 +50,74 @@ categories:
   - title: 🧩 Dependency Updates
     labels:
       - deps
+      - build
       - dependencies
   - title: 🧰 Maintenance
     label: 'chore'
-  - title: 📝 Other changes
-## putting no labels pr to `Other Changes` category with no label
+  - title: 🧺 Miscellaneous #Everything except ABAP
+    label: misc
+  - title: 🚩 Other changes
 
-# Using regex for defining rules 
 autolabeler:
   - label: 'chore'
     branch:
-      - '/(chore)\/.*/'
-  - label: 'security'
+      - '/^(chore)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(chore)(\([a-z ]+\))?: .+/'
+  - label: 'enhancement'
     branch:
-      - '/(security)\/.*/'
-  - label: 'refactor'
+      - '/^(refactor)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(refactor)(\([a-z ]+\))?: .+/'
+  - label: 'documentation'
     branch:
-      - '/(refactor)\/.*/'
-  - label: 'docs'
+      - '/^(docs)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(docs)(\([a-z ]+\))?: .+/'
+  - label: 'ci-cd'
     branch:
-      - '/(docs)\/.*/'
-  - label: 'ci'
-    branch:
-      - '/(ci)\/.*/'
+      - '/^(ci)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(ci)(\([a-z ]+\))?: .+/'
   - label: 'test'
     branch:
-      - '/(test)\/.*/'
+      - '/^(test)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(test)(\([a-z ]+\))?: .+/'
   - label: 'bug'
     branch:
-      - '/(fix)\/.*/'
+      - '/^(fix)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(fix)(\([a-z ]+\))?: .+/'
+  - label: 'style'
+    branch:
+      - '/^(style)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(style)(\([a-z ]+\))?: .+/'
   - label: 'feature'
     branch:
-      - '/(feat)\/.*/'
+      - '/^(feat)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(feat)(\([a-z ]+\))?: .+/'
   - label: 'minor'
     branch:
-      - '/(feat)\/.*/'
+      - '/^(feat)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(feat)(\([a-z ]+\))?: .+/'
   - label: 'patch'
     branch:
-      - '/(fix)\/.*/'
-    body:
-      - '/JIRA-[0-9]{1,4}/'
+      - '/^(fix)(\([a-z ]+\))?\/.+/'
+      - '/^(ci)(\([a-z ]+\))?\/.+/'
+    title:
+      - '/^(fix)(\([a-z ]+\))?: .+/'
+      - '/^(ci)(\([a-z ]+\))?: .+/'
 
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
 version-resolver:
   major:
     labels:
-      - major
+      - breaking-changes
   minor:
     labels:
       - minor

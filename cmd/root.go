@@ -52,7 +52,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 	// Get current working directory
 	rootDependencies.Cwd, err = os.Getwd()
 	if err != nil || rootDependencies.Cwd == "" {
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting current directory")))
+		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error getting current directory")))
 		return nil
 	}
 
@@ -88,5 +88,4 @@ func init() {
 
 	// Register subcommands
 	rootCmd.AddCommand(codeCmd)
-	rootCmd.AddCommand(chatCmd)
 }

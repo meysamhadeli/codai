@@ -2,7 +2,22 @@
 
 > **codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
-and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-3.5, GPT-4, Ollama, and more.**
+and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4, GPT-4o, GPT-4o mini, Ollama, and more.**
+
+We use **two** main methods to manage context: **RAG** (Retrieval-Augmented Generation) and **Summarize Full Context of Code**. Each method has its own benefits and
+is chosen depending on the specific needs of the request. Below is a description of each method.
+
+## RAG
+The codai uses **RAG** (Retrieval-Augmented Generation) to improve code suggestions by **embedding** and **retrieving the most relevant** information based on
+**user input**. RAG generates embeddings for the entire code context, allowing the AI to dynamically find the most relevant details. By connecting to an embedding model,
+codai retrieves the necessary context, which is then sent with the user’s query to the code-suggestion AI model. This approach **reduces token usage** and provides accurate,
+helpful responses, making it the recommended method.
+
+## Summarize Full Context of Code
+Another approach involves creating a **summary of the full context of project** and sending it to the AI. When a **user requests a specific part of code**,
+the system can **retrieve the full context for just that section**. This method also **saves tokens** because it **sends only relevant parts**, but
+it usually uses **slightly more tokens than the RAG method**. In **RAG**, only the **related context send to the AI**, **saving even more tokens**.
+
 
 ## 🚀 Get Started
 To install **codai** globally, you can use the following command:
@@ -27,14 +42,15 @@ $env:API_KEY="your_api_key""
 **codai** requires a `config.yml` file in the root of your working directory to analyze your project. By default, the `config.yml` contains the following values:
 ```yml
 ai_provider_config:
-  provider_name: "ollama"
-  embedding_url: "http://localhost:11434/v1/embeddings"
-  embedding_model: "nomic-embed-text"
+  provider_name: "openai"
   chat_completion_url: "http://localhost:11434/v1/chat/completions"
-  chat_completion_model: "deepseek-coder-v2"
+  chat_completion_model: "gpt-4o"
+  embedding_url: "http://localhost:11434/v1/embeddings" (Optional, If you want use RAG.)
+  embedding_model: "text-embedding-ada-002" (Optional, If you want use RAG.)
   temperature: 0.2
-  buffering_theme: "dracula"
   max_tokens: 128000
+theme: "dracula"
+RAG: true (Optional, if you want, can disable RAG.)
 ```
 If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of each project you want to analyze with codai. If no configuration file is provided, codai will use the default settings.
 
@@ -48,7 +64,20 @@ codai code --provider_name openapi --temperature 0.8
 ```
 This flexibility allows you to customize config of codai on the fly.
 
-> Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `buffering theme` in `codai`.
+> Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
+
+## LLM Models
+### Best Models
+The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o`, `GPT-4`, and `GPT-4o mini`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
+
+### Local Models
+In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like `DeepSeek-Coder-v2`, `CodeLlama`, and `Mistral`. These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
+
+### OpenAI Embedding Models
+The codai can utilize `OpenAI’s embedding models` to retrieve the `most relevant content`. The current recommended model for `code context` is `text-embedding-ada-002`, known for its high performance and capability in capturing semantic relationships, making it an excellent choice for accurate and efficient embedding retrieval.
+
+### Ollama Embedding Models
+The codai also supports `Ollama embedding models`, allowing `local embedding` generation and retrieval. A suitable option here is the `nomic-embed-text model`, which provides efficient embedding generation locally, aiding in effective RAG-based retrieval `for relevant code context`.
 
 How to Run
 To use **codai** as your code assistant, navigate to the directory where you want to apply codai and run the following command:
@@ -57,6 +86,9 @@ To use **codai** as your code assistant, navigate to the directory where you wan
 codai code
 ```
 This will initiate the AI assistant to help you with your coding tasks with undrestanding the context of your code.
+
+## LLM Models
+codai works well with models that are 
 
 ## ✨ Features
 
@@ -97,7 +129,7 @@ Summarize the full context of your codebase using Tree-sitter for accurate and e
 Implement a Retrieval-Augmented Generation system to improve the relevance and accuracy of code suggestions by retrieving relevant context from the project.
 
 ⚡ **Support variety of LLM models:**
-Work with advanced LLM models like `GPT-3.5, GPT-4, and Ollama`, ensuring high-quality suggestions and interactions.
+Work with advanced LLM models like `GPT-4, GPT-4o, GPT-4o mini and Ollama` to get high-quality code suggestions and interactions.
 
 🗂️ **Edit Multiple Files at Once:**
 Enable the AI to modify several files at the same time, making it easier to handle complex requests that need changes in different areas of the code.

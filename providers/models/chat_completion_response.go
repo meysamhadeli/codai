@@ -14,3 +14,9 @@ type Choice struct {
 type Delta struct {
 	Content string `json:"content"`
 }
+
+type StreamResponse struct {
+	Content string // Holds content chunks
+	Err     error  // Holds error details
+	Done    bool   // Signals end of stream
+}

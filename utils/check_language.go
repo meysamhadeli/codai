@@ -32,7 +32,7 @@ func DetectLanguageFromCodeBlock(content string) string {
 		return match[1]
 	}
 
-	return "plain-text"
+	return "markdown"
 }
 
 func GetSupportedLanguage(path string) string {

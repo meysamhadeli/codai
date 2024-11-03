@@ -63,7 +63,7 @@ func (store *EmbeddingStore) Save(key string, code string, embeddings []float64)
 		store.EmbeddingsStore[key] = embeddings
 		store.CodeStore[key] = code
 	} else {
-		fmt.Printf("No embeddings found for %s\n", key)
+		fmt.Printf("no embeddings found for %s\n", key)
 	}
 }
 

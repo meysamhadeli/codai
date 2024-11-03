@@ -2,8 +2,8 @@ package code_analyzer
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
 	"github.com/meysamhadeli/codai/embed_data"
@@ -29,6 +29,27 @@ type CodeAnalyzer struct {
 	Cwd string
 }
 
+// Define styles for the box
+var (
+	boxStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Align(lipgloss.Center)
+)
+
+func (analyzer *CodeAnalyzer) GeneratePrompt(codes []string, history []string, userInput string, requestedContext string) (string, string) {
+
+	// Combine the relevant code into a single string
+	code := strings.Join(codes, "\n---------\n\n")
+
+	prompt := fmt.Sprintf("%s\n\n______\n%s\n\n", fmt.Sprintf(boxStyle.Render("Here is the summary of context of project")+"\n\n%s", code), fmt.Sprintf(boxStyle.Render("Here is the general template prompt for using AI")+"\n\n%s", string(embed_data.CodeBlockTemplate)))
+	if requestedContext != "" {
+		prompt = prompt + fmt.Sprintf(boxStyle.Render("Here are the details of the context of the project that was requested for use in your task")+"\n\n%s", requestedContext)
+	}
+
+	userInputPrompt := fmt.Sprintf(boxStyle.Render("Here is user request")+"\n%s", userInput)
+	historyPrompt := boxStyle.Render("Here is the history of chats") + "\n\n" + strings.Join(history, "\n---------\n\n")
+	finalPrompt := fmt.Sprintf("%s\n\n______\n\n%s", historyPrompt, prompt)
+	return finalPrompt, userInputPrompt
+}
+
 // NewCodeAnalyzer initializes a new CodeAnalyzer.
 func NewCodeAnalyzer(cwd string) contracts.ICodeAnalyzer {
 	return &CodeAnalyzer{Cwd: cwd}
@@ -45,13 +66,14 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath string) error {
 	return nil
 }
 
-func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData, error) {
+func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData, []string, error) {
 	var result []models.FileData
+	var codes []string
 
 	// Retrieve the ignore patterns from .gitignore, if it exists
 	gitIgnorePatterns, err := utils.GetGitignorePatterns()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Walk the directory tree and find all files
@@ -94,16 +116,17 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 
 			// Append the file data to the result
 			result = append(result, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
+			codes = append(codes, fmt.Sprintf("File: %s\n\n%s", relativePath, strings.Join(codeParts, "\n")))
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return result, nil
+	return result, codes, nil
 }
 
 // ProcessFile processes a single file using Tree-sitter for syntax analysis (for .cs files).
@@ -157,7 +180,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	queries := make(map[string]string)
 	err := json.Unmarshal(query, &queries)
 	if err != nil {
-		log.Fatalf("Failed to parse JSON: %v", err)
+		log.Fatalf("failed to parse JSON: %v", err)
 	}
 
 	elements = append(elements, filePath)
@@ -166,7 +189,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	for tag, queryStr := range queries {
 		query, err := sitter.NewQuery([]byte(queryStr), lang) // Use the appropriate language
 		if err != nil {
-			log.Fatalf("Failed to compile query: %v", err)
+			log.Fatalf("failed to compile query: %v", err)
 		}
 
 		cursor := sitter.NewQueryCursor()
@@ -193,40 +216,71 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 // ExtractCodeChanges extracts code changes from the given text.
 func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) ([]models.CodeChange, error) {
-	// Validate the input text
 	if text == "" {
-		return nil, errors.New("input text is empty")
+		return nil, fmt.Errorf("input text is empty")
 	}
 
-	// Regex to match the relative file path (e.g., File: tests\fakes\Foo.cs)
-	filePathPattern := regexp.MustCompile(`(?i)[^*]*?File:\s*([^\n*]+?\.[^\s*]+)`) // Matches any characters before 'File:'
-	// Regex to match code blocks (we don't care about language now, just the code content)
+	// Regex patterns
+	filePathPattern := regexp.MustCompile(`(?i)(?:.*?File:\s*)([^\s*]+?\.[a-zA-Z0-9]+)\b`)
 	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
 
 	var codeChanges []models.CodeChange
 
-	// Find all file path matches
+	// Find all file path matches and code block matches
 	filePathMatches := filePathPattern.FindAllStringSubmatch(text, -1)
-	// Find all code block matches
 	codeMatches := codeBlockPattern.FindAllStringSubmatch(text, -1)
 
-	// Ensure there is a one-to-one correspondence between file paths and code blocks
-	if len(filePathMatches) == len(codeMatches) {
-		for i, match := range filePathMatches {
-			// Extract relative path
-			relativePath := strings.TrimSpace(match[1])
+	// Ensure pairs are processed up to the minimum count of matches
+	minLength := len(filePathMatches)
+	if len(codeMatches) < minLength {
+		minLength = len(codeMatches)
+	}
 
-			// Extract the code block content
-			code := strings.TrimSpace(codeMatches[i][1])
+	// Create code changes up to the minimum length
+	for i := 0; i < minLength; i++ {
+		relativePath := strings.TrimSpace(filePathMatches[i][1])
+		code := strings.TrimSpace(codeMatches[i][1])
 
-			// Create a new CodeChange struct and append it to the array
-			codeChange := models.CodeChange{
-				RelativePath: relativePath,
-				Code:         code,
-			}
-			codeChanges = append(codeChanges, codeChange)
+		codeChange := models.CodeChange{
+			RelativePath: relativePath,
+			Code:         code,
 		}
+		codeChanges = append(codeChanges, codeChange)
 	}
 
 	return codeChanges, nil
+}
+
+func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (string, error) {
+	var codes []string
+
+	re := regexp.MustCompile(`"files"\s*:\s*\[.*?\]`)
+	match := re.FindString(relativePaths)
+
+	// Wrap with braces to create a valid JSON string
+	jsonContent := "{" + match + "}"
+
+	// Deserialize JSON into a generic map
+	var result struct {
+		Files []string `json:"files"`
+	}
+
+	err := json.Unmarshal([]byte(jsonContent), &result)
+	if err != nil {
+		return "", nil
+	}
+
+	// Loop through each relative path and read the file content
+	for _, relativePath := range result.Files {
+		content, err := os.ReadFile(relativePath)
+		if err != nil {
+			continue
+		}
+
+		codes = append(codes, fmt.Sprintf("File: %s\n\n%s", relativePath, content))
+	}
+
+	requestedContext := strings.Join(codes, "\n---------\n\n")
+
+	return requestedContext, nil
 }
