@@ -7,124 +7,89 @@ template: |
   $CHANGES
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
 categories:
-- title: 🚀 Features
-  labels:
-  - feature
-  - feat
-- title: ♻️ Enhancement
-  labels:
-  - enhancement
-  - refactor
-- title: 🐛 Bug Fixes
-  labels:
-  - fix
-  - bug
-- title: 👷 CI
-  labels:
-  - ci
-  - ci-cd
-  - devops
-- title: ⚠️ Breaking Changes
-  labels:
-  - breaking-changes
-  - major
-- title: ⛔️ Deprecated
-  labels:
-  - deprecated
-- title: 🗑 Removed
-  labels:
-  - removed
-- title: 🔐 Security
-  labels:
-  - security
-- title: 🎨 Style & Formatting
-  labels:
-  - style
-- title: 🧪 Test
-  labels:
-  - test
-- title: 📄 Documentation
-  labels:
-  - docs
-  - documentation
-- title: 🧩 Dependency Updates
-  labels:
-  - deps
-  - build
-  - dependencies
-- title: 🧰 Maintenance
-  label: 'chore'
-- title: 🧺 Miscellaneous #Everything except ABAP
-  label: misc
-- title: 🚩 Other changes
+  - title: 🚀 Features
+    labels:
+      - feature
+  - title: 🐛 Bug Fixes
+    labels:
+      - fix
+      - bug
+  - title: 🧪 Test
+    labels:
+      - test
+  - title: 👷 CI
+    labels:
+      - ci
+  - title: ♻️ Refactor
+    labels:
+      - changed
+      - enhancement
+      - refactor
+  - title: ⛔️ Deprecated
+    labels:
+      - deprecated
+  - title: 🔐 Security
+    labels:
+      - security
+  - title: 📄 Documentation
+    labels:
+      - docs
+      - documentation
+  - title: 🧩 Dependency Updates
+    labels:
+      - deps
+      - dependencies
+  - title: 🧰 Maintenance
+    label: 'chore'
+  - title: 📝 Other changes
 
 autolabeler:
-- label: 'chore'
-  branch:
-  - '/^(chore)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(chore)(\([a-z ]+\))?: .+/'
-- label: 'enhancement'
-  branch:
-  - '/^(refactor)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(refactor)(\([a-z ]+\))?: .+/'
-- label: 'documentation'
-  branch:
-  - '/^(docs)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(docs)(\([a-z ]+\))?: .+/'
-- label: 'ci-cd'
-  branch:
-  - '/^(ci)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(ci)(\([a-z ]+\))?: .+/'
-- label: 'test'
-  branch:
-  - '/^(test)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(test)(\([a-z ]+\))?: .+/'
-- label: 'bug'
-  branch:
-  - '/^(fix)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(fix)(\([a-z ]+\))?: .+/'
-- label: 'style'
-  branch:
-  - '/^(style)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(style)(\([a-z ]+\))?: .+/'
-- label: 'feature'
-  branch:
-  - '/^(feat)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(feat)(\([a-z ]+\))?: .+/'
-- label: 'minor'
-  branch:
-  - '/^(feat)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(feat)(\([a-z ]+\))?: .+/'
-- label: 'patch'
-  branch:
-  - '/^(fix)(\([a-z ]+\))?\/.+/'
-  - '/^(ci)(\([a-z ]+\))?\/.+/'
-  title:
-  - '/^(fix)(\([a-z ]+\))?: .+/'
-  - '/^(ci)(\([a-z ]+\))?: .+/'
+  - label: 'chore'
+    branch:
+      - '/(chore)\/.*/'
+  - label: 'security'
+    branch:
+      - '/(security)\/.*/'
+  - label: 'refactor'
+    branch:
+      - '/(refactor)\/.*/'
+  - label: 'docs'
+    branch:
+      - '/(docs)\/.*/'
+  - label: 'ci'
+    branch:
+      - '/(ci)\/.*/'
+  - label: 'test'
+    branch:
+      - '/(test)\/.*/'
+  - label: 'bug'
+    branch:
+      - '/(fix)\/.*/'
+  - label: 'feature'
+    branch:
+      - '/(feat)\/.*/'
+  - label: 'minor'
+    branch:
+      - '/(feat)\/.*/'
+  - label: 'patch'
+    branch:
+      - '/(fix)\/.*/'
+    body:
+      - '/JIRA-[0-9]{1,4}/'
 
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
 version-resolver:
   major:
     labels:
-    - breaking-changes
+      - major
   minor:
     labels:
-    - minor
+      - minor
   patch:
     labels:
-    - patch
+      - patch
   default: patch
 
 exclude-labels:
-- skip-changelog
+  - skip-changelog
