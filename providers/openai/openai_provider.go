@@ -197,7 +197,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 					responseChan <- models.StreamResponse{Err: fmt.Errorf("error using tokens: %v", err)}
 					return
 				}
-
+				
 				break
 			}
 
