@@ -25,10 +25,3 @@ jobs:
           disable-releaser: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: check-conventional-commits-labels
-        uses: docker://agilepathway/pull-request-label-checker:latest
-        if: success()
-        with:
-          any_of: feature,feat,bug,enhancement,refactor,deprecated,security,documentation,build,ci/cd,devops,chore,performance,formatting,dependencies,test,major,minor,patch,fix,ci,docs
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
