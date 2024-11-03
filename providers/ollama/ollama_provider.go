@@ -126,12 +126,6 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 			return
 		}
 
-		// Use tokens
-		if err := ollamaProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
-			responseChan <- models.StreamResponse{Err: fmt.Errorf("error using tokens: %v", err)}
-			return
-		}
-
 		// Prepare the request body
 		reqBody := models.ChatCompletionRequest{
 			Model: ollamaProvider.ChatCompletionModel,
@@ -191,7 +185,15 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 
 			if line == "data: [DONE]\n" {
 				// Signal end of stream
+				responseChan <- models.StreamResponse{Content: markdownBuffer.String()}
 				responseChan <- models.StreamResponse{Done: true}
+
+				// Use tokens
+				if err := ollamaProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
+					responseChan <- models.StreamResponse{Err: fmt.Errorf("error using tokens: %v", err)}
+					return
+				}
+
 				break
 			}
 

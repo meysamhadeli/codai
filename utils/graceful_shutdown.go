@@ -21,7 +21,7 @@ func GracefulShutdown(done chan bool, sigs chan os.Signal, TempFilesCleanup func
 	// Defer the recovery function to handle panics
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Recovered from panic: %v", r)))
+			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("recovered from panic: %v", r)))
 			TempFilesCleanup()
 			chatHistoryCleanUp()
 			done <- true // Signal the application to exit

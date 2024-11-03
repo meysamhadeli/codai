@@ -1,0 +1,34 @@
+name: Auto Labeler
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+  # pull_request_target:
+
+jobs:
+  auto-labeler:
+    name: Auto Labeler
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+          disable-releaser: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: check-conventional-commits-labels
+        uses: docker://agilepathway/pull-request-label-checker:latest
+        if: success()
+        with:
+          any_of: feature,feat,bug,enhancement,refactor,deprecated,security,documentation,build,ci/cd,devops,chore,performance,formatting,dependencies,test,major,minor,patch,fix,ci,docs
+          repo_token: ${{ secrets.GITHUB_TOKEN }}

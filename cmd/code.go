@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
 	"github.com/meysamhadeli/codai/constants/lipgloss_color"
-	"github.com/meysamhadeli/codai/embed_data"
 	"github.com/meysamhadeli/codai/utils"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -43,14 +42,34 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
+	reader := bufio.NewReader(os.Stdin)
+
+	var requestedContext string
+
+	var fullContextFiles []models.FileData
+
+	var fullContextCodes []string
+
+	spinnerLoadContext, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Loading Context...")
+
+	// Get all data files from the root directory
+	fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
+
+	if err != nil {
+		spinnerLoadContext.Stop()
+		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+		return
+	}
+
+	spinnerLoadContext.Stop()
+
 	// Launch the user input handler in a goroutine
 	go func() {
-		reader := bufio.NewReader(os.Stdin)
 
 		for {
 			err := utils.CleanupTempFiles(rootDependencies.Cwd)
 			if err != nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
+				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to cleanup temp files: %v", err)))
 			}
 
 			// Get user input
@@ -60,103 +79,84 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				continue
 			}
 
-			spinner, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgGray)).Start("Loading context...")
+			// If RAG is enabled, we use RAG system for retrieve most relevant data due user request
+			if rootDependencies.Config.RAG {
+				var wg sync.WaitGroup
+				errorChan := make(chan error, len(fullContextFiles))
 
-			if err != nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-				continue
-			}
+				spinnerLoadContextEmbedding, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Embedding Context...")
 
-			// Get all data files from the root directory
-			allDataFiles, err := rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
-			if err != nil {
-				spinner.Stop()
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-				continue
-			}
+				for _, dataFile := range fullContextFiles {
+					wg.Add(1) // Increment the WaitGroup counter
+					go func(dataFile models.FileData) {
+						defer wg.Done() // Decrement the counter when the Goroutine completes
+						filesEmbeddingOperation := func() error {
+							fileEmbeddingResponse, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, dataFile.TreeSitterCode)
+							if err != nil {
+								return err
+							}
 
-			var wg sync.WaitGroup
-			errorChan := make(chan error, len(allDataFiles))
-			var relevantCode []string
+							fileEmbedding := fileEmbeddingResponse.Data[0].Embedding
 
-			for _, dataFile := range allDataFiles {
-				wg.Add(1) // Increment the WaitGroup counter
-				go func(dataFile models.FileData) {
-					defer wg.Done() // Decrement the counter when the Goroutine completes
-					filesEmbeddingOperation := func() error {
-						fileEmbeddingResponse, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, dataFile.TreeSitterCode)
-						if err != nil {
-							return err
+							// Save embeddings to the embedding store
+							rootDependencies.Store.Save(dataFile.RelativePath, dataFile.Code, fileEmbedding)
+							return nil
 						}
 
-						fileEmbedding := fileEmbeddingResponse.Data[0].Embedding
+						// Call the retryWithBackoff function with the operation and a 3-time retry
+						if err := utils.RetryWithBackoff(filesEmbeddingOperation, 3); err != nil {
+							errorChan <- err // Send the error to the channel
+						}
+					}(dataFile) // Pass the current dataFile to the Goroutine
+				}
 
-						// Save embeddings to the embedding store
-						rootDependencies.Store.Save(dataFile.RelativePath, dataFile.Code, fileEmbedding)
-						return nil
+				wg.Wait()        // Wait for all Goroutines to finish
+				close(errorChan) // Close the error channel
+				// Handle any errors that occurred during processing
+				for err = range errorChan {
+					spinnerLoadContextEmbedding.Stop()
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					continue
+				}
+
+				queryEmbeddingOperation := func() error {
+					// Step 5: Generate embedding for the user query
+					queryEmbeddingResponse, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, userInput)
+					if err != nil {
+						return err
 					}
 
-					// Call the retryWithBackoff function with the operation and a 3-time retry
-					if err := utils.RetryWithBackoff(filesEmbeddingOperation, 3); err != nil {
-						errorChan <- err // Send the error to the channel
+					queryEmbedding := queryEmbeddingResponse.Data[0].Embedding
+
+					// Ensure there's an embedding for the user query
+					if len(queryEmbedding) == 0 {
+						return fmt.Errorf(lipgloss_color.Red.Render("no embeddings returned for user query"))
 					}
-				}(dataFile) // Pass the current dataFile to the Goroutine
-			}
 
-			wg.Wait()        // Wait for all Goroutines to finish
-			close(errorChan) // Close the error channel
-			// Handle any errors that occurred during processing
-			for err = range errorChan {
-				spinner.Stop()
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-				continue
-			}
+					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
+					topN := -1
 
-			queryEmbeddingOperation := func() error {
-				// Step 5: Generate embedding for the user query
-				queryEmbeddingResponse, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, userInput)
+					// Step 6: Find relevant code chunks based on the user query embedding
+					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
+					return nil
+				}
+
+				// Call the retryWithBackoff function with the operation and a 3 time retry
+				err = utils.RetryWithBackoff(queryEmbeddingOperation, 3)
+
 				if err != nil {
-					return err
+					spinnerLoadContextEmbedding.Stop()
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					continue
 				}
 
-				queryEmbedding := queryEmbeddingResponse.Data[0].Embedding
-
-				// Ensure there's an embedding for the user query
-				if len(queryEmbedding) == 0 {
-					return fmt.Errorf(lipgloss_color.Red.Render("no embeddings returned for user query"))
-				}
-
-				// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
-				topN := -1
-
-				// Step 6: Find relevant code chunks based on the user query embedding
-				relevantCode = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
-				return nil
+				spinnerLoadContextEmbedding.Stop()
 			}
-
-			// Call the retryWithBackoff function with the operation and a 3 time retry
-			err = utils.RetryWithBackoff(queryEmbeddingOperation, 3)
-
-			if err != nil {
-				spinner.Stop()
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-				continue
-			}
-
-			spinner.Stop()
-
-			// Combine the relevant code into a single string
-			code := strings.Join(relevantCode, "\n---------\n\n")
-
-			// Create the final prompt for the AI
-			prompt := fmt.Sprintf("%s\n\n%s\n\n", fmt.Sprintf("Here is the context: \n\n%s", code), string(embed_data.CodeBlockTemplate))
-			userInputPrompt := fmt.Sprintf("Here is my request:\n%s", userInput)
-			history := strings.Join(rootDependencies.ChatHistory.GetHistory(), "\n\n")
-			finalPrompt := fmt.Sprintf("%s\n\n%s\n\n", history, prompt)
 
 			var aiResponseBuilder strings.Builder
 
 			chatRequestOperation := func() error {
+				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContextCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
 				// Step 7: Send the relevant code and user input to the AI API
 				responseChan := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
@@ -164,10 +164,11 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				// Iterate over response channel to handle streamed data or errors.
 				for response := range responseChan {
 					if response.Err != nil {
-						return fmt.Errorf("failed to get response from AI: %v", response.Err)
+						return response.Err
 					}
 
 					if response.Done {
+						rootDependencies.ChatHistory.AddToHistory(userInput, aiResponseBuilder.String())
 						return nil
 					}
 
@@ -175,7 +176,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 					language := utils.DetectLanguageFromCodeBlock(response.Content)
 					if err := utils.RenderAndPrintMarkdown(response.Content, language, rootDependencies.Config.Theme); err != nil {
-						return fmt.Errorf("error rendering markdown", err)
+						return fmt.Errorf("error rendering markdown: %v", err)
 					}
 				}
 
@@ -190,12 +191,36 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				continue
 			}
 
-			rootDependencies.ChatHistory.AddToHistory(fmt.Sprintf("%s\n\n%s\n\n%s\n\n", prompt, userInputPrompt, aiResponseBuilder.String()))
+			fmt.Print("\n\n")
 
+			if !rootDependencies.Config.RAG {
+				// Try to get full block code if block codes is summarized and incomplete
+				requestedContext, err = rootDependencies.Analyzer.TryGetInCompletedCodeBlocK(aiResponseBuilder.String())
+
+				if err != nil {
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					continue
+				}
+
+				if requestedContext != "" {
+					aiResponseBuilder.Reset()
+
+					fmt.Println(lipgloss_color.BlueSky.Render("Trying to send above context files for getting code suggestion fromm AI...\n"))
+
+					err = chatRequestOperation()
+
+					if err != nil {
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+						continue
+					}
+				}
+			}
+
+			// Extract code from AI response and structure this code to apply to git
 			changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
 			if err != nil || changes == nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Problem during applying code block from respone model `%s`. `Relative Path` dose not have the correct format!", rootDependencies.Config.AIProviderConfig.ChatCompletionModel)))
+				fmt.Println(lipgloss_color.Gray.Render("no code blocks with a valid path detected to apply."))
 				continue
 			}
 
@@ -205,29 +230,34 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			for _, change := range changes {
 				tempPath, err := utils.WriteToTempFile(change.RelativePath, change.Code)
 				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to write temp file: %v", err)))
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to write temp file: %v", err)))
 					continue
 				}
 				tempFiles = append(tempFiles, tempPath)
 			}
 
+			var updateContextNeeded = false
+
+			fmt.Print("\n\n")
 			// Run diff after applying changes to temp files
 			for _, change := range changes {
 
 				// Prompt the user to accept or reject the changes
 				promptAccepted, err := utils.ConfirmPrompt(change.RelativePath)
 				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
 					continue
 				}
 
 				if promptAccepted {
 					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error applying changes: %v", err)))
+						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error applying changes: %v", err)))
 						continue
 					}
 					fmt.Println(lipgloss_color.Green.Render("✔️ Changes accepted!"))
+
+					updateContextNeeded = true
 
 				} else {
 					fmt.Println(lipgloss_color.Red.Render("❌ Changes rejected."))
@@ -237,13 +267,26 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 			// Display token usage details in a boxed format after each AI request
 			rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel)
+
+			// If we need Update the context after apply changes
+			if updateContextNeeded {
+
+				spinnerUpdateContext, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Updating Context...")
+
+				fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
+				if err != nil {
+					spinnerUpdateContext.Stop()
+					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+				}
+				spinnerUpdateContext.Stop()
+			}
 		}
 	}()
 
 	go utils.GracefulShutdown(done, sigs, func() {
 		err := utils.CleanupTempFiles(rootDependencies.Cwd)
 		if err != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Failed to cleanup temp files: %v", err)))
+			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to cleanup temp files: %v", err)))
 		}
 	}, func() {
 		rootDependencies.ChatHistory.ClearHistory()
