@@ -5,27 +5,27 @@
 
 # codai
 
-> **codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
+> 💡 **codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
 and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4, GPT-4o, GPT-4o mini, Ollama, and more.**
 
-We use **two** main methods to manage context: **RAG** (Retrieval-Augmented Generation) and **Summarize Full Context of Code**. Each method has its own benefits and
-is chosen depending on the specific needs of the request. Below is a description of each method.
+We use **two** main methods to manage context: **RAG** (Retrieval-Augmented Generation) and **Summarize Full Context of Code**.
+Each method has its own benefits and is chosen depending on the specific needs of the request. Below is a description of each method.
 
-## RAG
-The codai uses **RAG** (Retrieval-Augmented Generation) to improve code suggestions by **embedding** and **retrieving the most relevant** information based on
-**user input**. RAG generates embeddings for the entire code context, allowing the AI to dynamically find the most relevant details. By connecting to an embedding model,
-codai retrieves the necessary context, which is then sent with the user’s query to the code-suggestion AI model. This approach **reduces token usage** and provides accurate,
+## 📚 RAG
+The codai uses **RAG** (Retrieval-Augmented Generation) to **improve code suggestions** by **embedding** and **retrieving the most relevant** information based on
+**user input**. **RAG generates embeddings for the entire code context**, allowing the AI to **dynamically find the most relevant details**. By **connecting** to an **embedding model**,
+codai **retrieves the just necessary context**, which is then sent with the user’s query to the code-suggestion AI model. This approach **reduces token usage** and provides accurate,
 helpful responses, making it the recommended method.
 
-## Summarize Full Context of Code
+## 🧩 Summarize Full Context of Code
 Another approach involves creating a **summary of the full context of project** and sending it to the AI. When a **user requests a specific part of code**,
 the system can **retrieve the full context for just that section**. This method also **saves tokens** because it **sends only relevant parts**, but
-it usually uses **slightly more tokens than the RAG method**. In **RAG**, only the **related context send to the AI**, **saving even more tokens**.
+it usually uses **slightly more tokens than the RAG method**. In **RAG**, only the **related context send to the AI** for **saving even more tokens**.
 
 
 ## 🚀 Get Started
-To install **codai** globally, you can use the following command:
+To install `codai` globally, you can use the following command:
 
 ```bash
 go install github.com/meysamhadeli/codai@latest
@@ -34,17 +34,17 @@ go install github.com/meysamhadeli/codai@latest
 ### ⚙️ Set Environment Variables
 To use codai, you need to set your environment variable for the API key.
 
-For **Bash**, use:
+For `Bash`, use:
 ```bash
 export API_KEY="your_api_key"
 ```
 
-For **PowerShell**, use:
+For `PowerShell`, use:
 ```powershell
 $env:API_KEY="your_api_key""
 ```
 ### 🔧 Configuration
-**codai** requires a `config.yml` file in the root of your working directory to analyze your project. By default, the `config.yml` contains the following values:
+`codai` requires a `config.yml` file in the root of your working directory to analyze your project. By default, the `config.yml` contains the following values:
 ```yml
 ai_provider_config:
   provider_name: "openai"
@@ -71,29 +71,26 @@ This flexibility allows you to customize config of codai on the fly.
 
 > Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
 
-## LLM Models
-### Best Models
-The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o`, `GPT-4`, and `GPT-4o mini`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
+## 🔮 LLM Models
+### ⚡ Best Models
+The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4`, `GPT-4o`, and `GPT-4o mini`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
 
-### Local Models
+### 💻 Local Models
 In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like `DeepSeek-Coder-v2`, `CodeLlama`, and `Mistral`. These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
 
-### OpenAI Embedding Models
+### 🌐 OpenAI Embedding Models
 The codai can utilize `OpenAI’s embedding models` to retrieve the `most relevant content`. The current recommended model for `code context` is `text-embedding-ada-002`, known for its high performance and capability in capturing semantic relationships, making it an excellent choice for accurate and efficient embedding retrieval.
 
-### Ollama Embedding Models
+### 🦙 Ollama Embedding Models
 The codai also supports `Ollama embedding models`, allowing `local embedding` generation and retrieval. A suitable option here is the `nomic-embed-text model`, which provides efficient embedding generation locally, aiding in effective RAG-based retrieval `for relevant code context`.
 
 How to Run
-To use **codai** as your code assistant, navigate to the directory where you want to apply codai and run the following command:
+To use `codai` as your code assistant, navigate to the directory where you want to apply codai and run the following command:
 
 ```bash
 codai code
 ```
-This will initiate the AI assistant to help you with your coding tasks with undrestanding the context of your code.
-
-## LLM Models
-codai works well with models that are 
+This command will initiate the codai assistant to help you with your coding tasks with undrestanding the context of your code.
 
 ## ✨ Features
 
@@ -147,7 +144,7 @@ Track and represent the token consumption for each request, providing transparen
 
 I will try to add new features in the [Issues](https://github.com/meysamhadeli/codai/issues) section of this app.
 
-# Support
+# 🌟 Support
 
 If you like my work, feel free to:
 
@@ -155,7 +152,7 @@ If you like my work, feel free to:
 
 Thanks a bunch for supporting me!
 
-## Contribution
+## 🤝 Contribution
 
 Thanks to all [contributors](https://github.com/meysamhadeli/codai/graphs/contributors), you're awesome and this wouldn't be possible without you! The goal is to build a categorized, community-driven collection of very well-known resources.
 
