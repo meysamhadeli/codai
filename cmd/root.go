@@ -58,7 +58,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.Config = config.LoadConfigs(cmd, rootDependencies.Cwd)
 
-	rootDependencies.TokenManagement = providers.NewTokenManager()
+	rootDependencies.TokenManagement = providers.NewTokenManager(rootDependencies.Config.AIProviderConfig.MaxTokens)
 
 	rootDependencies.ChatHistory = providers.NewChatHistory()
 

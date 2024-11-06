@@ -51,13 +51,12 @@ ai_provider_config:
   chat_completion_url: "http://localhost:11434/v1/chat/completions"
   chat_completion_model: "gpt-4o"
   embedding_url: "http://localhost:11434/v1/embeddings" (Optional, If you want use RAG.)
-  embedding_model: "text-embedding-3-small" (Optional, If you want use RAG.)
+  embedding_model: "text-embedding-ada-002" (Optional, If you want use RAG.)
   temperature: 0.2
+  max_tokens: 128000
 theme: "dracula"
 RAG: true (Optional, if you want, can disable RAG.)
 ```
-> Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction) and [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and you can find more details in documentation of each APIs.
-
 If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of each project you want to analyze with codai. If no configuration file is provided, codai will use the default settings.
 
 You can also specify a configuration file from any directory by using the following CLI command:
@@ -70,7 +69,7 @@ codai code --provider_name openapi --temperature 0.8
 ```
 This flexibility allows you to customize config of codai on the fly.
 
-> Note: We used [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
+> Note: We use [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
 
 ## 🔮 LLM Models
 ### ⚡ Best Models
@@ -80,12 +79,12 @@ The codai works well with advanced LLM models specifically designed for code gen
 In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like `DeepSeek-Coder-v2`, `CodeLlama`, and `Mistral`. These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
 
 ### 🌐 OpenAI Embedding Models
-The codai platform uses `OpenAI embedding models` to retrieve `relevant content` with high efficiency. Recommended models include are **text-embedding-3-large**, **text-embedding-3-small**, and **text-embedding-ada-002**, both known for their `cost-effectiveness` and `accuracy` in `capturing semantic relationships`. These models are ideal for applications needing high-quality performance in `code context retrieval`.
+The codai can utilize `OpenAI’s embedding models` to retrieve the `most relevant content`. The current recommended model for `code context` is `text-embedding-ada-002`, known for its high performance and capability in capturing semantic relationships, making it an excellent choice for accurate and efficient embedding retrieval.
 
 ### 🦙 Ollama Embedding Models
-codai also supports `Ollama embedding models` for `local`, `cost-effective`, and `efficient` embedding generation and `retrieval of relevant content`. Models such as **mxbai-embed-large**, **all-minilm**, and **nomic-embed-text** provide **effective**, **private embedding** creation optimized for high-quality performance. These models are well-suited for `RAG-based retrieval in code contexts`, eliminating the need for external API calls.
+The codai also supports `Ollama embedding models`, allowing `local embedding` generation and retrieval. A suitable option here is the `nomic-embed-text model`, which provides efficient embedding generation locally, aiding in effective RAG-based retrieval `for relevant code context`.
 
-## ▶️ How to Run
+How to Run
 To use `codai` as your code assistant, navigate to the directory where you want to apply codai and run the following command:
 
 ```bash
@@ -125,7 +124,7 @@ Allow users to customize settings through a config file (e.g., changing AI provi
 📊 **Project Context Awareness:**
 Maintain awareness of the entire project context to provide more accurate suggestions.
 
-🌳 **Full Project Context Summarization:**
+🌳 **Full Project Context Summarization:** 
 Summarize the full context of your codebase using Tree-sitter for accurate and efficient code analysis.
 
 🔍 **RAG System Implementation:**

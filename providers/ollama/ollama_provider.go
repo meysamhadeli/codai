@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/meysamhadeli/codai/constants/lipgloss_color"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
-	ollama_models "github.com/meysamhadeli/codai/providers/ollama/models"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -27,7 +27,6 @@ type OllamaConfig struct {
 	MaxTokens           int
 	Threshold           float64
 	TokenManagement     contracts.ITokenManagement
-	Name                string
 }
 
 // NewOllamaProvider initializes a new OllamaProvider.
@@ -42,15 +41,27 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		MaxTokens:           config.MaxTokens,
 		Threshold:           config.Threshold,
 		TokenManagement:     config.TokenManagement,
-		Name:                config.Name,
 	}
 }
 
-func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error) {
+func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
+
+	// Count tokens for the user input and prompt
+	totalChatTokens, err := ollamaProvider.TokenManagement.CountTokens(prompt, ollamaProvider.ChatCompletionModel)
+	if err != nil {
+		return nil, fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+	}
+
+	// Check if enough tokens are available
+	if err := ollamaProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
+		return nil, fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("Error: %v", err)))
+	}
+
 	// Create the request payload
-	requestBody := ollama_models.OllamaEmbeddingRequest{
-		Input: prompt,
-		Model: ollamaProvider.EmbeddingModel,
+	requestBody := models.EmbeddingRequest{
+		Input:          prompt,
+		Model:          ollamaProvider.EmbeddingModel,
+		EncodingFormat: ollamaProvider.EncodingFormat,
 	}
 
 	// Convert the request payload to JSON
@@ -88,41 +99,37 @@ func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt
 
 	// Check for non-200 status codes
 	if resp.StatusCode != http.StatusOK {
-		var apiError models.AIError
-		if err := json.Unmarshal(body, &apiError); err != nil {
-			return nil, fmt.Errorf("error parsing error response: %v", err)
-		}
-
-		return nil, fmt.Errorf("embedding request failed with status code '%d' - %s\n", resp.StatusCode, apiError.Error.Message)
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	// Unmarshal the response JSON into the struct
-	var embeddingResponse ollama_models.OllamaEmbeddingResponse
+	var embeddingResponse models.EmbeddingResponse
 	err = json.Unmarshal(body, &embeddingResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding JSON response: %v", err)
 	}
 
-	// Count total tokens usage
-	if embeddingResponse.PromptEvalCount > 0 {
-		ollamaProvider.TokenManagement.UsedEmbeddingTokens(embeddingResponse.PromptEvalCount, 0)
-	}
-
 	// Return the parsed response
-	return embeddingResponse.Embeddings, nil
+	return &embeddingResponse, nil
 }
 
 func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse {
 	responseChan := make(chan models.StreamResponse)
-	var markdownBuffer strings.Builder // Buffer to accumulate content until newline
 
 	go func() {
 		defer close(responseChan)
 
+		// Count tokens for the user input and prompt
+		totalChatTokens, err := ollamaProvider.TokenManagement.CountTokens(fmt.Sprintf("%s%s", prompt, userInput), ollamaProvider.ChatCompletionModel)
+		if err != nil {
+			responseChan <- models.StreamResponse{Err: fmt.Errorf("error counting tokens: %v", err)}
+			return
+		}
+
 		// Prepare the request body
-		reqBody := ollama_models.OllamaChatCompletionRequest{
+		reqBody := models.ChatCompletionRequest{
 			Model: ollamaProvider.ChatCompletionModel,
-			Messages: []ollama_models.Message{
+			Messages: []models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
@@ -132,7 +139,6 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 
 		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
-			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error marshalling request body: %v", err)}
 			return
 		}
@@ -140,7 +146,6 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		// Create a new HTTP request
 		req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.ChatCompletionURL, bytes.NewBuffer(jsonData))
 		if err != nil {
-			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
 			return
 		}
@@ -150,7 +155,6 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			markdownBuffer.Reset()
 			if errors.Is(ctx.Err(), context.Canceled) {
 				responseChan <- models.StreamResponse{Err: fmt.Errorf("request canceled: %v", err)}
 				return
@@ -161,27 +165,17 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			markdownBuffer.Reset()
-
-			body, _ := ioutil.ReadAll(resp.Body)
-			var apiError models.AIError
-			if err := json.Unmarshal(body, &apiError); err != nil {
-				responseChan <- models.StreamResponse{Err: fmt.Errorf("error parsing error response: %v", err)}
-				return
-			}
-
-			responseChan <- models.StreamResponse{Err: fmt.Errorf("API request failed with status code '%d' - %s\n", resp.StatusCode, apiError.Error.Message)}
+			responseChan <- models.StreamResponse{Err: fmt.Errorf("API request failed with status: %d", resp.StatusCode)}
 			return
 		}
 
 		reader := bufio.NewReader(resp.Body)
+		var markdownBuffer strings.Builder // Buffer to accumulate content until newline
 
 		// Stream processing
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
-				markdownBuffer.Reset()
-
 				if err == io.EOF {
 					break
 				}
@@ -189,37 +183,38 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 				return
 			}
 
-			var response ollama_models.OllamaChatCompletionResponse
-			if err := json.Unmarshal([]byte(line), &response); err != nil {
-				markdownBuffer.Reset()
-
-				responseChan <- models.StreamResponse{Err: fmt.Errorf("error unmarshalling chunk: %v", err)}
-				return
-			}
-
-			if len(response.Message.Content) > 0 {
-				content := response.Message.Content
-				markdownBuffer.WriteString(content)
-
-				// Send chunk if it contains a newline, and then reset the buffer
-				if strings.Contains(content, "\n") {
-					responseChan <- models.StreamResponse{Content: markdownBuffer.String()}
-					markdownBuffer.Reset()
-				}
-			}
-
-			// Check if the response is marked as done
-			if response.Done {
-				//	// Signal end of stream
+			if line == "data: [DONE]\n" {
+				// Signal end of stream
 				responseChan <- models.StreamResponse{Content: markdownBuffer.String()}
 				responseChan <- models.StreamResponse{Done: true}
 
-				// Count total tokens usage
-				if response.PromptEvalCount > 0 {
-					ollamaProvider.TokenManagement.UsedTokens(response.PromptEvalCount, response.EvalCount)
+				// Use tokens
+				if err := ollamaProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
+					responseChan <- models.StreamResponse{Err: fmt.Errorf("error using tokens: %v", err)}
+					return
 				}
 
 				break
+			}
+
+			if strings.HasPrefix(line, "data: ") {
+				jsonPart := strings.TrimPrefix(line, "data: ")
+				var response models.ChatCompletionResponse
+				if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
+					responseChan <- models.StreamResponse{Err: fmt.Errorf("error unmarshalling chunk: %v", err)}
+					return
+				}
+
+				if len(response.Choices) > 0 {
+					content := response.Choices[0].Delta.Content
+					markdownBuffer.WriteString(content)
+
+					// Send chunk if it contains a newline, and then reset the buffer
+					if strings.Contains(content, "\n") {
+						responseChan <- models.StreamResponse{Content: markdownBuffer.String()}
+						markdownBuffer.Reset()
+					}
+				}
 			}
 		}
 

@@ -1,136 +1,95 @@
 package providers
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/meysamhadeli/codai/embed_data"
 	"github.com/meysamhadeli/codai/providers/contracts"
+	"github.com/pkoukk/tiktoken-go"
 	"log"
 	"strings"
 )
 
 // Define styles for the box
 var (
-	boxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true).Border(lipgloss.NormalBorder()).PaddingLeft(1).PaddingRight(1).Align(lipgloss.Left)
+	boxStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).PaddingLeft(1).PaddingRight(1).BorderLeft(false).BorderRight(false).Align(lipgloss.Center)
 )
 
 // TokenManager implementation
 type tokenManager struct {
-	usedToken       int
-	usedInputToken  int
-	usedOutputToken int
-
-	usedEmbeddingToken       int
-	usedEmbeddingInputToken  int
-	usedEmbeddingOutputToken int
-}
-
-type details struct {
-	MaxTokens               int     `json:"max_tokens"`
-	MaxInputTokens          int     `json:"max_input_tokens"`
-	MaxOutputTokens         int     `json:"max_output_tokens"`
-	InputCostPerToken       float64 `json:"input_cost_per_token,omitempty"`
-	OutputCostPerToken      float64 `json:"output_cost_per_token,omitempty"`
-	CacheReadInputTokenCost float64 `json:"cache_read_input_token_cost,omitempty"`
-	Mode                    string  `json:"mode"`
-	SupportsFunctionCalling bool    `json:"supports_function_calling,omitempty"`
-}
-
-type Models struct {
-	ModelDetails map[string]details `json:"models"`
+	maxTokens           int
+	usedTokens          int
+	usedEmbeddingTokens int
 }
 
 // NewTokenManager creates a new token manager
-func NewTokenManager() contracts.ITokenManagement {
+func NewTokenManager(maxTokens int) contracts.ITokenManagement {
 	return &tokenManager{
-		usedToken:                0,
-		usedInputToken:           0,
-		usedOutputToken:          0,
-		usedEmbeddingToken:       0,
-		usedEmbeddingInputToken:  0,
-		usedEmbeddingOutputToken: 0,
+		maxTokens:           maxTokens,
+		usedTokens:          0,
+		usedEmbeddingTokens: 0,
 	}
 }
 
-// UsedTokens deducts the token count from the available tokens.
-func (tm *tokenManager) UsedTokens(inputToken int, outputToken int) {
-	tm.usedInputToken = inputToken
-	tm.usedOutputToken = outputToken
+// CountTokens counts the number of tokens in the input text.
+func (tm *tokenManager) CountTokens(text string, model string) (int, error) {
 
-	tm.usedToken += inputToken + outputToken
-}
+	model = strings.ToLower(model)
 
-// UsedEmbeddingTokens deducts the token count from the available tokens.
-func (tm *tokenManager) UsedEmbeddingTokens(inputToken int, outputToken int) {
-	tm.usedEmbeddingInputToken = inputToken
-	tm.usedEmbeddingOutputToken = outputToken
-
-	tm.usedEmbeddingToken += inputToken + outputToken
-}
-
-func (tm *tokenManager) DisplayTokens(providerName string, model string, embeddingModel string, isRag bool) {
-
-	cost := tm.CalculateCost(providerName, model, tm.usedInputToken, tm.usedOutputToken)
-	costEmbedding := tm.CalculateCost(providerName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
-
-	var tokenDetails string
-	var embeddingTokenDetails string
-
-	tokenDetails = fmt.Sprintf("Chat Model: '%s' - Token Used: '%s' - Cost: '%s'", model, fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost))
-
-	if isRag {
-		embeddingTokenDetails = fmt.Sprintf("Embedding Model: '%s' - Token Used: '%s' - Cost: '%s'", embeddingModel, fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding))
+	var modelName string
+	switch {
+	case strings.HasPrefix(model, "gpt-4o"):
+		modelName = "gpt-4o"
+	case strings.HasPrefix(model, "gpt-4"):
+		modelName = "gpt-4"
+	case strings.HasPrefix(model, "gpt-3"):
+		modelName = "gpt-3.5-turbo"
+	case model == "text-embedding-3-small":
+		modelName = "text-embedding-3-small"
+	case model == "text-embedding-3-large":
+		modelName = "text-embedding-3-large"
+	case model == "text-embedding-ada-002":
+		modelName = "text-embedding-ada-002"
+	default:
+		modelName = "gpt-4"
 	}
 
-	tokenInfo := tokenDetails + "\n" + embeddingTokenDetails
+	tkm, err := tiktoken.EncodingForModel(modelName)
+	if err != nil {
+		err = fmt.Errorf("encoding for model: %v", err)
+		log.Println(err)
+		return 0, err
+	}
+
+	// encode
+	token := tkm.Encode(text, nil, nil)
+
+	return len(token), nil
+}
+
+// AvailableTokens returns the number of available tokens.
+func (tm *tokenManager) AvailableTokens() int {
+	return tm.maxTokens - tm.usedTokens
+}
+
+// UseTokens deducts the token count from the available tokens.
+func (tm *tokenManager) UseTokens(count int) error {
+	if count > tm.AvailableTokens() {
+		return fmt.Errorf("not enough tokens available: requested %d, available %d", count, tm.AvailableTokens())
+	}
+	tm.usedTokens += count
+	return nil
+}
+
+// UseEmbeddingTokens deducts the token count from the available tokens.
+func (tm *tokenManager) UseEmbeddingTokens(count int) error {
+	tm.usedEmbeddingTokens += count
+	return nil
+}
+
+func (tm *tokenManager) DisplayTokens(model string, embeddingModel string) {
+	used, available, total := tm.usedTokens, tm.AvailableTokens(), tm.maxTokens
+	tokenInfo := fmt.Sprintf("Used Tokens: %d | Available Tokens: %d | Total Tokens (%s): %d | Used Embedding Tokens (%s): %d", used, available, model, total, embeddingModel, tm.usedEmbeddingTokens)
+
 	tokenBox := boxStyle.Render(tokenInfo)
 	fmt.Println(tokenBox)
-}
-
-func getModelDetails(providerName string, modelName string) (details, error) {
-
-	providerName = strings.ToLower(providerName)
-	modelName = strings.ToLower(modelName)
-
-	if strings.HasPrefix(providerName, "azure") {
-		modelName = "azure/" + modelName
-	}
-
-	// Initialize the Models struct to hold parsed JSON data
-	models := Models{
-		ModelDetails: make(map[string]details),
-	}
-
-	// Unmarshal the JSON data from the embedded file
-	err := json.Unmarshal(embed_data.ModelDetails, &models)
-	if err != nil {
-		log.Fatalf("Error unmarshaling JSON: %v", err)
-		return details{}, err
-	}
-
-	// Look up the model by name
-	model, exists := models.ModelDetails[modelName]
-	if !exists {
-		return details{}, fmt.Errorf("model details price with name '%s' not found for provider '%s'", modelName, providerName)
-	}
-
-	return model, nil
-}
-
-func (tm *tokenManager) CalculateCost(providerName string, modelName string, inputToken int, outputToken int) float64 {
-	modelDetails, err := getModelDetails(providerName, modelName)
-	if err != nil {
-		return 0
-	}
-	// Calculate cost for input tokens
-	inputCost := float64(inputToken) * modelDetails.InputCostPerToken
-
-	// Calculate cost for output tokens
-	outputCost := float64(outputToken) * modelDetails.OutputCostPerToken
-
-	// Total cost
-	totalCost := inputCost + outputCost
-
-	return totalCost
 }

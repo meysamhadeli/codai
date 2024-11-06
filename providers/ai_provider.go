@@ -36,7 +36,7 @@ func ProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenM
 			Threshold:           config.Threshold,
 			TokenManagement:     tokenManagement,
 		}), nil
-	case "openai", "azure-openai":
+	case "openai":
 
 		return openai.NewOpenAIProvider(&openai.OpenAIConfig{
 			Temperature:         config.Temperature,
