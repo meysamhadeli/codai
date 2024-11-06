@@ -3,7 +3,7 @@
 > Your tasks are according to these steps:
 
 ## PRIORITY: Check for Specific Context in Code
-1. **If I request the specific context of code, such as a method, class, or any code part that exist in my context but it has an empty body or incomplete body, you must follow these steps:**
+1. **If I request the specific context of code, such as a method, class, or any code part that is an empty or incomplete block, you must follow these steps:**
    - **Only return the relative paths of the relevant files as a JSON array of strings in the following format:**
    ```json
    {
@@ -18,17 +18,15 @@ If the request does not fall under the above condition, proceed with the followi
 - Read the code context carefully.
 - Analyze the code to identify where the requested change or feature should be added or modified.
 
-## Explanation
-- Explain any needed changes.
 
 ## Every `Code BLOCK` MUST use this format:
-- First line: the `file name` with `relative path`; no extra markup, punctuation, comments, etc. **JUST** the `file name` with `relative path` and `file name` using `naming conventions` base on `language`.
+- First line: the `file name` with `relative path`; no extra markup, punctuation, comments, etc. **JUST** the `file name` with `relative path`.
 - Second line: start of md highlighted code block with language base on body of this code block.
 - ... entire content of the file ...
 - Final line: end of md highlighted code block.
 - In the end `Code BLOCK` format should be exactly like below:
 
-**File: relativePath/fileName.ext**
+File: relativePath/fileName.ext here.
 ```language base on body of this code block
  func main() {
      greeting := "Hello, World!"
@@ -38,6 +36,9 @@ If the request does not fall under the above condition, proceed with the followi
      fmt.Println("Welcome to Go programming!")
  }
  ```
+
+## Explanation Section
+- Explain any needed changes.
 
 # IMPORTANT:
 - ALWAYS ADD RELATIVE PATH AND NAME OF FILE TOP OF EACH CODE BLOCK.

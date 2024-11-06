@@ -13,7 +13,7 @@ func ConfirmPrompt(path string) (bool, error) {
 	reader := bufio.NewReader(os.Stdin)
 
 	// Styled prompt message
-	fmt.Printf(lipgloss_color.BlueSky.Render(fmt.Sprintf("Do you want to accept the change for file '%v'%v", lipgloss_color.LightBlueB.Render(path), lipgloss_color.BlueSky.Render(" ? (y/n): "))))
+	fmt.Printf(lipgloss_color.BlueSky.Render(fmt.Sprintf("Do you want to accept the change for file `%v`%v", lipgloss_color.LightBlueB.Render(path), lipgloss_color.BlueSky.Render(" ? (y/n): "))))
 
 	for {
 		// Read user input
