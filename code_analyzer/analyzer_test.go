@@ -53,7 +53,6 @@ func TestRunInSequence(t *testing.T) {
 	t.Run("TestGeneratePrompt", TestGeneratePrompt)
 	t.Run("TestGeneratePrompt_ActualImplementation", TestGeneratePrompt_ActualImplementation)
 	t.Run("TestNewCodeAnalyzer", TestNewCodeAnalyzer)
-	t.Run("TestApplyChanges", TestApplyChanges)
 	t.Run("TestGetProjectFiles", TestGetProjectFiles)
 	t.Run("TestProcessFile", TestProcessFile)
 	t.Run("TestExtractCodeChanges", TestExtractCodeChanges)
@@ -105,23 +104,6 @@ func TestNewCodeAnalyzer(t *testing.T) {
 	assert.NotNil(t, analyzer)
 }
 
-// Test for ApplyChanges
-func TestApplyChanges(t *testing.T) {
-	setup(t)
-	testFilePath := filepath.Join(relativePathTestDir, "test.txt")
-
-	// Create a temporary file for testing
-	_ = os.WriteFile(testFilePath, []byte("test content"), 0644)
-	_ = os.WriteFile(testFilePath+".tmp", []byte("test content"), 0644)
-
-	err := analyzer.ApplyChanges(testFilePath)
-	assert.NoError(t, err)
-
-	content, err := os.ReadFile(testFilePath)
-	assert.NoError(t, err)
-	assert.Equal(t, "test content", string(content))
-}
-
 // Test for GetProjectFiles
 func TestGetProjectFiles(t *testing.T) {
 	setup(t)
@@ -153,6 +135,75 @@ func TestProcessFile(t *testing.T) {
 
 	assert.Contains(t, result, "test.cs")
 	assert.NotEmpty(t, result)
+}
+
+// TestApplyChanges_NewFile tests if ApplyChanges creates a new file when it doesn't exist.
+func TestApplyChanges_NewFile(t *testing.T) {
+	setup(t)
+
+	// Define the relative path for a new file and its content
+	filePath := filepath.Join(relativePathTestDir, "newfile.go")
+	content := "package main\nfunc main() {}"
+
+	// Call ApplyChanges to create the new file
+	err := analyzer.ApplyChanges(filePath, content)
+	assert.NoError(t, err)
+
+	// Verify the file was created with the expected content
+	savedContent, err := os.ReadFile(filePath)
+	assert.NoError(t, err)
+	assert.Equal(t, content, string(savedContent))
+}
+
+// TestApplyChanges_ModifyFile tests if ApplyChanges updates content of an existing file.
+func TestApplyChanges_ModifyFile(t *testing.T) {
+	setup(t)
+
+	// Define the relative path and initial content for an existing file
+	filePath := filepath.Join(relativePathTestDir, "existingfile.go")
+	initialContent := "package main\nfunc main() {}"
+	modifiedContent := "package main\nfunc updatedMain() {}"
+
+	// Create the file with initial content
+	err := os.WriteFile(filePath, []byte(initialContent), 0644)
+	assert.NoError(t, err)
+
+	// Use ApplyChanges to modify the content
+	err = analyzer.ApplyChanges(filePath, modifiedContent)
+	assert.NoError(t, err)
+
+	// Verify that the file content was modified
+	savedContent, err := os.ReadFile(filePath)
+	assert.NoError(t, err)
+	assert.Equal(t, modifiedContent, string(savedContent))
+}
+
+// TestApplyChanges_DeletedFile tests if ApplyChanges re-creates a file if it was deleted.
+func TestApplyChanges_DeletedFile(t *testing.T) {
+	setup(t)
+
+	// Define the relative path and content for the file
+	filePath := filepath.Join(relativePathTestDir, "deletedfile.go")
+	content := "package main\nfunc deletedMain() {}"
+
+	// Initially create the file and verify its existence
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	assert.NoError(t, err)
+	assert.FileExists(t, filePath)
+
+	// Delete the file to simulate the "file missing" condition
+	err = os.Remove(filePath)
+	assert.NoError(t, err)
+	assert.NoFileExists(t, filePath)
+
+	// Use ApplyChanges to recreate the file
+	err = analyzer.ApplyChanges(filePath, content)
+	assert.NoError(t, err)
+
+	// Verify the file was recreated with the correct content
+	savedContent, err := os.ReadFile(filePath)
+	assert.NoError(t, err)
+	assert.Equal(t, content, string(savedContent))
 }
 
 // Test for ExtractCodeChanges

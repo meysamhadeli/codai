@@ -42,6 +42,8 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
+	loopNumber := 0
+
 	reader := bufio.NewReader(os.Stdin)
 
 	var requestedContext string
@@ -65,12 +67,15 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	// Launch the user input handler in a goroutine
 	go func() {
-
+	startLoop: // Label for the start loop
 		for {
-			err := utils.CleanupTempFiles(rootDependencies.Cwd)
-			if err != nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to cleanup temp files: %v", err)))
+
+			if loopNumber > 0 {
+				// Display token usage details in a boxed format after each AI request
+				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
 			}
+
+			loopNumber++
 
 			// Get user input
 			userInput, err := utils.InputPrompt(reader)
@@ -91,15 +96,13 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					go func(dataFile models.FileData) {
 						defer wg.Done() // Decrement the counter when the Goroutine completes
 						filesEmbeddingOperation := func() error {
-							fileEmbeddingResponse, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, dataFile.TreeSitterCode)
+							fileEmbedding, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, dataFile.TreeSitterCode)
 							if err != nil {
 								return err
 							}
 
-							fileEmbedding := fileEmbeddingResponse.Data[0].Embedding
-
 							// Save embeddings to the embedding store
-							rootDependencies.Store.Save(dataFile.RelativePath, dataFile.Code, fileEmbedding)
+							rootDependencies.Store.Save(dataFile.RelativePath, dataFile.Code, fileEmbedding[0])
 							return nil
 						}
 
@@ -116,20 +119,18 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				for err = range errorChan {
 					spinnerLoadContextEmbedding.Stop()
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-					continue
+					continue startLoop
 				}
 
 				queryEmbeddingOperation := func() error {
 					// Step 5: Generate embedding for the user query
-					queryEmbeddingResponse, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, userInput)
+					queryEmbedding, err := rootDependencies.CurrentProvider.EmbeddingRequest(ctx, userInput)
 					if err != nil {
 						return err
 					}
 
-					queryEmbedding := queryEmbeddingResponse.Data[0].Embedding
-
 					// Ensure there's an embedding for the user query
-					if len(queryEmbedding) == 0 {
+					if len(queryEmbedding[0]) == 0 {
 						return fmt.Errorf(lipgloss_color.Red.Render("no embeddings returned for user query"))
 					}
 
@@ -137,7 +138,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					topN := -1
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding, topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
+					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
 					return nil
 				}
 
@@ -147,9 +148,10 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				if err != nil {
 					spinnerLoadContextEmbedding.Stop()
 					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-					continue
+					continue startLoop
 				}
 
+				fmt.Println()
 				spinnerLoadContextEmbedding.Stop()
 			}
 
@@ -188,21 +190,14 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 			if err != nil {
 				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-				continue
+				continue startLoop
 			}
-
-			fmt.Print("\n\n")
 
 			if !rootDependencies.Config.RAG {
 				// Try to get full block code if block codes is summarized and incomplete
 				requestedContext, err = rootDependencies.Analyzer.TryGetInCompletedCodeBlocK(aiResponseBuilder.String())
 
-				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-					continue
-				}
-
-				if requestedContext != "" {
+				if requestedContext != "" && err == nil {
 					aiResponseBuilder.Reset()
 
 					fmt.Println(lipgloss_color.BlueSky.Render("Trying to send above context files for getting code suggestion fromm AI...\n"))
@@ -220,26 +215,15 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
 			if err != nil || changes == nil {
-				fmt.Println(lipgloss_color.Gray.Render("no code blocks with a valid path detected to apply."))
+				fmt.Println(lipgloss_color.BlueSky.Render("\nno code blocks with a valid path detected to apply."))
 				continue
-			}
-
-			var tempFiles []string
-
-			// Prepare temp files for using comparing in diff
-			for _, change := range changes {
-				tempPath, err := utils.WriteToTempFile(change.RelativePath, change.Code)
-				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to write temp file: %v", err)))
-					continue
-				}
-				tempFiles = append(tempFiles, tempPath)
 			}
 
 			var updateContextNeeded = false
 
 			fmt.Print("\n\n")
-			// Run diff after applying changes to temp files
+
+			// Try to apply changes
 			for _, change := range changes {
 
 				// Prompt the user to accept or reject the changes
@@ -250,7 +234,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				}
 
 				if promptAccepted {
-					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
+					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath, change.Code)
 					if err != nil {
 						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error applying changes: %v", err)))
 						continue
@@ -262,11 +246,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				} else {
 					fmt.Println(lipgloss_color.Red.Render("❌ Changes rejected."))
 				}
-
 			}
-
-			// Display token usage details in a boxed format after each AI request
-			rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel)
 
 			// If we need Update the context after apply changes
 			if updateContextNeeded {
@@ -284,11 +264,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	}()
 
 	go utils.GracefulShutdown(done, sigs, func() {
-		err := utils.CleanupTempFiles(rootDependencies.Cwd)
-		if err != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to cleanup temp files: %v", err)))
-		}
-	}, func() {
 		rootDependencies.ChatHistory.ClearHistory()
 	})
 
