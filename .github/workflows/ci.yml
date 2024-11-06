@@ -27,6 +27,6 @@ jobs:
         working-directory: ./
         run: go build -v ./...
 
-#      - name: test
-#        working-directory: ./
-#        run: go test -v ./...
+      - name: test
+        working-directory: ./
+        run: go test -v ./...
