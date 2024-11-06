@@ -83,9 +83,10 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 		}
 
 		relativePath, err := filepath.Rel(rootDir, path)
+		relativePath = strings.ReplaceAll(relativePath, "\\", "/")
 
 		// Check if the current directory or file should be skipped based on default ignore patterns
-		if utils.IsDefaultIgnored(path) {
+		if utils.IsDefaultIgnored(relativePath) {
 			// Skip the directory or file
 			if d.IsDir() {
 				// If it's a directory, skip the whole directory
@@ -106,8 +107,8 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 				return nil // Skip this file
 			}
 
-			// Read the file content
-			content, err := ioutil.ReadFile(relativePath)
+			// Read the file content using the full path
+			content, err := ioutil.ReadFile(path) // Use full path from WalkDir
 			if err != nil {
 				return fmt.Errorf("failed to read file: %s, error: %w", relativePath, err)
 			}
@@ -217,7 +218,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 // ExtractCodeChanges extracts code changes from the given text.
 func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) ([]models.CodeChange, error) {
 	if text == "" {
-		return nil, fmt.Errorf("input text is empty")
+		return nil, nil
 	}
 
 	// Regex patterns
@@ -254,30 +255,33 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) ([]models.CodeChan
 func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (string, error) {
 	var codes []string
 
-	re := regexp.MustCompile(`"files"\s*:\s*\[.*?\]`)
+	// Simplified regex to capture only the array of files
+	re := regexp.MustCompile(`\[.*?\]`)
 	match := re.FindString(relativePaths)
 
-	// Wrap with braces to create a valid JSON string
-	jsonContent := "{" + match + "}"
-
-	// Deserialize JSON into a generic map
-	var result struct {
-		Files []string `json:"files"`
+	if match == "" {
+		return "", fmt.Errorf("no file paths found in input")
 	}
 
-	err := json.Unmarshal([]byte(jsonContent), &result)
+	// Parse the match into a slice of strings
+	var filePaths []string
+	err := json.Unmarshal([]byte(match), &filePaths)
 	if err != nil {
-		return "", nil
+		return "", fmt.Errorf("failed to unmarshal JSON: %v", err)
 	}
 
 	// Loop through each relative path and read the file content
-	for _, relativePath := range result.Files {
+	for _, relativePath := range filePaths {
 		content, err := os.ReadFile(relativePath)
 		if err != nil {
 			continue
 		}
 
 		codes = append(codes, fmt.Sprintf("File: %s\n\n%s", relativePath, content))
+	}
+
+	if len(codes) == 0 {
+		return "", fmt.Errorf("no valid files read")
 	}
 
 	requestedContext := strings.Join(codes, "\n---------\n\n")

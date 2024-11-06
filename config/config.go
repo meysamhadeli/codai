@@ -29,7 +29,6 @@ var defaultConfig = Config{
 		ChatCompletionModel: "deepseek-coder-v2",
 		EmbeddingModel:      "nomic-embed-text",
 		Stream:              true,
-		MaxTokens:           128000,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
 		Threshold:           0,
@@ -56,7 +55,6 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	viper.SetDefault("ai_provider_config.encoding_format", defaultConfig.AIProviderConfig.EncodingFormat)
 	viper.SetDefault("ai_provider_config.temperature", defaultConfig.AIProviderConfig.Temperature)
 	viper.SetDefault("ai_provider_config.threshold", defaultConfig.AIProviderConfig.Threshold)
-	viper.SetDefault("ai_provider_config.max_tokens", defaultConfig.AIProviderConfig.MaxTokens)
 	viper.SetDefault("ai_provider_config.api_key", defaultConfig.AIProviderConfig.ApiKey)
 
 	// Automatically read environment variables
@@ -102,18 +100,17 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 
 // bindEnv explicitly binds environment variables to configuration keys
 func bindEnv() {
-	viper.BindEnv("theme")
-	viper.BindEnv("rag")
-	viper.BindEnv("ai_provider_config.provider_name")
-	viper.BindEnv("ai_provider_config.embedding_url")
-	viper.BindEnv("ai_provider_config.chat_completion_url")
-	viper.BindEnv("ai_provider_config.chat_completion_model")
-	viper.BindEnv("ai_provider_config.embedding_model")
-	viper.BindEnv("ai_provider_config.encoding_format")
-	viper.BindEnv("ai_provider_config.temperature")
-	viper.BindEnv("ai_provider_config.threshold")
-	viper.BindEnv("ai_provider_config.max_tokens")
-	viper.BindEnv("ai_provider_config.api_key")
+	_ = viper.BindEnv("theme", "THEME")
+	_ = viper.BindEnv("rag", "RAG")
+	_ = viper.BindEnv("ai_provider_config.provider_name", "PROVIDER_NAME")
+	_ = viper.BindEnv("ai_provider_config.embedding_url", "EMBEDDING_URL")
+	_ = viper.BindEnv("ai_provider_config.chat_completion_url", "CHAT_COMPLETION_URL")
+	_ = viper.BindEnv("ai_provider_config.chat_completion_model", "CHAT_COMPLETION_MODEL")
+	_ = viper.BindEnv("ai_provider_config.embedding_model", "EMBEDDING_MODEL")
+	_ = viper.BindEnv("ai_provider_config.encoding_format", "ENCODING_FORMAT")
+	_ = viper.BindEnv("ai_provider_config.temperature", "TEMPERATURE")
+	_ = viper.BindEnv("ai_provider_config.threshold", "THRESHOLD")
+	_ = viper.BindEnv("ai_provider_config.api_key", "API_KEY")
 }
 
 // bindFlags binds the CLI flags to configuration values.
@@ -128,7 +125,6 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.encoding_format", rootCmd.Flags().Lookup("encoding_format"))
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
 	_ = viper.BindPFlag("ai_provider_config.threshold", rootCmd.Flags().Lookup("threshold"))
-	_ = viper.BindPFlag("ai_provider_config.max_tokens", rootCmd.Flags().Lookup("max_tokens"))
 	_ = viper.BindPFlag("ai_provider_config.api_key", rootCmd.Flags().Lookup("api_key"))
 }
 
@@ -147,6 +143,5 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("encoding_format", defaultConfig.AIProviderConfig.EncodingFormat, "Specifies the format in which the AI embeddings or outputs are encoded (e.g., 'float' for floating-point numbers).")
 	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused.")
 	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems (e.g., for retrieving related data in a RAG system). Higher values will require closer matches.")
-	rootCmd.PersistentFlags().Int("max_tokens", defaultConfig.AIProviderConfig.MaxTokens, "Specifies the Maximum number of token can be used by AI model in request.")
 	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "The API key used to authenticate with the AI service provider.")
 }
