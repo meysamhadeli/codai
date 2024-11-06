@@ -77,11 +77,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 			loopNumber++
 
-			err := utils.CleanupTempFiles(rootDependencies.Cwd)
-			if err != nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to cleanup temp files: %v", err)))
-			}
-
 			// Get user input
 			userInput, err := utils.InputPrompt(reader)
 			if err != nil {
@@ -224,22 +219,11 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				continue
 			}
 
-			var tempFiles []string
-
-			// Prepare temp files for using comparing in diff
-			for _, change := range changes {
-				tempPath, err := utils.WriteToTempFile(change.RelativePath, change.Code)
-				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to write temp file: %v", err)))
-					continue
-				}
-				tempFiles = append(tempFiles, tempPath)
-			}
-
 			var updateContextNeeded = false
 
 			fmt.Print("\n\n")
-			// Run diff after applying changes to temp files
+
+			// Try to apply changes
 			for _, change := range changes {
 
 				// Prompt the user to accept or reject the changes
@@ -250,7 +234,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				}
 
 				if promptAccepted {
-					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath)
+					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath, change.Code)
 					if err != nil {
 						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error applying changes: %v", err)))
 						continue
@@ -262,7 +246,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				} else {
 					fmt.Println(lipgloss_color.Red.Render("❌ Changes rejected."))
 				}
-
 			}
 
 			// If we need Update the context after apply changes
@@ -281,11 +264,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	}()
 
 	go utils.GracefulShutdown(done, sigs, func() {
-		err := utils.CleanupTempFiles(rootDependencies.Cwd)
-		if err != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("failed to cleanup temp files: %v", err)))
-		}
-	}, func() {
 		rootDependencies.ChatHistory.ClearHistory()
 	})
 

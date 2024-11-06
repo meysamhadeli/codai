@@ -55,13 +55,25 @@ func NewCodeAnalyzer(cwd string) contracts.ICodeAnalyzer {
 	return &CodeAnalyzer{Cwd: cwd}
 }
 
-// ApplyChanges Apply changes by replacing original files with the temp files
-func (analyzer *CodeAnalyzer) ApplyChanges(relativePath string) error {
-	tempPath := relativePath + ".tmp"
-	// Replace the original file with the temp file
-	err := os.Rename(tempPath, relativePath)
-	if err != nil {
-		return fmt.Errorf("failed to apply changes to file %s: %v", relativePath, err)
+// ApplyChanges updates or creates a file at the given relativePath with the specified code.
+func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, code string) error {
+	// Ensure the directory structure exists
+	dir := filepath.Dir(relativePath)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(relativePath); os.IsNotExist(err) {
+		// File does not exist, create and write code
+		if err := ioutil.WriteFile(relativePath, []byte(code), 0644); err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+	} else {
+		// File exists, update the content
+		if err := ioutil.WriteFile(relativePath, []byte(code), 0644); err != nil {
+			return fmt.Errorf("failed to update file: %w", err)
+		}
 	}
 	return nil
 }

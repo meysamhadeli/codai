@@ -74,16 +74,13 @@ func (tm *tokenManager) DisplayTokens(providerName string, model string, embeddi
 	cost := tm.CalculateCost(providerName, model, tm.usedInputToken, tm.usedOutputToken)
 	costEmbedding := tm.CalculateCost(providerName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
 
-	var tokenDetails string
-	var embeddingTokenDetails string
-
-	tokenDetails = fmt.Sprintf("Chat Model: '%s' - Token Used: '%s' - Cost: '%s'", model, fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost))
+	tokenInfo := fmt.Sprintf("Chat Model: '%s' - Token Used: '%s' - Cost: '%s'", model, fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost))
 
 	if isRag {
-		embeddingTokenDetails = fmt.Sprintf("Embedding Model: '%s' - Token Used: '%s' - Cost: '%s'", embeddingModel, fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding))
+		embeddingTokenDetails := fmt.Sprintf("Embedding Model: '%s' - Token Used: '%s' - Cost: '%s'", embeddingModel, fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding))
+		tokenInfo = tokenInfo + "\n" + embeddingTokenDetails
 	}
 
-	tokenInfo := tokenDetails + "\n" + embeddingTokenDetails
 	tokenBox := boxStyle.Render(tokenInfo)
 	fmt.Println(tokenBox)
 }

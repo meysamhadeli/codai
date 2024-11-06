@@ -6,12 +6,11 @@ import (
 	"os"
 )
 
-func GracefulShutdown(done chan bool, sigs chan os.Signal, TempFilesCleanup func(), chatHistoryCleanUp func()) {
+func GracefulShutdown(done chan bool, sigs chan os.Signal, chatHistoryCleanUp func()) {
 	go func() {
 		for {
 			select {
 			case <-sigs:
-				TempFilesCleanup()
 				chatHistoryCleanUp()
 				done <- true // Signal the application to exit
 			}
@@ -22,7 +21,6 @@ func GracefulShutdown(done chan bool, sigs chan os.Signal, TempFilesCleanup func
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("recovered from panic: %v", r)))
-			TempFilesCleanup()
 			chatHistoryCleanUp()
 			done <- true // Signal the application to exit
 		}
