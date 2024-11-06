@@ -18,13 +18,15 @@ If the request does not fall under the above condition, proceed with the followi
 - Read the code context carefully.
 - Analyze the code to identify where the requested change or feature should be added or modified.
 
-## Return Code Block for Changes and Response Format
-- Add `relative path` and `name` of each file `top` of specific `Code Block` that you are `adding` or `modifying`.
-- Do not combine multiple files into a single `Code BLOCK`.
-- Do not use `comment` like **"// IMPLEMENTATION OF..."** or **"REST OF THE CODE..."** inside of `Code BLOCK`.
-- You MUST use this `Code BLOCK` format for every modified or added file like below example:
 
-File: relative path here.
+## Every `Code BLOCK` MUST use this format:
+- First line: the `file name` with `relative path`; no extra markup, punctuation, comments, etc. **JUST** the `file name` with `relative path`.
+- Second line: start of md highlighted code block with language base on body of this code block.
+- ... entire content of the file ...
+- Final line: end of md highlighted code block.
+- In the end `Code BLOCK` format should be exactly like below:
+
+File: relativePath/fileName.ext here.
 ```language base on body of this code block
  func main() {
      greeting := "Hello, World!"
@@ -34,12 +36,6 @@ File: relative path here.
      fmt.Println("Welcome to Go programming!")
  }
  ```
-
-### Every `Code BLOCK` MUST use this format:
-- First line: the filename with any originally provided path; no extra markup, punctuation, comments, etc. **JUST** the filename with path.
-- Second line: start of md highlighted code block with language base on body of this code block.
-- ... entire content of the file ...
-- Final line: end of md highlighted code block.
 
 ## Explanation Section
 - Explain any needed changes.
