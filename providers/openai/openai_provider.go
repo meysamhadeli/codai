@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
+	openai_models "github.com/meysamhadeli/codai/providers/openai/models"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,6 +18,7 @@ import (
 
 // OpenAIConfig implements the Provider interface for OpenAPI.
 type OpenAIConfig struct {
+	Name                string
 	EmbeddingURL        string
 	ChatCompletionURL   string
 	EmbeddingModel      string
@@ -43,24 +44,14 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		Threshold:           config.Threshold,
 		ApiKey:              config.ApiKey,
 		TokenManagement:     config.TokenManagement,
+		Name:                config.Name,
 	}
 }
 
-func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt string) (*models.EmbeddingResponse, error) {
-
-	// Count tokens for the user input and prompt
-	totalChatTokens, err := openAIProvider.TokenManagement.CountTokens(prompt, openAIProvider.ChatCompletionModel)
-	if err != nil {
-		return nil, fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-	}
-
-	// Check if enough tokens are available
-	if err := openAIProvider.TokenManagement.UseEmbeddingTokens(totalChatTokens); err != nil {
-		return nil, fmt.Errorf(lipgloss_color.Red.Render(fmt.Sprintf("Error: %v", err)))
-	}
+func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error) {
 
 	// Create the request payload
-	requestBody := models.EmbeddingRequest{
+	requestBody := openai_models.OpenAIEmbeddingRequest{
 		Input:          prompt,
 		Model:          openAIProvider.EmbeddingModel,
 		EncodingFormat: openAIProvider.EncodingFormat,
@@ -100,48 +91,56 @@ func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt
 		return nil, fmt.Errorf("error reading response: %v", err)
 	}
 
-	// Check for non-200 status codes
+	// Check for error status code
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		var apiError models.AIError
+		if err := json.Unmarshal(body, &apiError); err != nil {
+			return nil, fmt.Errorf("error parsing error response: %v", err)
+		}
+
+		return nil, fmt.Errorf("embedding request failed with status code '%d' - %s\n", resp.StatusCode, apiError.Error.Message)
 	}
 
 	// Unmarshal the response JSON into the struct
-	var embeddingResponse models.EmbeddingResponse
+	var embeddingResponse openai_models.OpenAIEmbeddingResponse
 	err = json.Unmarshal(body, &embeddingResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding JSON response: %v", err)
 	}
 
-	// Return the parsed response
-	return &embeddingResponse, nil
+	// Count total tokens usage
+	if embeddingResponse.UsageEmbedding.TotalTokens > 0 {
+		openAIProvider.TokenManagement.UsedEmbeddingTokens(embeddingResponse.UsageEmbedding.TotalTokens, 0)
+	}
+
+	return [][]float64{embeddingResponse.Data[0].Embedding}, nil
 }
 
 func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse {
 	responseChan := make(chan models.StreamResponse)
+	var markdownBuffer strings.Builder // Buffer to accumulate content until newline
+	var usage openai_models.Usage      // Variable to hold usage data
 
 	go func() {
 		defer close(responseChan)
 
-		// Count tokens for the user input and prompt
-		totalChatTokens, err := openAIProvider.TokenManagement.CountTokens(fmt.Sprintf("%s%s", prompt, userInput), openAIProvider.ChatCompletionModel)
-		if err != nil {
-			responseChan <- models.StreamResponse{Err: fmt.Errorf("error counting tokens: %v", err)}
-			return
-		}
-
 		// Prepare the request body
-		reqBody := models.ChatCompletionRequest{
+		reqBody := openai_models.OpenAIChatCompletionRequest{
 			Model: openAIProvider.ChatCompletionModel,
-			Messages: []models.Message{
+			Messages: []openai_models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
 			Stream:      true,
 			Temperature: &openAIProvider.Temperature,
+			StreamOptions: openai_models.StreamOptions{
+				IncludeUsage: true,
+			},
 		}
 
 		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
+			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error marshalling request body: %v", err)}
 			return
 		}
@@ -149,6 +148,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		// Create a new HTTP request
 		req, err := http.NewRequestWithContext(ctx, "POST", openAIProvider.ChatCompletionURL, bytes.NewBuffer(jsonData))
 		if err != nil {
+			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
 			return
 		}
@@ -159,6 +159,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
+			markdownBuffer.Reset()
 			if errors.Is(ctx.Err(), context.Canceled) {
 				responseChan <- models.StreamResponse{Err: fmt.Errorf("request canceled: %v", err)}
 				return
@@ -169,17 +170,25 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			responseChan <- models.StreamResponse{Err: fmt.Errorf("API request failed with status: %d", resp.StatusCode)}
+			markdownBuffer.Reset()
+			body, _ := ioutil.ReadAll(resp.Body)
+			var apiError models.AIError
+			if err := json.Unmarshal(body, &apiError); err != nil {
+				responseChan <- models.StreamResponse{Err: fmt.Errorf("error parsing error response: %v", err)}
+				return
+			}
+
+			responseChan <- models.StreamResponse{Err: fmt.Errorf("API request failed with status code '%d' - %s\n", resp.StatusCode, apiError.Error.Message)}
 			return
 		}
 
 		reader := bufio.NewReader(resp.Body)
-		var markdownBuffer strings.Builder // Buffer to accumulate content until newline
 
 		// Stream processing
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
+				markdownBuffer.Reset()
 				if err == io.EOF {
 					break
 				}
@@ -188,27 +197,35 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 			}
 
 			if line == "data: [DONE]\n" {
-				// Signal end of stream
+				// Send the final content
 				responseChan <- models.StreamResponse{Content: markdownBuffer.String()}
+
 				responseChan <- models.StreamResponse{Done: true}
 
-				// Use tokens
-				if err := openAIProvider.TokenManagement.UseTokens(totalChatTokens); err != nil {
-					responseChan <- models.StreamResponse{Err: fmt.Errorf("error using tokens: %v", err)}
-					return
+				// Count total tokens usage
+				if usage.TotalTokens > 0 {
+					openAIProvider.TokenManagement.UsedTokens(usage.PromptTokens, usage.CompletionTokens)
 				}
-				
+
 				break
 			}
 
 			if strings.HasPrefix(line, "data: ") {
 				jsonPart := strings.TrimPrefix(line, "data: ")
-				var response models.ChatCompletionResponse
+				var response openai_models.OpenAIChatCompletionResponse
 				if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
+					markdownBuffer.Reset()
+
 					responseChan <- models.StreamResponse{Err: fmt.Errorf("error unmarshalling chunk: %v", err)}
 					return
 				}
 
+				// Check if the response has usage information
+				if response.Usage.TotalTokens > 0 {
+					usage = response.Usage // Capture the usage data for later use
+				}
+
+				// Accumulate and send response content
 				if len(response.Choices) > 0 {
 					content := response.Choices[0].Delta.Content
 					markdownBuffer.WriteString(content)
