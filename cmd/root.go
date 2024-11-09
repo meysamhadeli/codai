@@ -5,7 +5,7 @@ import (
 	"github.com/meysamhadeli/codai/code_analyzer"
 	contracts_analyzer "github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/config"
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"github.com/meysamhadeli/codai/embedding_store"
 	contracts_store "github.com/meysamhadeli/codai/embedding_store/contracts"
 	"github.com/meysamhadeli/codai/providers"
@@ -52,7 +52,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 	// Get current working directory
 	rootDependencies.Cwd, err = os.Getwd()
 	if err != nil || rootDependencies.Cwd == "" {
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error getting current directory")))
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting current directory")))
 		return nil
 	}
 
@@ -69,7 +69,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 	rootDependencies.CurrentProvider, err = providers.ProviderFactory(rootDependencies.Config.AIProviderConfig, rootDependencies.TokenManagement)
 
 	if err != nil {
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 	}
 
 	return rootDependencies

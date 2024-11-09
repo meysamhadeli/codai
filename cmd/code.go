@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"github.com/meysamhadeli/codai/utils"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -26,23 +26,30 @@ based on the current project context. Each interaction is part of a session, all
 improved responses throughout the user experience.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		rootDependencies := handleRootCommand(cmd)
-		handleCodeCommand(rootDependencies) // Pass standard input by default
+		err := handleCodeCommand(rootDependencies)
+		if err != nil {
+			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+			rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
+		}
 	},
 }
 
-func handleCodeCommand(rootDependencies *RootDependencies) {
+func handleCodeCommand(rootDependencies *RootDependencies) error {
 
 	// Create a context with cancel function
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Channel to signal when the application should shut down
+	//Channel to signal when the application should shut down
 	done := make(chan bool)
+
 	sigs := make(chan os.Signal, 1)
 
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	loopNumber := 0
+	go utils.GracefulShutdown(ctx, done, sigs, func() {
+		rootDependencies.ChatHistory.ClearHistory()
+	})
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -59,29 +66,41 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	if err != nil {
 		spinnerLoadContext.Stop()
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
-		return
+		return fmt.Errorf(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 	}
 
 	spinnerLoadContext.Stop()
 
+	codeOptionsBox := lipgloss.BoxStyle.Render(":help  Help for code subcommand")
+	fmt.Println(codeOptionsBox)
+
 	// Launch the user input handler in a goroutine
-	go func() {
-	startLoop: // Label for the start loop
-		for {
+startLoop: // Label for the start loop
+	for {
+		select {
+		case <-ctx.Done():
+			<-done // Wait for gracefulShutdown to complete
+			return nil
 
-			if loopNumber > 0 {
-				// Display token usage details in a boxed format after each AI request
-				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
-			}
-
-			loopNumber++
-
+		default:
 			// Get user input
 			userInput, err := utils.InputPrompt(reader)
 			if err != nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 				continue
+			}
+
+			// Configure help code subcommand
+			shouldContinue, shouldSkip := findCodeSubCommand(userInput, rootDependencies)
+
+			if shouldContinue {
+				continue
+			}
+
+			if shouldSkip {
+				cancel() // Initiate shutdown for the app's own ":exit" command
+				<-done   // Wait for gracefulShutdown to complete
+				return nil
 			}
 
 			// If RAG is enabled, we use RAG system for retrieve most relevant data due user request
@@ -118,7 +137,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				// Handle any errors that occurred during processing
 				for err = range errorChan {
 					spinnerLoadContextEmbedding.Stop()
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 					continue startLoop
 				}
 
@@ -131,7 +150,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 					// Ensure there's an embedding for the user query
 					if len(queryEmbedding[0]) == 0 {
-						return fmt.Errorf(lipgloss_color.Red.Render("no embeddings returned for user query"))
+						return fmt.Errorf(lipgloss.Red.Render("no embeddings returned for user query"))
 					}
 
 					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
@@ -147,7 +166,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 				if err != nil {
 					spinnerLoadContextEmbedding.Stop()
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 					continue startLoop
 				}
 
@@ -159,8 +178,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			chatRequestOperation := func() error {
 				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContextCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
-				var b = finalPrompt + userInputPrompt
-				fmt.Println(b)
 				// Step 7: Send the relevant code and user input to the AI API
 				responseChan := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
 
@@ -190,7 +207,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			err = utils.RetryWithBackoff(chatRequestOperation, 3)
 
 			if err != nil {
-				fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 				continue startLoop
 			}
 
@@ -201,12 +218,12 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				if requestedContext != "" && err == nil {
 					aiResponseBuilder.Reset()
 
-					fmt.Println(lipgloss_color.BlueSky.Render("\nThese files need to changes...\n"))
+					fmt.Println(lipgloss.BlueSky.Render("\nThese files need to changes...\n"))
 
 					err = chatRequestOperation()
 
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 						continue
 					}
 				}
@@ -216,7 +233,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			changes := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
 			if changes == nil {
-				fmt.Println(lipgloss_color.BlueSky.Render("\nno code blocks with a valid path detected to apply."))
+				fmt.Println(lipgloss.BlueSky.Render("\nno code blocks with a valid path detected to apply."))
 				continue
 			}
 
@@ -230,22 +247,22 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				// Prompt the user to accept or reject the changes
 				promptAccepted, err := utils.ConfirmPrompt(change.RelativePath)
 				if err != nil {
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
 					continue
 				}
 
 				if promptAccepted {
 					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath, change.Code)
 					if err != nil {
-						fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("error applying changes: %v", err)))
+						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error applying changes: %v", err)))
 						continue
 					}
-					fmt.Println(lipgloss_color.Green.Render("✔️ Changes accepted!"))
+					fmt.Println(lipgloss.Green.Render("✔️ Changes accepted!"))
 
 					updateContextNeeded = true
 
 				} else {
-					fmt.Println(lipgloss_color.Red.Render("❌ Changes rejected."))
+					fmt.Println(lipgloss.Red.Render("❌ Changes rejected."))
 				}
 			}
 
@@ -257,19 +274,43 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
 				if err != nil {
 					spinnerUpdateContext.Stop()
-					fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("%v", err)))
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 				}
 				spinnerUpdateContext.Stop()
 			}
+
+			rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
 		}
-	}()
+	}
+}
 
-	go utils.GracefulShutdown(done, sigs, func() {
+func findCodeSubCommand(command string, rootDependencies *RootDependencies) (bool, bool) {
+	switch command {
+	case ":help":
+		helps := ":clear  Clear screen\n:exit  Exit from codai\n:token  Token information\n:clear-token  Clear token from session\n:clear-history  Clear history of chat from session"
+		styledHelps := lipgloss.BoxStyle.Render(helps)
+		fmt.Println(styledHelps)
+		return true, false
+	case ":clear":
+		fmt.Print("\033[2J\033[H")
+		return true, false
+	case ":exit":
+		return false, true
+	case ":token":
+		rootDependencies.TokenManagement.DisplayTokens(
+			rootDependencies.Config.AIProviderConfig.ProviderName,
+			rootDependencies.Config.AIProviderConfig.ChatCompletionModel,
+			rootDependencies.Config.AIProviderConfig.EmbeddingModel,
+			rootDependencies.Config.RAG,
+		)
+		return true, false
+	case ":clear-token":
+		rootDependencies.TokenManagement.ClearToken()
+		return true, false
+	case ":clear-history":
 		rootDependencies.ChatHistory.ClearHistory()
-	})
-
-	select {
-	case <-done:
-		return
+		return true, false
+	default:
+		return true, false
 	}
 }
