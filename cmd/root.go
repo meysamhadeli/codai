@@ -62,7 +62,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.ChatHistory = providers.NewChatHistory()
 
-	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd)
+	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd, rootDependencies.Config.RAG)
 
 	rootDependencies.Store = embedding_store.NewEmbeddingStoreModel()
 

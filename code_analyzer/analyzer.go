@@ -3,7 +3,6 @@ package code_analyzer
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
 	"github.com/meysamhadeli/codai/embed_data"
@@ -26,56 +25,37 @@ import (
 
 // CodeAnalyzer handles the analysis of project files.
 type CodeAnalyzer struct {
-	Cwd string
+	Cwd   string
+	IsRAG bool
 }
 
-// Define styles for the box
-var (
-	boxStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Align(lipgloss.Center)
-)
-
 func (analyzer *CodeAnalyzer) GeneratePrompt(codes []string, history []string, userInput string, requestedContext string) (string, string) {
+	var promptTemplate string
+	if analyzer.IsRAG {
+		promptTemplate = string(embed_data.RagContextPrompt)
+	} else {
+		promptTemplate = string(embed_data.SummarizeFullContextPrompt)
+	}
 
 	// Combine the relevant code into a single string
 	code := strings.Join(codes, "\n---------\n\n")
 
-	prompt := fmt.Sprintf("%s\n\n______\n%s\n\n", fmt.Sprintf(boxStyle.Render("Here is the summary of context of project")+"\n\n%s", code), fmt.Sprintf(boxStyle.Render("Here is the general template prompt for using AI")+"\n\n%s", string(embed_data.CodeBlockTemplate)))
+	prompt := fmt.Sprintf("%s\n\n______\n%s\n\n______\n", fmt.Sprintf("## Here is the summary of context of project\n\n%s", code), fmt.Sprintf("## Here is the general template prompt for using AI\n\n%s", promptTemplate))
+	userInputPrompt := fmt.Sprintf("## Here is user request\n%s", userInput)
+
 	if requestedContext != "" {
-		prompt = prompt + fmt.Sprintf(boxStyle.Render("Here are the details of the context of the project that was requested for use in your task")+"\n\n%s", requestedContext)
+		prompt = prompt + fmt.Sprintf("## Here are the requsted full context files for using in your task\n\n%s______\n", requestedContext)
 	}
 
-	userInputPrompt := fmt.Sprintf(boxStyle.Render("Here is user request")+"\n%s", userInput)
-	historyPrompt := boxStyle.Render("Here is the history of chats") + "\n\n" + strings.Join(history, "\n---------\n\n")
+	historyPrompt := "## Here is the history of chats\n\n" + strings.Join(history, "\n---------\n\n")
 	finalPrompt := fmt.Sprintf("%s\n\n______\n\n%s", historyPrompt, prompt)
+
 	return finalPrompt, userInputPrompt
 }
 
 // NewCodeAnalyzer initializes a new CodeAnalyzer.
-func NewCodeAnalyzer(cwd string) contracts.ICodeAnalyzer {
-	return &CodeAnalyzer{Cwd: cwd}
-}
-
-// ApplyChanges updates or creates a file at the given relativePath with the specified code.
-func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, code string) error {
-	// Ensure the directory structure exists
-	dir := filepath.Dir(relativePath)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(relativePath); os.IsNotExist(err) {
-		// File does not exist, create and write code
-		if err := ioutil.WriteFile(relativePath, []byte(code), 0644); err != nil {
-			return fmt.Errorf("failed to create file: %w", err)
-		}
-	} else {
-		// File exists, update the content
-		if err := ioutil.WriteFile(relativePath, []byte(code), 0644); err != nil {
-			return fmt.Errorf("failed to update file: %w", err)
-		}
-	}
-	return nil
+func NewCodeAnalyzer(cwd string, isRAG bool) contracts.ICodeAnalyzer {
+	return &CodeAnalyzer{Cwd: cwd, IsRAG: isRAG}
 }
 
 func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData, []string, error) {
@@ -227,43 +207,6 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	return elements
 }
 
-// ExtractCodeChanges extracts code changes from the given text.
-func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) ([]models.CodeChange, error) {
-	if text == "" {
-		return nil, nil
-	}
-
-	// Regex patterns
-	filePathPattern := regexp.MustCompile(`(?i)(?:.*?File:\s*)([^\s*]+?\.[a-zA-Z0-9]+)\b`)
-	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
-
-	var codeChanges []models.CodeChange
-
-	// Find all file path matches and code block matches
-	filePathMatches := filePathPattern.FindAllStringSubmatch(text, -1)
-	codeMatches := codeBlockPattern.FindAllStringSubmatch(text, -1)
-
-	// Ensure pairs are processed up to the minimum count of matches
-	minLength := len(filePathMatches)
-	if len(codeMatches) < minLength {
-		minLength = len(codeMatches)
-	}
-
-	// Create code changes up to the minimum length
-	for i := 0; i < minLength; i++ {
-		relativePath := strings.TrimSpace(filePathMatches[i][1])
-		code := strings.TrimSpace(codeMatches[i][1])
-
-		codeChange := models.CodeChange{
-			RelativePath: relativePath,
-			Code:         code,
-		}
-		codeChanges = append(codeChanges, codeChange)
-	}
-
-	return codeChanges, nil
-}
-
 func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (string, error) {
 	var codes []string
 
@@ -299,4 +242,110 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 	requestedContext := strings.Join(codes, "\n---------\n\n")
 
 	return requestedContext, nil
+}
+
+// ExtractCodeChanges extracts code changes from the given text.
+func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) []models.CodeChange {
+	if text == "" {
+		return nil
+	}
+
+	// Regex patterns for file paths and code blocks
+	filePathPattern := regexp.MustCompile(`(?i)(?:\d+\.\s*|File:\s*)([^\s*]+?\.[a-zA-Z0-9]+)\b`)
+	// Capture entire diff blocks, assuming they are enclosed in ```diff ... ```
+	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
+
+	// Find all file path matches and code block matches
+	filePathMatches := filePathPattern.FindAllStringSubmatch(text, -1)
+	codeMatches := codeBlockPattern.FindAllStringSubmatch(text, -1)
+
+	// Ensure pairs are processed up to the minimum count of matches
+	minLength := len(filePathMatches)
+	if len(codeMatches) < minLength {
+		minLength = len(codeMatches)
+	}
+
+	// Initialize code changes
+	var codeChanges []models.CodeChange
+	for i := 0; i < minLength; i++ {
+		relativePath := strings.TrimSpace(filePathMatches[i][1])
+		code := strings.TrimSpace(codeMatches[i][1])
+
+		// Capture the relative path and associated diff content
+		codeChange := models.CodeChange{
+			RelativePath: relativePath,
+			Code:         code,
+		}
+		codeChanges = append(codeChanges, codeChange)
+	}
+
+	return codeChanges
+}
+
+func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
+	// Ensure the directory structure exists
+	dir := filepath.Dir(relativePath)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Process the diff content: handle additions and deletions
+	diffLines := strings.Split(diff, "\n")
+	var updatedContent []string
+
+	for _, line := range diffLines {
+		trimmedLine := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmedLine, "-") {
+			// Ignore lines that start with "-", effectively deleting them
+			continue
+		} else if strings.HasPrefix(trimmedLine, "+") {
+			// Add lines that start with "+", but remove the "+" symbol
+			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", " "))
+
+		} else {
+			// Keep all other lines as they are
+			updatedContent = append(updatedContent, line)
+		}
+	}
+
+	// Handle deletion if code is empty
+	if diff == "" {
+		// Check if file exists, then delete if it does
+		if err := os.Remove(relativePath); err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("File %s does not exist, so no deletion necessary.\n", relativePath)
+			} else {
+				return fmt.Errorf("failed to delete file: %w", err)
+			}
+		}
+
+		// After file deletion, check if the directory is empty and delete it if so
+		if err := removeEmptyDirectoryIfNeeded(dir); err != nil {
+			return err
+		}
+	} else {
+		// Write the updated content to the file
+		if err := ioutil.WriteFile(relativePath, []byte(strings.Join(updatedContent, "\n")), 0644); err != nil {
+			return fmt.Errorf("failed to write to file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// removeEmptyDirectoryIfNeeded checks if a directory is empty, and if so, deletes it
+func removeEmptyDirectoryIfNeeded(dir string) error {
+	// Check if the directory is empty
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", dir, err)
+	}
+
+	// If the directory is empty, remove it
+	if len(entries) == 0 {
+		if err := os.Remove(dir); err != nil {
+			return fmt.Errorf("failed to delete empty directory %s: %w", dir, err)
+		}
+	}
+	return nil
 }

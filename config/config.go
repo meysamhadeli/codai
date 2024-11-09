@@ -27,11 +27,11 @@ var defaultConfig = Config{
 		EmbeddingURL:        "http://localhost:11434/v1/embeddings",
 		ChatCompletionURL:   "http://localhost:11434/v1/chat/completions",
 		ChatCompletionModel: "deepseek-coder-v2",
-		EmbeddingModel:      "nomic-embed-text",
+		EmbeddingModel:      "all-minilm",
 		Stream:              true,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
-		Threshold:           0,
+		Threshold:           0.3,
 		ApiKey:              "",
 	},
 }
@@ -141,7 +141,7 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("chat_completion_model", defaultConfig.AIProviderConfig.ChatCompletionModel, "The name of the model used for chat completions, such as 'gpt-4o'. Different models offer varying levels of performance and capabilities.")
 	rootCmd.PersistentFlags().String("embedding_model", defaultConfig.AIProviderConfig.EmbeddingModel, "Specifies the AI model used for generating text embeddings (e.g., 'text-embedding-ada-002'). This model converts text into vector representations for similarity comparisons.")
 	rootCmd.PersistentFlags().String("encoding_format", defaultConfig.AIProviderConfig.EncodingFormat, "Specifies the format in which the AI embeddings or outputs are encoded (e.g., 'float' for floating-point numbers).")
-	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused.")
-	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems (e.g., for retrieving related data in a RAG system). Higher values will require closer matches.")
+	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
+	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches (e.g., value should be between '0.2 - 1' and default is '0.3').")
 	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "The API key used to authenticate with the AI service provider.")
 }

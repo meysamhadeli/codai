@@ -15,25 +15,6 @@ type EmbeddingStore struct {
 	mu              sync.RWMutex
 }
 
-func (store *EmbeddingStore) FindThresholdByModel(modelName string) float64 {
-	switch modelName {
-	case "all-minilm:l6-v2":
-		return 0.22
-	case "mxbai-embed-large":
-		return 0.5
-	case "nomic-embed-text":
-		return 0.5
-	case "text-embedding-3-large":
-		return 0.4
-	case "text-embedding-3-small":
-		return 0.4
-	case "text-embedding-ada-002":
-		return 0.77
-	default:
-		return 0.3
-	}
-}
-
 // NewEmbeddingStoreModel initializes a new CodeEmbeddingStoreModel.
 func NewEmbeddingStoreModel() contracts.IEmbeddingStore {
 	return &EmbeddingStore{
@@ -81,17 +62,13 @@ func (store *EmbeddingStore) CosineSimilarity(vec1, vec2 []float64) float64 {
 }
 
 // FindRelevantChunks retrieves the relevant code chunks from the embedding store based on a similarity threshold.
-func (store *EmbeddingStore) FindRelevantChunks(queryEmbedding []float64, topN int, embeddingModel string, threshold float64) []string {
+func (store *EmbeddingStore) FindRelevantChunks(queryEmbedding []float64, topN int, threshold float64) []string {
 	type similarityResult struct {
 		FileName   string
 		Similarity float64
 	}
 
 	var results []similarityResult
-
-	if threshold == 0 {
-		threshold = store.FindThresholdByModel(embeddingModel)
-	}
 
 	// Calculate similarity for each stored embedding
 	for fileName, storedEmbedding := range store.EmbeddingsStore {

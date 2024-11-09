@@ -7,7 +7,7 @@
 
 > 💡 **codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
-and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4, GPT-4o, GPT-4o mini, Ollama, and more.**
+and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4o, GPT-4, GPT-4o mini, Ollama, and more.**
 
 We use **two** main methods to manage context: **RAG** (Retrieval-Augmented Generation) and **Summarize Full Context of Code**.
 Each method has its own benefits and is chosen depending on the specific needs of the request. Below is a description of each method.
@@ -53,8 +53,9 @@ ai_provider_config:
   embedding_url: "http://localhost:11434/v1/embeddings" (Optional, If you want use RAG.)
   embedding_model: "text-embedding-3-small" (Optional, If you want use RAG.)
   temperature: 0.2
+  threshold: 0.3
 theme: "dracula"
-RAG: true (Optional, if you want, can disable RAG.)
+rag: true (Optional, If you want use RAG.)
 ```
 > Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction) and [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and you can find more details in documentation of each APIs.
 
@@ -74,10 +75,10 @@ This flexibility allows you to customize config of codai on the fly.
 
 ## 🔮 LLM Models
 ### ⚡ Best Models
-The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4`, `GPT-4o`, and `GPT-4o mini`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
+The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o` and `GPT-4`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
 
 ### 💻 Local Models
-In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like `DeepSeek-Coder-v2`, `CodeLlama`, and `Mistral`. These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
+In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like [Phi-3-medium instruct (128k)](https://github.com/marketplace/models/azureml/Phi-3-medium-128k-instruct), [Mistral Large (2407)](https://github.com/marketplace/models/azureml-mistral/Mistral-large-2407) and [Meta-Llama-3.1-70B-Instruct](https://github.com/marketplace/models/azureml-meta/Meta-Llama-3-1-70B-Instruct). These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
 
 ### 🌐 OpenAI Embedding Models
 The codai platform uses `OpenAI embedding models` to retrieve `relevant content` with high efficiency. Recommended models include are **text-embedding-3-large**, **text-embedding-3-small**, and **text-embedding-ada-002**, both known for their `cost-effectiveness` and `accuracy` in `capturing semantic relationships`. These models are ideal for applications needing high-quality performance in `code context retrieval`.
@@ -132,7 +133,7 @@ Summarize the full context of your codebase using Tree-sitter for accurate and e
 Implement a Retrieval-Augmented Generation system to improve the relevance and accuracy of code suggestions by retrieving relevant context from the project.
 
 ⚡ **Support variety of LLM models:**
-Work with advanced LLM models like `GPT-4, GPT-4o, GPT-4o mini and Ollama` to get high-quality code suggestions and interactions.
+Work with advanced LLM models like `GPT-4o, GPT-4, GPT-4o mini and Ollama` to get high-quality code suggestions and interactions.
 
 🗂️ **Edit Multiple Files at Once:**
 Enable the AI to modify several files at the same time, making it easier to handle complex requests that need changes in different areas of the code.
