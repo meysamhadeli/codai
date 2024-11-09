@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"github.com/meysamhadeli/codai/providers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,11 +23,11 @@ var defaultConfig = Config{
 	Theme:   "dracula",
 	RAG:     true,
 	AIProviderConfig: &providers.AIProviderConfig{
-		ProviderName:        "ollama",
+		ProviderName:        "openai",
 		EmbeddingURL:        "http://localhost:11434/v1/embeddings",
 		ChatCompletionURL:   "http://localhost:11434/v1/chat/completions",
-		ChatCompletionModel: "deepseek-coder-v2",
-		EmbeddingModel:      "all-minilm",
+		ChatCompletionModel: "gpt-4o",
+		EmbeddingModel:      "text-embedding-3-small",
 		Stream:              true,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
@@ -67,7 +67,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 		if err := viper.ReadInConfig(); err != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
+			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
 			os.Exit(1)
 		}
 	} else {
@@ -82,7 +82,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 
 	} else if cfgFile != "" {
 		// If a specific config file was set but not found, show error and exit
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Error reading config file: %v", err)))
 		os.Exit(1)
 	}
 
@@ -91,7 +91,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 
 	// Unmarshal the configuration into the Config struct
 	if err := viper.Unmarshal(&config); err != nil {
-		fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("Unable to decode into struct: %v", err)))
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Unable to decode into struct: %v", err)))
 		os.Exit(1)
 	}
 
@@ -107,7 +107,6 @@ func bindEnv() {
 	_ = viper.BindEnv("ai_provider_config.chat_completion_url", "CHAT_COMPLETION_URL")
 	_ = viper.BindEnv("ai_provider_config.chat_completion_model", "CHAT_COMPLETION_MODEL")
 	_ = viper.BindEnv("ai_provider_config.embedding_model", "EMBEDDING_MODEL")
-	_ = viper.BindEnv("ai_provider_config.encoding_format", "ENCODING_FORMAT")
 	_ = viper.BindEnv("ai_provider_config.temperature", "TEMPERATURE")
 	_ = viper.BindEnv("ai_provider_config.threshold", "THRESHOLD")
 	_ = viper.BindEnv("ai_provider_config.api_key", "API_KEY")
@@ -122,7 +121,6 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.chat_completion_url", rootCmd.Flags().Lookup("chat_completion_url"))
 	_ = viper.BindPFlag("ai_provider_config.chat_completion_model", rootCmd.Flags().Lookup("chat_completion_model"))
 	_ = viper.BindPFlag("ai_provider_config.embedding_model", rootCmd.Flags().Lookup("embedding_model"))
-	_ = viper.BindPFlag("ai_provider_config.encoding_format", rootCmd.Flags().Lookup("encoding_format"))
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
 	_ = viper.BindPFlag("ai_provider_config.threshold", rootCmd.Flags().Lookup("threshold"))
 	_ = viper.BindPFlag("ai_provider_config.api_key", rootCmd.Flags().Lookup("api_key"))
@@ -140,8 +138,7 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("chat_completion_url", defaultConfig.AIProviderConfig.ChatCompletionURL, "The API endpoint for chat completion requests. This URL is where chat messages are sent to receive AI-generated responses.")
 	rootCmd.PersistentFlags().String("chat_completion_model", defaultConfig.AIProviderConfig.ChatCompletionModel, "The name of the model used for chat completions, such as 'gpt-4o'. Different models offer varying levels of performance and capabilities.")
 	rootCmd.PersistentFlags().String("embedding_model", defaultConfig.AIProviderConfig.EmbeddingModel, "Specifies the AI model used for generating text embeddings (e.g., 'text-embedding-ada-002'). This model converts text into vector representations for similarity comparisons.")
-	rootCmd.PersistentFlags().String("encoding_format", defaultConfig.AIProviderConfig.EncodingFormat, "Specifies the format in which the AI embeddings or outputs are encoded (e.g., 'float' for floating-point numbers).")
 	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
-	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches (e.g., value should be between '0.2 - 1' and default is '0.3').")
+	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches and should be careful not to lose matches, while lower values provide a wider range of results to prevent losing any matches. (e.g., value should be between '0.2 - 1' and default is '0.3').")
 	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "The API key used to authenticate with the AI service provider.")
 }

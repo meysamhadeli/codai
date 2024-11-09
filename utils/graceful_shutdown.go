@@ -1,12 +1,14 @@
 package utils
 
 import (
+	"context"
 	"fmt"
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"os"
 )
 
-func GracefulShutdown(done chan bool, sigs chan os.Signal, chatHistoryCleanUp func()) {
+func GracefulShutdown(ctx context.Context, done chan bool, sigs chan os.Signal, chatHistoryCleanUp func()) {
+
 	go func() {
 		for {
 			select {
@@ -20,9 +22,13 @@ func GracefulShutdown(done chan bool, sigs chan os.Signal, chatHistoryCleanUp fu
 	// Defer the recovery function to handle panics
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(lipgloss_color.Red.Render(fmt.Sprintf("recovered from panic: %v", r)))
+			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("recovered from panic: %v", r)))
 			chatHistoryCleanUp()
 			done <- true // Signal the application to exit
 		}
 	}()
+
+	<-ctx.Done()
+	close(done)
+	return
 }

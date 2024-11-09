@@ -6,14 +6,14 @@ import (
 	"io"
 	"strings"
 
-	"github.com/meysamhadeli/codai/constants/lipgloss_color"
+	"github.com/meysamhadeli/codai/constants/lipgloss"
 )
 
 // InputPrompt prompts the user to enter their request for code assistance in a charming way
 func InputPrompt(reader *bufio.Reader) (string, error) {
 
 	// Beautifully styled prompt message
-	fmt.Print(lipgloss_color.BlueSky.Render("> "))
+	fmt.Print(lipgloss.BlueSky.Render("> "))
 
 	// Read user input
 	userInput, err := reader.ReadString('\n')
@@ -25,7 +25,7 @@ func InputPrompt(reader *bufio.Reader) (string, error) {
 		if err == io.EOF {
 			return "", nil
 		}
-		return "", fmt.Errorf(lipgloss_color.Red.Render("🚫 Error reading input: "))
+		return "", fmt.Errorf(lipgloss.Red.Render("🚫 Error reading input: "))
 	}
 
 	return strings.TrimSpace(userInput), nil

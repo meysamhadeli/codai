@@ -3,16 +3,11 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"github.com/meysamhadeli/codai/embed_data"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"log"
 	"strings"
-)
-
-// Define styles for the box
-var (
-	boxStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true).Border(lipgloss.NormalBorder()).PaddingLeft(1).PaddingRight(1).Align(lipgloss.Left)
 )
 
 // TokenManager implementation
@@ -74,15 +69,41 @@ func (tm *tokenManager) DisplayTokens(providerName string, model string, embeddi
 	cost := tm.CalculateCost(providerName, model, tm.usedInputToken, tm.usedOutputToken)
 	costEmbedding := tm.CalculateCost(providerName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
 
-	tokenInfo := fmt.Sprintf("Token Used: '%s' - Cost: '%s' - Chat Model: '%s'", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), model)
+	tokenInfo := fmt.Sprintf("Token Used: '%s' - Cost: '%s'$ - Chat Model: '%s'", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), model)
 
 	if isRag {
-		embeddingTokenDetails := fmt.Sprintf("Token Used: '%s' - Cost: '%s' - Embedding Model: '%s'", fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding), embeddingModel)
+		embeddingTokenDetails := fmt.Sprintf("Token Used: '%s' - Cost: '%s'$ - Embedding Model: '%s'", fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding), embeddingModel)
 		tokenInfo = tokenInfo + "\n" + embeddingTokenDetails
 	}
 
-	tokenBox := boxStyle.Render(tokenInfo)
+	tokenBox := lipgloss.BoxStyle.Render(tokenInfo)
 	fmt.Println(tokenBox)
+}
+
+func (tm *tokenManager) ClearToken() {
+	tm.usedToken = 0
+	tm.usedInputToken = 0
+	tm.usedOutputToken = 0
+	tm.usedEmbeddingToken = 0
+	tm.usedEmbeddingInputToken = 0
+	tm.usedEmbeddingOutputToken = 0
+}
+
+func (tm *tokenManager) CalculateCost(providerName string, modelName string, inputToken int, outputToken int) float64 {
+	modelDetails, err := getModelDetails(providerName, modelName)
+	if err != nil {
+		return 0
+	}
+	// Calculate cost for input tokens
+	inputCost := float64(inputToken) * modelDetails.InputCostPerToken
+
+	// Calculate cost for output tokens
+	outputCost := float64(outputToken) * modelDetails.OutputCostPerToken
+
+	// Total cost
+	totalCost := inputCost + outputCost
+
+	return totalCost
 }
 
 func getModelDetails(providerName string, modelName string) (details, error) {
@@ -113,21 +134,4 @@ func getModelDetails(providerName string, modelName string) (details, error) {
 	}
 
 	return model, nil
-}
-
-func (tm *tokenManager) CalculateCost(providerName string, modelName string, inputToken int, outputToken int) float64 {
-	modelDetails, err := getModelDetails(providerName, modelName)
-	if err != nil {
-		return 0
-	}
-	// Calculate cost for input tokens
-	inputCost := float64(inputToken) * modelDetails.InputCostPerToken
-
-	// Calculate cost for output tokens
-	outputCost := float64(outputToken) * modelDetails.OutputCostPerToken
-
-	// Total cost
-	totalCost := inputCost + outputCost
-
-	return totalCost
 }
