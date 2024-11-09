@@ -2,8 +2,11 @@ package embed_data
 
 import _ "embed"
 
-//go:embed prompts/code_block_prompt.tmpl
-var CodeBlockTemplate []byte
+//go:embed prompts/rag_context_prompt.tmpl
+var RagContextPrompt []byte
+
+//go:embed prompts/summarize_full_context_prompt.tmpl
+var SummarizeFullContextPrompt []byte
 
 //go:embed models_details/model_details.tmpl
 var ModelDetails []byte

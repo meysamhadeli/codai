@@ -138,7 +138,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					topN := -1
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
+					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.Threshold)
 					return nil
 				}
 
@@ -151,7 +151,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 					continue startLoop
 				}
 
-				fmt.Println()
 				spinnerLoadContextEmbedding.Stop()
 			}
 
@@ -160,6 +159,8 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			chatRequestOperation := func() error {
 				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContextCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
+				var b = finalPrompt + userInputPrompt
+				fmt.Println(b)
 				// Step 7: Send the relevant code and user input to the AI API
 				responseChan := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
 
@@ -200,7 +201,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 				if requestedContext != "" && err == nil {
 					aiResponseBuilder.Reset()
 
-					fmt.Println(lipgloss_color.BlueSky.Render("Trying to send above context files for getting code suggestion fromm AI...\n"))
+					fmt.Println(lipgloss_color.BlueSky.Render("\nThese files need to changes...\n"))
 
 					err = chatRequestOperation()
 
@@ -212,9 +213,9 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			}
 
 			// Extract code from AI response and structure this code to apply to git
-			changes, err := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
+			changes := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
-			if err != nil || changes == nil {
+			if changes == nil {
 				fmt.Println(lipgloss_color.BlueSky.Render("\nno code blocks with a valid path detected to apply."))
 				continue
 			}

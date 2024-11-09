@@ -29,7 +29,7 @@ func setup(t *testing.T) {
 		t.Fatalf("relativeTestDir should be relative, but got an absolute path: %s", relativePathTestDir)
 	}
 
-	analyzer = NewCodeAnalyzer(relativePathTestDir)
+	analyzer = NewCodeAnalyzer(relativePathTestDir, true)
 
 	// Register cleanup to remove everything inside relativePathTestDir
 	t.Cleanup(func() {
@@ -206,39 +206,238 @@ func TestApplyChanges_DeletedFile(t *testing.T) {
 	assert.Equal(t, content, string(savedContent))
 }
 
-// Test for ExtractCodeChanges
+// / Test for ExtractCodeChanges with standard input
 func TestExtractCodeChanges(t *testing.T) {
 	setup(t)
 	text := "File: test.go\n```go\npackage main\n```\nFile: test2.go\n```go\npackage main\n```"
 
-	codeChanges, err := analyzer.ExtractCodeChanges(text)
+	codeChanges := analyzer.ExtractCodeChanges(text)
 
-	assert.NoError(t, err)
 	assert.Len(t, codeChanges, 2)
 	assert.Equal(t, "test.go", codeChanges[0].RelativePath)
 	assert.Equal(t, "package main", codeChanges[0].Code)
+	assert.Equal(t, "test2.go", codeChanges[1].RelativePath)
+	assert.Equal(t, "package main", codeChanges[1].Code)
 }
 
-func TestExtractCodeChangesWithAdditionalsCharacters(t *testing.T) {
+// Test for ExtractCodeChanges with standard input (file path start with File: )
+func TestExtractCodeChangesWithStartPathWithFileColon(t *testing.T) {
+	setup(t)
+	text := "File: tests/fakes/Foo1.cs\n```go\npackage main\n```"
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	// Expect 1 change since there's only one code block and file path
+	assert.Len(t, codeChanges, 1)
+
+	// Check the file path and code
+	assert.Equal(t, "tests/fakes/Foo1.cs", codeChanges[0].RelativePath)
+	assert.Equal(t, "package main", codeChanges[0].Code)
+}
+
+// Test for ExtractCodeChanges with standard input (file path start with 1. )
+func TestExtractCodeChangesWithStartPathWithNumberAndDot(t *testing.T) {
+	setup(t)
+	text := "1. tests/fakes/Foo1.cs\n```go\npackage main\n```"
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	// Expect 1 change since there's only one code block and file path
+	assert.Len(t, codeChanges, 1)
+
+	// Check the file path and code
+	assert.Equal(t, "tests/fakes/Foo1.cs", codeChanges[0].RelativePath)
+	assert.Equal(t, "package main", codeChanges[0].Code)
+}
+
+// TestApplyChanges_AddLines tests if ApplyChanges correctly adds new lines prefixed with "+".
+func TestApplyChanges_AddLines(t *testing.T) {
+	setup(t)
+
+	// Define the relative path and initial content for the file
+	filePath := filepath.Join(relativePathTestDir, "addlines.go")
+	initialContent := "package main\nfunc main() {}"
+	addedLinesDiff := "+func newFunc() {}\nfunc main() {}"
+
+	// Create the file with initial content
+	err := os.WriteFile(filePath, []byte(initialContent), 0644)
+	assert.NoError(t, err)
+
+	// Use ApplyChanges to add new lines
+	err = analyzer.ApplyChanges(filePath, addedLinesDiff)
+	assert.NoError(t, err)
+
+	// Verify the new lines were added correctly
+	expectedContent := " func newFunc() {}\nfunc main() {}"
+	savedContent, err := os.ReadFile(filePath)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedContent, string(savedContent))
+}
+
+// TestApplyChanges_RemoveLines tests if ApplyChanges correctly removes lines prefixed with "-".
+func TestApplyChanges_RemoveLines(t *testing.T) {
+	setup(t)
+
+	// Define the relative path and initial content for the file
+	filePath := filepath.Join(relativePathTestDir, "removelines.go")
+	initialContent := "package main\nfunc toBeRemoved() {}\nfunc main() {}"
+	removedLinesDiff := "-func toBeRemoved() {}\nfunc main() {}"
+
+	// Create the file with initial content
+	err := os.WriteFile(filePath, []byte(initialContent), 0644)
+	assert.NoError(t, err)
+
+	// Use ApplyChanges to remove specific lines
+	err = analyzer.ApplyChanges(filePath, removedLinesDiff)
+	assert.NoError(t, err)
+
+	// Verify the specified lines were removed
+	expectedContent := "func main() {}"
+	savedContent, err := os.ReadFile(filePath)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedContent, string(savedContent))
+}
+
+// TestApplyChanges_AddAndRemoveLines tests if ApplyChanges handles both "+" and "-" prefixed lines.
+func TestApplyChanges_AddAndRemoveLines(t *testing.T) {
+	setup(t)
+
+	// Define the relative path and initial content for the file
+	filePath := filepath.Join(relativePathTestDir, "addremovelines.go")
+	initialContent := "package main\nfunc oldFunc() {}\nfunc main() {}"
+	addRemoveLinesDiff := "-func oldFunc() {}\n+func newFunc() {}\nfunc main() {}"
+
+	// Create the file with initial content
+	err := os.WriteFile(filePath, []byte(initialContent), 0644)
+	assert.NoError(t, err)
+
+	// Use ApplyChanges to add and remove specific lines
+	err = analyzer.ApplyChanges(filePath, addRemoveLinesDiff)
+	assert.NoError(t, err)
+
+	// Verify the lines were added and removed correctly
+	expectedContent := " func newFunc() {}\nfunc main() {}"
+	savedContent, err := os.ReadFile(filePath)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedContent, string(savedContent))
+}
+
+// Test for ExtractCodeChanges with additional characters around the file path
+func TestExtractCodeChangesWithAdditionalCharacters(t *testing.T) {
 	setup(t)
 	text := "\n\n#####File: test.go#####\n```go\npackage main\n```\nFile: test2.go\n```go\npackage main\n```"
 
-	codeChanges, err := analyzer.ExtractCodeChanges(text)
+	codeChanges := analyzer.ExtractCodeChanges(text)
 
-	assert.NoError(t, err)
 	assert.Len(t, codeChanges, 2)
 	assert.Equal(t, "test.go", codeChanges[0].RelativePath)
 	assert.Equal(t, "package main", codeChanges[0].Code)
+	assert.Equal(t, "test2.go", codeChanges[1].RelativePath)
+	assert.Equal(t, "package main", codeChanges[1].Code)
 }
 
-func TestExtractCodeChangesWithRemoveCharacters(t *testing.T) {
+// Test for ExtractCodeChanges with missing whitespace around "file:"
+func TestExtractCodeChangesWithDifferentFileLabelFormat(t *testing.T) {
 	setup(t)
 	text := "file:test.go\n```go\npackage main\n```\nFile: test2.go\n```go\npackage main\n```"
 
-	codeChanges, err := analyzer.ExtractCodeChanges(text)
+	codeChanges := analyzer.ExtractCodeChanges(text)
 
-	assert.NoError(t, err)
 	assert.Len(t, codeChanges, 2)
+	assert.Equal(t, "test.go", codeChanges[0].RelativePath)
+	assert.Equal(t, "package main", codeChanges[0].Code)
+	assert.Equal(t, "test2.go", codeChanges[1].RelativePath)
+	assert.Equal(t, "package main", codeChanges[1].Code)
+}
+
+// Test for ExtractCodeChanges with prefixes like "### 5."
+func TestExtractCodeChangesWithSpecialFilePathFormat(t *testing.T) {
+	setup(t)
+	text := "### 5. Direction.cs/nssss\n```csharp\npublic class Direction {}\n```"
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	assert.Len(t, codeChanges, 1)
+	assert.Equal(t, "Direction.cs", codeChanges[0].RelativePath)
+	assert.Equal(t, "public class Direction {}", codeChanges[0].Code)
+}
+
+// TestExtractCodeChangesWithUnsupportedColonPrefixExpectNil checks that an unsupported colon prefix returns nil
+func TestExtractCodeChangesWithUnsupportedColonPrefixExpectNil(t *testing.T) {
+	setup(t)
+	text := "## test: Direction.cs/nssss\n```csharp\npublic class Direction {}\n```"
+
+	// Run ExtractCodeChanges with the unsupported prefix in the file path
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	// Expect an empty result because the prefix "## test:" is not supported
+	assert.Len(t, codeChanges, 0) // Expect no code changes
+	assert.Nil(t, codeChanges)    // Expect nil for codeChanges since no valid paths were found
+}
+
+// TestExtractCodeChangesWithUnsupportedDotPrefixExpectNil checks that an unsupported dot prefix returns nil
+func TestExtractCodeChangesWithUnsupportedDotPrefixExpectNil(t *testing.T) {
+	setup(t)
+	text := "someCharacter. Direction.cs/nssss\n```csharp\npublic class Direction {}\n```"
+
+	// Run ExtractCodeChanges with the unsupported prefix in the file path
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	// Expect an empty result because the prefix "someCharacter." is not supported
+	assert.Len(t, codeChanges, 0) // Expect no code changes
+	assert.Nil(t, codeChanges)    // Expect nil for codeChanges since no valid paths were found
+}
+
+// Test for ExtractCodeChanges with "## File:" prefix before file path
+func TestExtractCodeChangesWithFilePrefixAndSlashInFilePath(t *testing.T) {
+	setup(t)
+	text := "## File: Direction.cs/nssss\n```csharp\npublic class Direction {}\n```"
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	assert.Len(t, codeChanges, 1)
+	assert.Equal(t, "Direction.cs", codeChanges[0].RelativePath)
+	assert.Equal(t, "public class Direction {}", codeChanges[0].Code)
+}
+
+// Test for ExtractCodeChanges with no code blocks
+func TestExtractCodeChangesWithNoCodeBlocks(t *testing.T) {
+	setup(t)
+	text := "File: test.go\nFile: test2.go\n"
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	assert.Len(t, codeChanges, 0)
+}
+
+// Test for ExtractCodeChanges with empty text input
+func TestExtractCodeChangesWithEmptyText(t *testing.T) {
+	setup(t)
+	text := ""
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	assert.Len(t, codeChanges, 0)
+}
+
+// Test for ExtractCodeChanges with non-matching patterns
+func TestExtractCodeChangesWithNonMatchingPatterns(t *testing.T) {
+	setup(t)
+	text := "Random text without any file paths or code blocks."
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	assert.Len(t, codeChanges, 0)
+}
+
+// Test for ExtractCodeChanges with multiple code blocks for the same file
+func TestExtractCodeChangesWithMultipleCodeBlocksSameFile(t *testing.T) {
+	setup(t)
+	text := "File: test.go\n```go\npackage main\n```\n```go\nfunc main() {}\n```"
+
+	codeChanges := analyzer.ExtractCodeChanges(text)
+
+	assert.Len(t, codeChanges, 1) // Only the first code block associated with each file path
 	assert.Equal(t, "test.go", codeChanges[0].RelativePath)
 	assert.Equal(t, "package main", codeChanges[0].Code)
 }

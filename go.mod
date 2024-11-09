@@ -3,10 +3,10 @@ module github.com/meysamhadeli/codai
 go 1.23.2
 
 require (
+	github.com/alecthomas/chroma v0.10.0
 	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/charmbracelet/lipgloss v1.0.0
-	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/pterm/pterm v0.12.79
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/spf13/cobra v1.8.1
@@ -25,7 +25,6 @@ require (
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/uuid v1.4.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -41,6 +40,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/sergi/go-diff v1.3.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
