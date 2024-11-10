@@ -87,7 +87,7 @@ func (store *EmbeddingStore) FindRelevantChunks(queryEmbedding []float64, topN i
 	var relevantCode []string
 	for i := 0; i < len(results) && (topN == -1 || i < topN); i++ {
 		fileName := results[i].FileName
-		relevantCode = append(relevantCode, fmt.Sprintf("File: %s\nSimilarity: %.4f\n%s", fileName, results[i].Similarity, store.CodeStore[fileName]))
+		relevantCode = append(relevantCode, fmt.Sprintf("**File: %s**\n\n%s", fileName, store.CodeStore[fileName]))
 	}
 
 	return relevantCode

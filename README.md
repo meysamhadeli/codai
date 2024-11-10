@@ -7,7 +7,7 @@
 
 > 💡 **codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
-and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4o, GPT-4, GPT-4o mini, Ollama, and more.**
+and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4o, GPT-4, Ollama, and more.**
 
 We use **two** main methods to manage context: **RAG** (Retrieval-Augmented Generation) and **Summarize Full Context of Code**.
 Each method has its own benefits and is chosen depending on the specific needs of the request. Below is a description of each method.
@@ -133,7 +133,7 @@ Summarize the full context of your codebase using Tree-sitter for accurate and e
 Implement a Retrieval-Augmented Generation system to improve the relevance and accuracy of code suggestions by retrieving relevant context from the project.
 
 ⚡ **Support variety of LLM models:**
-Work with advanced LLM models like `GPT-4o, GPT-4, GPT-4o mini and Ollama` to get high-quality code suggestions and interactions.
+Work with advanced LLM models like `GPT-4o, GPT-4 and Ollama` to get high-quality code suggestions and interactions.
 
 🗂️ **Edit Multiple Files at Once:**
 Enable the AI to modify several files at the same time, making it easier to handle complex requests that need changes in different areas of the code.
