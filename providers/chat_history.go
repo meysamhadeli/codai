@@ -18,7 +18,7 @@ func (ch *chatHistory) GetHistory() []string {
 // AddToHistory Method to add conversation to the session history
 func (ch *chatHistory) AddToHistory(userInputPrompt string, aiResponse string) {
 
-	history := fmt.Sprintf(fmt.Sprintf("### History time:\n\n%v\n---------\n\n", time.Now())+"## Here is user request:\n\n%s\n---------\n\n## Here is the the response from using AI:\n\n%s", userInputPrompt, aiResponse)
+	history := fmt.Sprintf(fmt.Sprintf("### History time:\n\n%v\n---------\n\n", time.Now())+"### Here is user request:\n\n%s\n---------\n\n### Here is the the response from using AI:\n\n%s", userInputPrompt, aiResponse)
 
 	ch.History = append(ch.History, history)
 }

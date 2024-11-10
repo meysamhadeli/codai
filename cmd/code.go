@@ -26,15 +26,11 @@ based on the current project context. Each interaction is part of a session, all
 improved responses throughout the user experience.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		rootDependencies := handleRootCommand(cmd)
-		err := handleCodeCommand(rootDependencies)
-		if err != nil {
-			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-			rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
-		}
+		handleCodeCommand(rootDependencies)
 	},
 }
 
-func handleCodeCommand(rootDependencies *RootDependencies) error {
+func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	// Create a context with cancel function
 	ctx, cancel := context.WithCancel(context.Background())
@@ -59,6 +55,9 @@ func handleCodeCommand(rootDependencies *RootDependencies) error {
 
 	var fullContextCodes []string
 
+	codeOptionsBox := lipgloss.BoxStyle.Render(":help  Help for code subcommand")
+	fmt.Println(codeOptionsBox)
+
 	spinnerLoadContext, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Loading Context...")
 
 	// Get all data files from the root directory
@@ -66,13 +65,10 @@ func handleCodeCommand(rootDependencies *RootDependencies) error {
 
 	if err != nil {
 		spinnerLoadContext.Stop()
-		return fmt.Errorf(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 	}
 
 	spinnerLoadContext.Stop()
-
-	codeOptionsBox := lipgloss.BoxStyle.Render(":help  Help for code subcommand")
-	fmt.Println(codeOptionsBox)
 
 	// Launch the user input handler in a goroutine
 startLoop: // Label for the start loop
@@ -80,9 +76,14 @@ startLoop: // Label for the start loop
 		select {
 		case <-ctx.Done():
 			<-done // Wait for gracefulShutdown to complete
-			return nil
+			return
 
 		default:
+
+			displayTokens := func() {
+				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
+			}
+
 			// Get user input
 			userInput, err := utils.InputPrompt(reader)
 			if err != nil {
@@ -91,16 +92,16 @@ startLoop: // Label for the start loop
 			}
 
 			// Configure help code subcommand
-			shouldContinue, shouldSkip := findCodeSubCommand(userInput, rootDependencies)
+			isHelpSubcommands, exit := findCodeSubCommand(userInput, rootDependencies)
 
-			if shouldContinue {
+			if isHelpSubcommands {
 				continue
 			}
 
-			if shouldSkip {
+			if exit {
 				cancel() // Initiate shutdown for the app's own ":exit" command
 				<-done   // Wait for gracefulShutdown to complete
-				return nil
+				return
 			}
 
 			// If RAG is enabled, we use RAG system for retrieve most relevant data due user request
@@ -138,6 +139,7 @@ startLoop: // Label for the start loop
 				for err = range errorChan {
 					spinnerLoadContextEmbedding.Stop()
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+					displayTokens()
 					continue startLoop
 				}
 
@@ -167,6 +169,7 @@ startLoop: // Label for the start loop
 				if err != nil {
 					spinnerLoadContextEmbedding.Stop()
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+					displayTokens()
 					continue startLoop
 				}
 
@@ -179,6 +182,8 @@ startLoop: // Label for the start loop
 				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContextCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
 				// Step 7: Send the relevant code and user input to the AI API
+				var b = finalPrompt + userInputPrompt
+				fmt.Println(b)
 				responseChan := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
 
 				// Iterate over response channel to handle streamed data or errors.
@@ -208,6 +213,7 @@ startLoop: // Label for the start loop
 
 			if err != nil {
 				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+				displayTokens()
 				continue startLoop
 			}
 
@@ -224,6 +230,7 @@ startLoop: // Label for the start loop
 
 					if err != nil {
 						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+						displayTokens()
 						continue
 					}
 				}
@@ -234,6 +241,7 @@ startLoop: // Label for the start loop
 
 			if changes == nil {
 				fmt.Println(lipgloss.BlueSky.Render("\nno code blocks with a valid path detected to apply."))
+				displayTokens()
 				continue
 			}
 
@@ -278,8 +286,7 @@ startLoop: // Label for the start loop
 				}
 				spinnerUpdateContext.Stop()
 			}
-
-			rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
+			displayTokens()
 		}
 	}
 }
@@ -295,7 +302,7 @@ func findCodeSubCommand(command string, rootDependencies *RootDependencies) (boo
 		fmt.Print("\033[2J\033[H")
 		return true, false
 	case ":exit":
-		return false, true
+		return false, false
 	case ":token":
 		rootDependencies.TokenManagement.DisplayTokens(
 			rootDependencies.Config.AIProviderConfig.ProviderName,
@@ -311,6 +318,6 @@ func findCodeSubCommand(command string, rootDependencies *RootDependencies) (boo
 		rootDependencies.ChatHistory.ClearHistory()
 		return true, false
 	default:
-		return true, false
+		return false, false
 	}
 }

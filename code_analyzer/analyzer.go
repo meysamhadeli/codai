@@ -109,7 +109,7 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 
 			// Append the file data to the result
 			result = append(result, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
-			codes = append(codes, fmt.Sprintf("File: %s\n\n%s", relativePath, strings.Join(codeParts, "\n")))
+			codes = append(codes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, strings.Join(codeParts, "\n")))
 		}
 
 		return nil
@@ -251,7 +251,7 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) []models.CodeChang
 	}
 
 	// Regex patterns for file paths and code blocks
-	filePathPattern := regexp.MustCompile(`(?i)(?:\d+\.\s*|File:\s*)([^\s*]+?\.[a-zA-Z0-9]+)\b`)
+	filePathPattern := regexp.MustCompile("(?i)(?:\\d+\\.\\s*|File:\\s*)[`']?([^\\s*`']+?\\.[a-zA-Z0-9]+)[`']?\\b")
 	// Capture entire diff blocks, assuming they are enclosed in ```diff ... ```
 	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
 
