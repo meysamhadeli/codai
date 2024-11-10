@@ -182,8 +182,6 @@ startLoop: // Label for the start loop
 				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContextCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
 				// Step 7: Send the relevant code and user input to the AI API
-				var b = finalPrompt + userInputPrompt
-				fmt.Println(b)
 				responseChan := rootDependencies.CurrentProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
 
 				// Iterate over response channel to handle streamed data or errors.

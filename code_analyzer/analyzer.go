@@ -244,42 +244,74 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 	return requestedContext, nil
 }
 
-// ExtractCodeChanges extracts code changes from the given text.
-func (analyzer *CodeAnalyzer) ExtractCodeChanges(text string) []models.CodeChange {
-	if text == "" {
-		return nil
-	}
+func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChange {
+	filePathPattern := regexp.MustCompile(`(?i)(?:\d+\.\s*|File:\s*)(\S+\.[a-zA-Z0-9]+)`)
 
-	// Regex patterns for file paths and code blocks
-	filePathPattern := regexp.MustCompile("(?i)(?:\\d+\\.\\s*|File:\\s*)[`']?([^\\s*`']+?\\.[a-zA-Z0-9]+)[`']?\\b")
-	// Capture entire diff blocks, assuming they are enclosed in ```diff ... ```
-	codeBlockPattern := regexp.MustCompile("(?s)```[a-zA-Z0-9]*\\s*(.*?)\\s*```")
+	lines := strings.Split(diff, "\n")
+	var fileChanges []models.CodeChange
 
-	// Find all file path matches and code block matches
-	filePathMatches := filePathPattern.FindAllStringSubmatch(text, -1)
-	codeMatches := codeBlockPattern.FindAllStringSubmatch(text, -1)
+	var currentFilePath string
+	var currentCodeBlock []string
+	insideCodeBlock := false
 
-	// Ensure pairs are processed up to the minimum count of matches
-	minLength := len(filePathMatches)
-	if len(codeMatches) < minLength {
-		minLength = len(codeMatches)
-	}
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
 
-	// Initialize code changes
-	var codeChanges []models.CodeChange
-	for i := 0; i < minLength; i++ {
-		relativePath := strings.TrimSpace(filePathMatches[i][1])
-		code := strings.TrimSpace(codeMatches[i][1])
+		// Detect a new file path
+		if !insideCodeBlock && filePathPattern.MatchString(trimmedLine) {
+			// Add the previous file's change if there was one
+			if currentFilePath != "" && len(currentCodeBlock) > 0 {
+				fileChanges = append(fileChanges, models.CodeChange{
+					RelativePath: currentFilePath,
+					Code:         strings.Join(currentCodeBlock, "\n"),
+				})
+				currentCodeBlock = nil
+			}
 
-		// Capture the relative path and associated diff content
-		codeChange := models.CodeChange{
-			RelativePath: relativePath,
-			Code:         code,
+			// Capture the new file path
+			matches := filePathPattern.FindStringSubmatch(trimmedLine)
+			currentFilePath = matches[1]
+			continue
 		}
-		codeChanges = append(codeChanges, codeChange)
+
+		// Start of a code block
+		if strings.HasPrefix(trimmedLine, "```") {
+			if !insideCodeBlock {
+				// Start a code block only if a file path is defined
+				if currentFilePath != "" {
+					insideCodeBlock = true
+				}
+				continue
+			} else {
+				// End the code block
+				insideCodeBlock = false
+				if currentFilePath != "" && len(currentCodeBlock) > 0 {
+					fileChanges = append(fileChanges, models.CodeChange{
+						RelativePath: currentFilePath,
+						Code:         strings.Join(currentCodeBlock, "\n"),
+					})
+					currentCodeBlock = nil
+					currentFilePath = ""
+				}
+				continue
+			}
+		}
+
+		// Collect lines inside a code block
+		if insideCodeBlock {
+			currentCodeBlock = append(currentCodeBlock, line)
+		}
 	}
 
-	return codeChanges
+	// Add the last collected code block if any
+	if currentFilePath != "" && len(currentCodeBlock) > 0 {
+		fileChanges = append(fileChanges, models.CodeChange{
+			RelativePath: currentFilePath,
+			Code:         strings.Join(currentCodeBlock, "\n"),
+		})
+	}
+
+	return fileChanges
 }
 
 func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
