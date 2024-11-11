@@ -245,7 +245,7 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 }
 
 func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChange {
-	filePathPattern := regexp.MustCompile(`(?i)(?:\d+\.\s*|File:\s*)(\S+\.[a-zA-Z0-9]+)`)
+	filePathPattern := regexp.MustCompile("(?i)(?:\\d+\\.\\s*|File:\\s*)[`']?([^\\s*`']+?\\.[a-zA-Z0-9]+)[`']?\\b")
 
 	lines := strings.Split(diff, "\n")
 	var fileChanges []models.CodeChange
@@ -332,8 +332,7 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 			continue
 		} else if strings.HasPrefix(trimmedLine, "+") {
 			// Add lines that start with "+", but remove the "+" symbol
-			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", " "))
-
+			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", ""))
 		} else {
 			// Keep all other lines as they are
 			updatedContent = append(updatedContent, line)

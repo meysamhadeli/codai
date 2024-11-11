@@ -4,31 +4,20 @@ import (
 	"context"
 	"fmt"
 	"github.com/meysamhadeli/codai/constants/lipgloss"
-	"os"
 )
 
-func GracefulShutdown(ctx context.Context, done chan bool, sigs chan os.Signal, chatHistoryCleanUp func()) {
-
-	go func() {
-		for {
-			select {
-			case <-sigs:
-				chatHistoryCleanUp()
-				done <- true // Signal the application to exit
-			}
-		}
-	}()
-
-	// Defer the recovery function to handle panics
+func GracefulShutdown(ctx context.Context, cleanup func()) {
+	// Defer the recovery function to handle any panics during cleanup
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("recovered from panic: %v", r)))
-			chatHistoryCleanUp()
-			done <- true // Signal the application to exit
+			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Recovered from panic: %v", r)))
+			cleanup()
 		}
 	}()
 
+	// Wait for the context to be canceled by an external signal (e.g., SIGINT or SIGTERM)
 	<-ctx.Done()
-	close(done)
-	return
+
+	// When the context is canceled, perform cleanup
+	cleanup()
 }
