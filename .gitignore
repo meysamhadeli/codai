@@ -35,3 +35,6 @@ LICENSE
 
 # Config
 config.yml
+
+# Assets
+/assets/
