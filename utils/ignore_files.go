@@ -58,6 +58,20 @@ func IsDefaultIgnored(path string) bool {
 		"*.dll",
 		"*.log",
 		"*.bak",
+		".mp3",
+		".wav",
+		".aac",
+		".flac",
+		".ogg",
+		".jpg",
+		".jpeg",
+		".png",
+		".gif",
+		".mkv",
+		".mp4",
+		".avi",
+		".mov",
+		".wmv",
 	}
 
 	// Split the path into parts based on the file separator
@@ -65,6 +79,7 @@ func IsDefaultIgnored(path string) bool {
 
 	// Check each part for any ignore patterns
 	for _, part := range parts {
+		part = strings.ToLower(part)
 		for _, pattern := range ignorePatterns {
 			if strings.HasPrefix(pattern, "*") {
 				// If the pattern starts with '*', check for suffix

@@ -12,37 +12,36 @@
    - Explain any needed changes.
 
 
-For providing response you should consider following rules:
+## General Instructions for Code Modifications:
+     - **First line**: the **file name** with **relative path**; no extra markup, punctuation, comments, etc. **JUST** the **file name** with **relative path** and **file name** should using **naming conversion** base on **language**.
+     - **Second line**: Start of the **diff BLOCK**.
+     - **All subsequent lines**: The modified code, with specific prefixes based on the change:
+       - Prefix **"+"** for added lines.
+       - Prefix **"-"** for removed lines.
+       - **Unchanged lines** should **not** be prefixed; they should remain as they are.
+     - **Last line**: End of the **diff BLOCK**.
+   - Always add **relative path** and **file name** **top** of each **diff BLOCK**.
+   - If **add** a new line, always **must** use prefix **"+"**.
+   - If **remove** a line, always **must** use prefix **"-"**.
+   - If you **modify** or **fix** or **refactor** each line **must** use **"+"** or **"-"** and for **unchanged line** leave it as it is.
+   - **Do not** forget put prefix **"+"** and **"-"** during **modification** lines.
 
-- Provide your suggested changes or new feature using the `Unified Diff format` to clearly describe code modifications before any explanation and don't add any extra code blocks.
-- If there are `no code changes` like `edit`, `delete` or `add new feature` with user requests in the code base, don't create any `Unified Diff` sections.
-- You should add `-` to removed lines and `+` for modified and new lines according unified diff rules.
-- For creating a new file show original path `--- /dev/null` and modified path to `+++ [new file relativePath]`.
-- For deleting a file, show the original path as --- [relativeFilePath of deleted file] and the modified path as `+++ /dev/null`.
-- For file moves or renames, show a deletion with `--- [original relativeFilePath]` and `+++ /dev/null`, and a creation at the new path with `--- /dev/null` and `+++ [new relativeFilePath]`, including any modified content.
-- Create seperated **md diff block** sections in `Unified Diff` format for each `relative file path` in the response.
+## **diff BLOCK** Code Format:
 
+File: relativePath/fileName.ext
+```if chane is a modification use **diff**, otherwise if it's a **new file** use **language of code** here.
+    package main
 
-You MUST use bellow **Unified Diff format** as a section for showing every `modification` or `adding` in each file and you should differentiate between the old and new versions using the following format:
+    import "fmt"
++   import "time"
 
-```diff
---- [original relativePath/fileName.ext]
-+++ [modified relativePath/fileName.ext]
-@@ -[start line],[count] +[start line],[count] @@
-- [code before change]
-+ [code after change]
+    func main() {
+-   fmt.Println("Hello, World!")
++   fmt.Println("Welcome to Go programming!")
++   fmt.Println("Current time:", time.Now())
+    fmt.Println("This is another unchanged line")
+    }
 ```
 
-Here is explanation of above structure about creating **Unified Diff sections** for showing changes in a code file:
-
-- `--- [original relativeFilePath]`: The line starting with `---` is followed by the `relative file path` of the `original file` before any changes. It identifies the initial state of the file.
-- `+++ [modified relativeFilePath]`: The line starts with `+++` is followed by the `relative file path` of the `modified file`. It represents the file after changes are made.
-- `@@ -[start line],[count] +[start line],[count] @@`: The line starts with `@@` and end with `@@` is known as a `hunk header`, specifies the lines where `changes occur`. It provides the starting line number and the count of lines in both the original and modified files.
-  - `-[start line],[count]`: Describes where the change starts in the original file and the number of lines it affects.
-  - `+[start line],[count]`: Provides the starting line and the number of lines affected in the modified file.
-- `-`: Lines beginning with `-` indicate that these lines were removed from the original version and are no longer present in the modified version.
-- `+`: Lines starting with `+` indicate new content added in the modified version that did not exist in the original file.
-
-
 ## Important:
-   - Under no circumstances, if the Code BLOCK is empty or Code BLOCK is incomplete, do **not** include placeholder comments like "// REST OF THE CODE" or "// IMPLEMENTATION OF....".
+   - Under no circumstances, if the some part of **body** or **block** is **empty** or **incomplete**, do **not** include placeholder comments like "// REST OF THE CODE" or "// IMPLEMENTATION OF....".

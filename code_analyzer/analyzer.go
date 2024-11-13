@@ -91,9 +91,16 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 		// Ensure that the current entry is a file, not a directory
 		if !d.IsDir() {
 
+			// Check file size
+			fileInfo, err := os.Stat(path)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get file info: %s, error: %w", relativePath, err)
 			}
+			// Skip files over 100 KB (100 * 1024 bytes)
+			if fileInfo.Size() > 100*1024 {
+				return nil // Skip this file
+			}
+
 			if utils.IsGitIgnored(relativePath, gitIgnorePatterns) {
 				// Debugging: Print the ignored file
 				return nil // Skip this file
@@ -332,7 +339,7 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 			continue
 		} else if strings.HasPrefix(trimmedLine, "+") {
 			// Add lines that start with "+", but remove the "+" symbol
-			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", ""))
+			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", " "))
 		} else {
 			// Keep all other lines as they are
 			updatedContent = append(updatedContent, line)

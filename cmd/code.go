@@ -36,9 +36,10 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	spinner := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100)
+	spinner := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).WithRemoveWhenDone(true)
 
-	go utils.GracefulShutdown(ctx, func() {
+	go utils.GracefulShutdown(ctx, stop, func() {
+
 		rootDependencies.ChatHistory.ClearHistory()
 		rootDependencies.TokenManagement.ClearToken()
 	})
@@ -57,6 +58,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	spinnerLoadContext, err := spinner.Start("Loading Context...")
 	if err != nil {
 		spinnerLoadContext.Stop()
+		fmt.Print("\r")
 		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 	}
 
@@ -64,6 +66,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
 
 	spinnerLoadContext.Stop()
+	fmt.Print("\r")
 
 	// Launch the user input handler in a goroutine
 startLoop: // Label for the start loop
@@ -83,6 +86,11 @@ startLoop: // Label for the start loop
 
 			if err != nil {
 				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+				continue
+			}
+
+			if userInput == "" {
+				fmt.Print("\r")
 				continue
 			}
 
@@ -132,6 +140,7 @@ startLoop: // Label for the start loop
 				// Handle any errors that occurred during processing
 				for err = range errorChan {
 					spinnerEmbeddingContext.Stop()
+					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 					displayTokens()
 					continue startLoop
@@ -153,18 +162,20 @@ startLoop: // Label for the start loop
 					topN := -1
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.Threshold)
+					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
 					return nil
 				}
 
 				if err := queryEmbeddingOperation(); err != nil {
 					spinnerEmbeddingContext.Stop()
+					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 					displayTokens()
 					continue startLoop
 				}
 
 				spinnerEmbeddingContext.Stop()
+				fmt.Print("\r")
 			}
 
 			var aiResponseBuilder strings.Builder
@@ -266,9 +277,11 @@ startLoop: // Label for the start loop
 				fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
 				if err != nil {
 					spinnerUpdateContext.Stop()
+					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 				}
 				spinnerUpdateContext.Stop()
+				fmt.Print("\r")
 			}
 			displayTokens()
 		}
