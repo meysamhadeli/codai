@@ -33,18 +33,15 @@ improved responses throughout the user experience.`,
 func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	// Create a context with cancel function
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	//Channel to signal when the application should shut down
-	done := make(chan bool)
+	spinner := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).WithRemoveWhenDone(true)
 
-	sigs := make(chan os.Signal, 1)
+	go utils.GracefulShutdown(ctx, stop, func() {
 
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	go utils.GracefulShutdown(ctx, done, sigs, func() {
 		rootDependencies.ChatHistory.ClearHistory()
+		rootDependencies.TokenManagement.ClearToken()
 	})
 
 	reader := bufio.NewReader(os.Stdin)
@@ -58,36 +55,42 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	codeOptionsBox := lipgloss.BoxStyle.Render(":help  Help for code subcommand")
 	fmt.Println(codeOptionsBox)
 
-	spinnerLoadContext, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Loading Context...")
+	spinnerLoadContext, err := spinner.Start("Loading Context...")
+	if err != nil {
+		spinnerLoadContext.Stop()
+		fmt.Print("\r")
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+	}
 
 	// Get all data files from the root directory
 	fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
 
-	if err != nil {
-		spinnerLoadContext.Stop()
-		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-	}
-
 	spinnerLoadContext.Stop()
+	fmt.Print("\r")
 
 	// Launch the user input handler in a goroutine
 startLoop: // Label for the start loop
 	for {
 		select {
 		case <-ctx.Done():
-			<-done // Wait for gracefulShutdown to complete
+			// Wait for GracefulShutdown to complete
 			return
 
 		default:
-
 			displayTokens := func() {
 				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.ChatCompletionModel, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.RAG)
 			}
 
 			// Get user input
 			userInput, err := utils.InputPrompt(reader)
+
 			if err != nil {
 				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+				continue
+			}
+
+			if userInput == "" {
+				fmt.Print("\r")
 				continue
 			}
 
@@ -99,17 +102,16 @@ startLoop: // Label for the start loop
 			}
 
 			if exit {
-				cancel() // Initiate shutdown for the app's own ":exit" command
-				<-done   // Wait for gracefulShutdown to complete
 				return
 			}
 
 			// If RAG is enabled, we use RAG system for retrieve most relevant data due user request
 			if rootDependencies.Config.RAG {
+
+				spinnerEmbeddingContext, err := spinner.Start("Embedding Context...")
+
 				var wg sync.WaitGroup
 				errorChan := make(chan error, len(fullContextFiles))
-
-				spinnerLoadContextEmbedding, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Embedding Context...")
 
 				for _, dataFile := range fullContextFiles {
 					wg.Add(1) // Increment the WaitGroup counter
@@ -127,7 +129,7 @@ startLoop: // Label for the start loop
 						}
 
 						// Call the retryWithBackoff function with the operation and a 3-time retry
-						if err := utils.RetryWithBackoff(filesEmbeddingOperation, 3); err != nil {
+						if err := filesEmbeddingOperation(); err != nil {
 							errorChan <- err // Send the error to the channel
 						}
 					}(dataFile) // Pass the current dataFile to the Goroutine
@@ -137,7 +139,8 @@ startLoop: // Label for the start loop
 				close(errorChan) // Close the error channel
 				// Handle any errors that occurred during processing
 				for err = range errorChan {
-					spinnerLoadContextEmbedding.Stop()
+					spinnerEmbeddingContext.Stop()
+					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 					displayTokens()
 					continue startLoop
@@ -159,21 +162,20 @@ startLoop: // Label for the start loop
 					topN := -1
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.Threshold)
+					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingModel, rootDependencies.Config.AIProviderConfig.Threshold)
 					return nil
 				}
 
-				// Call the retryWithBackoff function with the operation and a 3 time retry
-				err = utils.RetryWithBackoff(queryEmbeddingOperation, 3)
-
-				if err != nil {
-					spinnerLoadContextEmbedding.Stop()
+				if err := queryEmbeddingOperation(); err != nil {
+					spinnerEmbeddingContext.Stop()
+					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 					displayTokens()
 					continue startLoop
 				}
 
-				spinnerLoadContextEmbedding.Stop()
+				spinnerEmbeddingContext.Stop()
+				fmt.Print("\r")
 			}
 
 			var aiResponseBuilder strings.Builder
@@ -206,10 +208,7 @@ startLoop: // Label for the start loop
 				return nil
 			}
 
-			// Call the retryWithBackoff function with the operation and a 3 time retry
-			err = utils.RetryWithBackoff(chatRequestOperation, 3)
-
-			if err != nil {
+			if err := chatRequestOperation(); err != nil {
 				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 				displayTokens()
 				continue startLoop
@@ -224,9 +223,7 @@ startLoop: // Label for the start loop
 
 					fmt.Println(lipgloss.BlueSky.Render("\nThese files need to changes...\n"))
 
-					err = chatRequestOperation()
-
-					if err != nil {
+					if err := chatRequestOperation(); err != nil {
 						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 						displayTokens()
 						continue
@@ -275,14 +272,16 @@ startLoop: // Label for the start loop
 			// If we need Update the context after apply changes
 			if updateContextNeeded {
 
-				spinnerUpdateContext, err := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).Start("Updating Context...")
+				spinnerUpdateContext, err := spinner.Start("Updating Context...")
 
 				fullContextFiles, fullContextCodes, err = rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
 				if err != nil {
 					spinnerUpdateContext.Stop()
+					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
 				}
 				spinnerUpdateContext.Stop()
+				fmt.Print("\r")
 			}
 			displayTokens()
 		}
@@ -300,7 +299,7 @@ func findCodeSubCommand(command string, rootDependencies *RootDependencies) (boo
 		fmt.Print("\033[2J\033[H")
 		return true, false
 	case ":exit":
-		return false, false
+		return false, true
 	case ":token":
 		rootDependencies.TokenManagement.DisplayTokens(
 			rootDependencies.Config.AIProviderConfig.ProviderName,

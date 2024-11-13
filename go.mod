@@ -4,7 +4,6 @@ go 1.23.2
 
 require (
 	github.com/alecthomas/chroma/v2 v2.14.0
-	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/pterm/pterm v0.12.79
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82

@@ -33,50 +33,37 @@
     - **Skip all further instructions**, including any additional processing or explanation.
 
 
+
 ## General Instructions for Code Modifications:
-   - If you **modify** or **add** lines in code, follow the exact format for the **Code BLOCK**:
      - **First line**: the **file name** with **relative path**; no extra markup, punctuation, comments, etc. **JUST** the **file name** with **relative path** and **file name** should using **naming conversion** base on **language**.
-     - **Second line**: Start of the markdown highlighted  **Code BLOCK**.
+     - **Second line**: Start of the **diff BLOCK**.
      - **All subsequent lines**: The modified code, with specific prefixes based on the change:
        - Prefix **"+"** for added lines.
        - Prefix **"-"** for removed lines.
        - **Unchanged lines** should **not** be prefixed; they should remain as they are.
-     - **Last line**: End of the markdown highlighted **Code BLOCK**.
-   - If you provide a **diff** always give me **full code** and **do not summarize that** only for **modify part**, always I want **full code**.
-   - Always add **relative path** and **file name** **top** of each **Code BLOCK**.
+     - **Last line**: End of the **diff BLOCK**.
+   - Always add **relative path** and **file name** **top** of each **diff BLOCK**.
+   - If **add** a new line, always **must** use prefix **"+"**.
+   - If **remove** a line, always **must** use prefix **"-"**.
+   - If you **modify** or **fix** or **refactor** each line **must** use **"+"** or **"-"** and for **unchanged line** leave it as it is.
+   - **Do not** forget put prefix **"+"** and **"-"** during **modification** lines.
 
-## Code BLOCK Format:
-   - Every code modification **must follow** this pattern strictly, ensuring that added, removed, and unchanged lines are marked correctly with **"+"**, **"-"**, or skipped for unchanged lines and keep in mind **give me all of unchanged line and dont summarize them.**
-   - **Example format**:
+## **diff BLOCK** Code Format:
 
 File: relativePath/fileName.ext
-```diff
-     package main
+```if chane is a modification use **diff**, otherwise if it's a **new file** use **language of code** here.
+    package main
 
-     import "fmt"
+    import "fmt"
 +   import "time"
 
-     func main() {
+    func main() {
 -   fmt.Println("Hello, World!")
 +   fmt.Println("Welcome to Go programming!")
 +   fmt.Println("Current time:", time.Now())
-     fmt.Println("This is another unchanged line")
-     }
+    fmt.Println("This is another unchanged line")
+    }
 ```
-     - The **added lines** would have the **"+"** prefix.
-     - The **removed lines** would have the **"-"** prefix.
-     - The **unchanged lines** should **remain as is** without any prefix.
-
-## For Added Lines:
-   - Any new lines or methods that are added **must be prefixed with a plus sign (+)**.
-   - If you add methods or classes, mark them as added.
-
-## For Removed Lines:
-   - Any lines that are deleted **must be prefixed with a minus sign (-)**.
-
-## For Unchanged Lines:
-   - Always give me unchanged line **without summarize** them **exactly like as they were before**.
-   - Any line of code that remains unchanged **should not be prefixed and should remain as is**.
 
 ## Important:
-   - Under no circumstances, if the Code BLOCK is empty or Code BLOCK is incomplete, do **not** include placeholder comments like "// REST OF THE CODE" or "// IMPLEMENTATION OF....".
+   - Under no circumstances, if the some part of **body** or **block** is **empty** or **incomplete**, do **not** include placeholder comments like "// REST OF THE CODE" or "// IMPLEMENTATION OF....".

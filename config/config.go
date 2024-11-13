@@ -31,7 +31,7 @@ var defaultConfig = Config{
 		Stream:              true,
 		EncodingFormat:      "float",
 		Temperature:         0.2,
-		Threshold:           0.3,
+		Threshold:           0,
 		ApiKey:              "",
 	},
 }

@@ -50,13 +50,12 @@ $env:API_KEY="your_api_key""
 `codai` requires a `config.yml` file in the root of your working directory to analyze your project. By default, the `config.yml` contains the following values:
 ```yml
 ai_provider_config:
-  provider_name: "openai"
+  provider_name: "openai" 
   chat_completion_url: "http://localhost:11434/v1/chat/completions"
   chat_completion_model: "gpt-4o"
   embedding_url: "http://localhost:11434/v1/embeddings" (Optional, If you want use RAG.)
   embedding_model: "text-embedding-3-small" (Optional, If you want use RAG.)
   temperature: 0.2
-  threshold: 0.3
 theme: "dracula"
 rag: true (Optional, If you want use RAG.)
 ```
