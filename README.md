@@ -3,9 +3,9 @@
 [![Apache License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](https://github.com/meysamhadeli/codai/blob/main/LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/meysamhadeli/codai.svg)](https://pkg.go.dev/github.com/meysamhadeli/codai)
 
-# codai
+# Codai
 
-> 💡 **codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
+> 💡 **Codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
 and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM models, including GPT-4o, GPT-4, Ollama, and more.**
 
@@ -56,6 +56,7 @@ ai_provider_config:
   embedding_url: "http://localhost:11434/v1/embeddings" (Optional, If you want use RAG.)
   embedding_model: "text-embedding-3-small" (Optional, If you want use RAG.)
   temperature: 0.2
+  threshold: 0.3 (Optional, If you want use RAG.)
 theme: "dracula"
 rag: true (Optional, If you want use RAG.)
 ```
