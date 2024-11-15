@@ -95,7 +95,7 @@ To use `codai` as your code assistant, navigate to the directory where you want 
 ```bash
 codai code
 ```
-This command will initiate the codai assistant to help you with your coding tasks with undrestanding the context of your code.
+This command will initiate the codai assistant to help you with your coding tasks with understanding the context of your code.
 
 ## ✨ Features
 
