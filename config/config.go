@@ -19,13 +19,13 @@ type Config struct {
 
 // Default configuration values
 var defaultConfig = Config{
-	Version: "1.0",
+	Version: "1.6.3",
 	Theme:   "dracula",
 	RAG:     true,
 	AIProviderConfig: &providers.AIProviderConfig{
 		ProviderName:        "openai",
-		EmbeddingURL:        "http://localhost:11434/v1/embeddings",
-		ChatCompletionURL:   "http://localhost:11434/v1/chat/completions",
+		EmbeddingURL:        "https://api.openai.com/v1/embeddings",
+		ChatCompletionURL:   "https://api.openai.com/v1/chat/completions",
 		ChatCompletionModel: "gpt-4o",
 		EmbeddingModel:      "text-embedding-3-small",
 		Stream:              true,
@@ -133,7 +133,7 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("theme", defaultConfig.Theme, "Set customize theme for buffering response from ai. (e.g., 'dracula', 'light', 'dark')")
 	rootCmd.PersistentFlags().Bool("rag", defaultConfig.RAG, "Enable Retrieval-Augmented Generation (RAG) for enhanced responses using relevant data retrieval (e.g., default is 'enabled' and just retrieve related context base on user request).")
 	rootCmd.PersistentFlags().StringP("version", "v", defaultConfig.Version, "Specifies the version of the application or service. This helps to track the release or update of the software.")
-	rootCmd.PersistentFlags().StringP("provider_name", "p", defaultConfig.AIProviderConfig.ProviderName, "Specifies the name of the AI service provider (e.g., 'openai'). This determines which service or API will be used for AI-related functions.")
+	rootCmd.PersistentFlags().StringP("provider_name", "p", defaultConfig.AIProviderConfig.ProviderName, "Specifies the name of the AI service provider (e.g., 'openai' or 'ollama'). This determines which service or API will be used for AI-related functions.")
 	rootCmd.PersistentFlags().String("embedding_url", defaultConfig.AIProviderConfig.EmbeddingURL, "The API endpoint used for text embedding requests. This URL points to the server that processes and returns text embeddings.")
 	rootCmd.PersistentFlags().String("chat_completion_url", defaultConfig.AIProviderConfig.ChatCompletionURL, "The API endpoint for chat completion requests. This URL is where chat messages are sent to receive AI-generated responses.")
 	rootCmd.PersistentFlags().String("chat_completion_model", defaultConfig.AIProviderConfig.ChatCompletionModel, "The name of the model used for chat completions, such as 'gpt-4o'. Different models offer varying levels of performance and capabilities.")

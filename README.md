@@ -47,22 +47,44 @@ For `PowerShell`, use:
 $env:API_KEY="your_api_key""
 ```
 ### 🔧 Configuration
-`codai` requires a `config.yml` file in the root of your working directory to analyze your project. By default, the `config.yml` contains the following values:
+`codai` requires a `config.yml` file in the `root of your working directory` or using `environment variables` to set below configs `globally` as a configuration.
+
+By default codai config works with `openai` provider and the `config.yml` contains the following values:
+
+**config.yml - openai sample**
 ```yml
 ai_provider_config:
-  provider_name: "openai" 
-  chat_completion_url: "http://localhost:11434/v1/chat/completions"
+  provider_name: "openai"
+  chat_completion_url: "https://api.openai.com/v1/chat/completions"
   chat_completion_model: "gpt-4o"
-  embedding_url: "http://localhost:11434/v1/embeddings" (Optional, If you want use RAG.)
-  embedding_model: "text-embedding-3-small" (Optional, If you want use RAG.)
+  embedding_url: "https://api.openai.com/v1/embeddings" #(Optional, If you want use RAG.)
+  embedding_model: "text-embedding-3-small" #(Optional, If you want use RAG.)
   temperature: 0.2
-  threshold: 0.3 (Optional, If you want use RAG.)
+  threshold: 0.3 #(Optional, If you want use RAG.)
 theme: "dracula"
-rag: true (Optional, If you want use RAG.)
+rag: true #(Optional, If you want use RAG.)
 ```
+
+Also, to provide the config for the `ollama` provider and the `config.yml` contains the following values:
+
+**config.yml - ollama sample**
+
+```yml
+ai_provider_config:
+  provider_name: "ollama"
+  chat_completion_url: "http://localhost:11434/v1/chat/completions"
+  chat_completion_model: "llama3.1"
+  embedding_url: "http://localhost:11434/v1/embeddings" #(Optional, If you want use RAG.)
+  embedding_model: "all-minilm:l6-v2" #(Optional, If you want use RAG.)
+  temperature: 0.2
+  threshold: 0.3 #(Optional, If you want use RAG.)
+theme: "dracula"
+rag: true #(Optional, If you want use RAG.)
+```
+
 > Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction) and [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and you can find more details in documentation of each APIs.
 
-If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of each project you want to analyze with codai. If no configuration file is provided, codai will use the default settings.
+If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of `each project` you want to analyze with codai. If `no configuration` file is provided, codai will use the `default settings`.
 
 You can also specify a configuration file from any directory by using the following CLI command:
 ```bash
