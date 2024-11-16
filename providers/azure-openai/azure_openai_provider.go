@@ -1,4 +1,4 @@
-package openai
+package azure_openai
 
 import (
 	"bufio"
@@ -7,17 +7,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	azure_openai_models "github.com/meysamhadeli/codai/providers/azure-openai/models"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
-	openai_models "github.com/meysamhadeli/codai/providers/openai/models"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
 )
 
-// OpenAIConfig implements the Provider interface for OpenAPI.
-type OpenAIConfig struct {
+// AzureOpenAIConfig implements the Provider interface for OpenAPI.
+type AzureOpenAIConfig struct {
 	BaseURL              string
 	EmbeddingModel       string
 	ChatCompletionModel  string
@@ -32,9 +32,9 @@ type OpenAIConfig struct {
 	EmbeddingsApiVersion string
 }
 
-// NewOpenAIProvider initializes a new OpenAPIProvider.
-func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
-	return &OpenAIConfig{
+// NewAzureOpenAIProvider initializes a new OpenAPIProvider.
+func NewAzureOpenAIProvider(config *AzureOpenAIConfig) contracts.IAIProvider {
+	return &AzureOpenAIConfig{
 		BaseURL:              config.BaseURL,
 		EmbeddingModel:       config.EmbeddingModel,
 		ChatCompletionModel:  config.ChatCompletionModel,
@@ -44,19 +44,19 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		Threshold:            config.Threshold,
 		ChatApiKey:           config.ChatApiKey,
 		EmbeddingsApiKey:     config.EmbeddingsApiKey,
-		TokenManagement:      config.TokenManagement,
 		ChatApiVersion:       config.ChatApiVersion,
 		EmbeddingsApiVersion: config.EmbeddingsApiVersion,
+		TokenManagement:      config.TokenManagement,
 	}
 }
 
-func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error) {
+func (azureOpenAIProvider *AzureOpenAIConfig) EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error) {
 
 	// Create the request payload
-	requestBody := openai_models.OpenAIEmbeddingRequest{
+	requestBody := azure_openai_models.OpenAIEmbeddingRequest{
 		Input:          prompt,
-		Model:          openAIProvider.EmbeddingModel,
-		EncodingFormat: openAIProvider.EncodingFormat,
+		Model:          azureOpenAIProvider.EmbeddingModel,
+		EncodingFormat: azureOpenAIProvider.EncodingFormat,
 	}
 
 	// Convert the request payload to JSON
@@ -66,14 +66,14 @@ func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt
 	}
 
 	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/embeddings", openAIProvider.BaseURL), bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/openai/deployments/%s/embeddings?api-version=%s", azureOpenAIProvider.BaseURL, azureOpenAIProvider.EmbeddingModel, azureOpenAIProvider.EmbeddingsApiVersion), bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
 	// Set required headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openAIProvider.EmbeddingsApiKey))
+	req.Header.Set("api-key", azureOpenAIProvider.EmbeddingsApiKey)
 
 	// Make the HTTP request
 	client := &http.Client{}
@@ -104,7 +104,7 @@ func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt
 	}
 
 	// Unmarshal the response JSON into the struct
-	var embeddingResponse openai_models.OpenAIEmbeddingResponse
+	var embeddingResponse azure_openai_models.OpenAIEmbeddingResponse
 	err = json.Unmarshal(body, &embeddingResponse)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding JSON response: %v", err)
@@ -112,30 +112,30 @@ func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt
 
 	// Count total tokens usage
 	if embeddingResponse.UsageEmbedding.TotalTokens > 0 {
-		openAIProvider.TokenManagement.UsedEmbeddingTokens(embeddingResponse.UsageEmbedding.TotalTokens, 0)
+		azureOpenAIProvider.TokenManagement.UsedEmbeddingTokens(embeddingResponse.UsageEmbedding.TotalTokens, 0)
 	}
 
 	return [][]float64{embeddingResponse.Data[0].Embedding}, nil
 }
 
-func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse {
+func (azureOpenAIProvider *AzureOpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse {
 	responseChan := make(chan models.StreamResponse)
-	var markdownBuffer strings.Builder // Buffer to accumulate content until newline
-	var usage openai_models.Usage      // Variable to hold usage data
+	var markdownBuffer strings.Builder  // Buffer to accumulate content until newline
+	var usage azure_openai_models.Usage // Variable to hold usage data
 
 	go func() {
 		defer close(responseChan)
 
 		// Prepare the request body
-		reqBody := openai_models.OpenAIChatCompletionRequest{
-			Model: openAIProvider.ChatCompletionModel,
-			Messages: []openai_models.Message{
+		reqBody := azure_openai_models.OpenAIChatCompletionRequest{
+			Model: azureOpenAIProvider.ChatCompletionModel,
+			Messages: []azure_openai_models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
 			Stream:      true,
-			Temperature: &openAIProvider.Temperature,
-			StreamOptions: openai_models.StreamOptions{
+			Temperature: &azureOpenAIProvider.Temperature,
+			StreamOptions: azure_openai_models.StreamOptions{
 				IncludeUsage: true,
 			},
 		}
@@ -148,7 +148,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/chat/completions", openAIProvider.BaseURL), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", azureOpenAIProvider.BaseURL, azureOpenAIProvider.ChatCompletionModel, azureOpenAIProvider.ChatApiVersion), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
@@ -156,7 +156,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openAIProvider.ChatApiKey))
+		req.Header.Set("api-key", azureOpenAIProvider.ChatApiKey)
 
 		client := &http.Client{}
 		resp, err := client.Do(req)
@@ -206,7 +206,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 
 				// Count total tokens usage
 				if usage.TotalTokens > 0 {
-					openAIProvider.TokenManagement.UsedTokens(usage.PromptTokens, usage.CompletionTokens)
+					azureOpenAIProvider.TokenManagement.UsedTokens(usage.PromptTokens, usage.CompletionTokens)
 				}
 
 				break
@@ -214,7 +214,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 
 			if strings.HasPrefix(line, "data: ") {
 				jsonPart := strings.TrimPrefix(line, "data: ")
-				var response openai_models.OpenAIChatCompletionResponse
+				var response azure_openai_models.OpenAIChatCompletionResponse
 				if err := json.Unmarshal([]byte(jsonPart), &response); err != nil {
 					markdownBuffer.Reset()
 
