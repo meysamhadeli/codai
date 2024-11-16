@@ -26,7 +26,7 @@ The codai uses **RAG** (Retrieval-Augmented Generation) to **improve code sugges
 codai **retrieves the just necessary context**, which is then sent with the user’s query to the code-suggestion AI model. This approach **reduces token usage** and provides accurate,
 helpful responses, making it the recommended method.
 
-## 🧩 Summarize Full Context of Code
+## 🌳 Summarize Full Context of Code with Tree-sitter
 Another approach involves creating a **summary of the full context of project** with **Tree-sitter** and in this approach we just send the **signature body of our code** without **full implementation of code block** to the AI. When a **user requests a specific part of code**,
 the system can **retrieve the full context for just that section**. This approach also **saves tokens** because it just **sends only completed parts**, but
 it usually uses **slightly more tokens than the RAG method**. In **RAG**, only the **related context send to the AI** for **saving even more tokens**.
@@ -143,7 +143,7 @@ Allow users to customize settings through a config file (e.g., changing AI provi
 📊 **Project Context Awareness:**
 Maintain awareness of the entire project context to provide more accurate suggestions.
 
-🌳 **Full Context Summarization:**
+🌳 **Full Context Summarization with Tree-sitter:**
 Summarize the full context of your codebase using Tree-sitter for accurate and efficient code analysis.
 
 🔍 **RAG System Implementation:**
