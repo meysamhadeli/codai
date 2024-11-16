@@ -25,7 +25,8 @@ type OpenAIConfig struct {
 	ChatCompletionModel string
 	Temperature         float32
 	EncodingFormat      string
-	ApiKey              string
+	ChatApiKey          string
+	EmbeddingsApiKey    string
 	MaxTokens           int
 	Threshold           float64
 	TokenManagement     contracts.ITokenManagement
@@ -42,7 +43,8 @@ func NewOpenAIProvider(config *OpenAIConfig) contracts.IAIProvider {
 		EncodingFormat:      config.EncodingFormat,
 		MaxTokens:           config.MaxTokens,
 		Threshold:           config.Threshold,
-		ApiKey:              config.ApiKey,
+		ChatApiKey:          config.ChatApiKey,
+		EmbeddingsApiKey:    config.EmbeddingsApiKey,
 		TokenManagement:     config.TokenManagement,
 		Name:                config.Name,
 	}
@@ -71,7 +73,7 @@ func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt
 
 	// Set required headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("api-key", openAIProvider.ApiKey)
+	req.Header.Set("api-key", openAIProvider.EmbeddingsApiKey)
 
 	// Make the HTTP request
 	client := &http.Client{}
@@ -154,7 +156,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("api-key", openAIProvider.ApiKey)
+		req.Header.Set("api-key", openAIProvider.ChatApiKey)
 
 		client := &http.Client{}
 		resp, err := client.Do(req)

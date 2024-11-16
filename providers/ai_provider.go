@@ -18,7 +18,8 @@ type AIProviderConfig struct {
 	EncodingFormat      string  `mapstructure:"encoding_format"`
 	MaxTokens           int     `mapstructure:"max_tokens"`
 	Threshold           float64 `mapstructure:"threshold"`
-	ApiKey              string  `mapstructure:"api_key"`
+	ChatApiKey          string  `mapstructure:"chat_api_key"`
+	EmbeddingsApiKey    string  `mapstructure:"embeddings_api_key"`
 }
 
 // ProviderFactory creates a Provider based on the given provider config.
@@ -45,7 +46,8 @@ func ProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenM
 			EmbeddingModel:      config.EmbeddingModel,
 			ChatCompletionURL:   config.ChatCompletionURL,
 			EmbeddingURL:        config.EmbeddingURL,
-			ApiKey:              config.ApiKey,
+			ChatApiKey:          config.ChatApiKey,
+			EmbeddingsApiKey:    config.EmbeddingsApiKey,
 			MaxTokens:           config.MaxTokens,
 			Threshold:           config.Threshold,
 			TokenManagement:     tokenManagement,

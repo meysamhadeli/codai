@@ -16,7 +16,7 @@ and suggest improvements or new code based on your context. This AI-powered tool
 
 1. **RAG** (Retrieval-Augmented Generation)
    
-2. **Summarize Full Context of Code**.
+2. **Summarize Full Context of Code with Tree-sitter**.
 
 Each method has its own benefits and is chosen depending on the specific needs of the request. Below is a description of each method.
 
@@ -27,8 +27,8 @@ codai **retrieves the just necessary context**, which is then sent with the user
 helpful responses, making it the recommended method.
 
 ## 🧩 Summarize Full Context of Code
-Another approach involves creating a **summary of the full context of project** and sending it to the AI. When a **user requests a specific part of code**,
-the system can **retrieve the full context for just that section**. This method also **saves tokens** because it **sends only relevant parts**, but
+Another approach involves creating a **summary of the full context of project** with **Tree-sitter** and in this approach we just send the **signature body of our code** without **full implementation of code block** to the AI. When a **user requests a specific part of code**,
+the system can **retrieve the full context for just that section**. This approach also **saves tokens** because it just **sends only completed parts**, but
 it usually uses **slightly more tokens than the RAG method**. In **RAG**, only the **related context send to the AI** for **saving even more tokens**.
 
 
@@ -44,12 +44,14 @@ To use codai, you need to set your environment variable for the API key.
 
 For `Bash`, use:
 ```bash
-export API_KEY="your_api_key"
+export CHAT_API_KEY="your_chat_api_key"
+export EMBEDDINGS_API_KEY="your_embeddings_api_key"     #(Optional, If you want use RAG.)
 ```
 
 For `PowerShell`, use:
 ```powershell
-$env:API_KEY="your_api_key""
+$env:CHAT_API_KEY="your_chat_api_key"
+$env:EMBEDDINGS_API_KEY="your_embeddings_api_key"     #(Optional, If you want use RAG.) 
 ```
 ### 🔧 Configuration
 `codai` requires a `config.yml` file in the `root of your working directory` or using `environment variables` to set below configs `globally` as a configuration.
@@ -59,7 +61,7 @@ The `config` file should be like following example base on your `AI provider`:
 **config.yml**
 ```yml
 ai_provider_config:
-  provider_name: "openai" # openai | ollama
+  provider_name: "openai" # openai | ollama | azure-openai
   chat_completion_url: "https://api.openai.com/v1/chat/completions"
   chat_completion_model: "gpt-4o"
   embedding_url: "https://api.openai.com/v1/embeddings" #(Optional, If you want use RAG.)
