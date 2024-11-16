@@ -12,7 +12,12 @@ and suggest improvements or new code based on your context. This AI-powered tool
 ![](./assets/codai-demo.gif)
 
 
-We use **two** main methods to manage context: **RAG** (Retrieval-Augmented Generation) and **Summarize Full Context of Code**.
+> We use **two** main methods to **manage** and **summarize full context**: 
+
+1. **RAG** (Retrieval-Augmented Generation)
+   
+2. **Summarize Full Context of Code**.
+
 Each method has its own benefits and is chosen depending on the specific needs of the request. Below is a description of each method.
 
 ## 📚 RAG
