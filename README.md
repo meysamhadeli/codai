@@ -65,7 +65,8 @@ theme: "dracula"
 rag: true #(Optional, If you want use RAG.)
 ```
 
-> Note: For `ollama` provider use base url `http://localhost:11434` ollama for chat, embeddings url and also use your `desire models` ollama for chat, embeddings model.
+> Note: For `ollama` provider use base url `http://localhost:11434` for chat, embeddings url and also use your `desire models` ollama for chat, embeddings model.
+
 > Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction) and [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and you can find more details in documentation of each APIs.
 
 If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of `each project` you want to analyze with codai. If `no configuration` file is provided, codai will use the `default settings`.
