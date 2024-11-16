@@ -61,20 +61,19 @@ The `config` file should be like following example base on your `AI provider`:
 **config.yml**
 ```yml
 ai_provider_config:
-  provider_name: "openai" # openai | ollama | azure-openai
-  chat_completion_url: "https://api.openai.com/v1/chat/completions"
+  provider_name: "openai"     # openai | ollama | azure-openai
+  base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
   chat_completion_model: "gpt-4o"
-  embedding_url: "https://api.openai.com/v1/embeddings" #(Optional, If you want use RAG.)
-  embedding_model: "text-embedding-3-small" #(Optional, If you want use RAG.)
+  embedding_model: "text-embedding-3-small"     #(Optional, If you want use RAG.)
+  chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like AzureOpenai has chat api version.)
+  embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like AzureOpenai has embeddings api version.)
   temperature: 0.2
-  threshold: 0.3 #(Optional, If you want use RAG.)
+  threshold: 0.3     #(Optional, If you want use RAG.)
 theme: "dracula"
-rag: true #(Optional, If you want use RAG.)
+rag: true     #(Optional, If you want use RAG.)
 ```
 
-> Note: For `ollama` provider use base url `http://localhost:11434` for chat, embeddings url and also use your `desire models` ollama for chat, embeddings model.
-
-> Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction) and [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and you can find more details in documentation of each APIs.
+> Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction), [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and [Azure Openai](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference) and you can find more details in documentation of each APIs.
 
 If you wish to customize your configuration, you can create your own `config.yml` file and place it in the `root directory` of `each project` you want to analyze with codai. If `no configuration` file is provided, codai will use the `default settings`.
 
@@ -84,7 +83,7 @@ codai code --config ./config.yml
 ```
 Additionally, you can pass configuration options directly in the command line. For example:
 ```bash
-codai code --provider_name openapi --temperature 0.8
+codai code --provider_name openapi --temperature 0.8 --chat_api_key test-chat-key --embeddings_api_key test-embeddings-key
 ```
 This flexibility allows you to customize config of codai on the fly.
 

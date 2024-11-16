@@ -18,8 +18,7 @@ import (
 
 // OllamaConfig implements the Provider interface for Ollama.
 type OllamaConfig struct {
-	EmbeddingURL        string
-	ChatCompletionURL   string
+	BaseURL             string
 	EmbeddingModel      string
 	ChatCompletionModel string
 	Temperature         float32
@@ -27,14 +26,12 @@ type OllamaConfig struct {
 	MaxTokens           int
 	Threshold           float64
 	TokenManagement     contracts.ITokenManagement
-	Name                string
 }
 
 // NewOllamaProvider initializes a new OllamaProvider.
 func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 	return &OllamaConfig{
-		EmbeddingURL:        config.EmbeddingURL,
-		ChatCompletionURL:   config.ChatCompletionURL,
+		BaseURL:             config.BaseURL,
 		ChatCompletionModel: config.ChatCompletionModel,
 		EmbeddingModel:      config.EmbeddingModel,
 		EncodingFormat:      config.EncodingFormat,
@@ -42,7 +39,6 @@ func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
 		MaxTokens:           config.MaxTokens,
 		Threshold:           config.Threshold,
 		TokenManagement:     config.TokenManagement,
-		Name:                config.Name,
 	}
 }
 
@@ -60,7 +56,7 @@ func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt
 	}
 
 	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.EmbeddingURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/embed", ollamaProvider.BaseURL), bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
@@ -138,7 +134,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", ollamaProvider.ChatCompletionURL, bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/chat", ollamaProvider.BaseURL), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
