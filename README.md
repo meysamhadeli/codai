@@ -12,7 +12,7 @@ and suggest improvements or new code based on your context. This AI-powered tool
 ![](./assets/codai-demo.gif)
 
 
-> We use **two** main methods to **summarize full context**: 
+> We use **two** main methods to **manage** and **summarize full context**: 
 
 1. **RAG** (Retrieval-Augmented Generation)
    
