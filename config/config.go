@@ -32,7 +32,8 @@ var defaultConfig = Config{
 		EncodingFormat:      "float",
 		Temperature:         0.2,
 		Threshold:           0,
-		ApiKey:              "",
+		ChatApiKey:          "",
+		EmbeddingsApiKey:    "",
 	},
 }
 
@@ -55,7 +56,8 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	viper.SetDefault("ai_provider_config.encoding_format", defaultConfig.AIProviderConfig.EncodingFormat)
 	viper.SetDefault("ai_provider_config.temperature", defaultConfig.AIProviderConfig.Temperature)
 	viper.SetDefault("ai_provider_config.threshold", defaultConfig.AIProviderConfig.Threshold)
-	viper.SetDefault("ai_provider_config.api_key", defaultConfig.AIProviderConfig.ApiKey)
+	viper.SetDefault("ai_provider_config.chat_api_key", defaultConfig.AIProviderConfig.ChatApiKey)
+	viper.SetDefault("ai_provider_config.embeddings_api_key", defaultConfig.AIProviderConfig.EmbeddingsApiKey)
 
 	// Automatically read environment variables
 	viper.AutomaticEnv() // This will look for variables that match config keys directly
@@ -109,7 +111,8 @@ func bindEnv() {
 	_ = viper.BindEnv("ai_provider_config.embedding_model", "EMBEDDING_MODEL")
 	_ = viper.BindEnv("ai_provider_config.temperature", "TEMPERATURE")
 	_ = viper.BindEnv("ai_provider_config.threshold", "THRESHOLD")
-	_ = viper.BindEnv("ai_provider_config.api_key", "API_KEY")
+	_ = viper.BindEnv("ai_provider_config.chat_api_key", "CHAT_API_KEY")
+	_ = viper.BindEnv("ai_provider_config.embeddings_api_key", "EMBEDDINGS_API_KEY")
 }
 
 // bindFlags binds the CLI flags to configuration values.
@@ -123,7 +126,8 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.embedding_model", rootCmd.Flags().Lookup("embedding_model"))
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
 	_ = viper.BindPFlag("ai_provider_config.threshold", rootCmd.Flags().Lookup("threshold"))
-	_ = viper.BindPFlag("ai_provider_config.api_key", rootCmd.Flags().Lookup("api_key"))
+	_ = viper.BindPFlag("ai_provider_config.chat_api_key", rootCmd.Flags().Lookup("chat_api_key"))
+	_ = viper.BindPFlag("ai_provider_config.embeddings_api_key", rootCmd.Flags().Lookup("embeddings_api_key"))
 }
 
 // InitFlags initializes the flags for the root command.
@@ -140,5 +144,6 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("embedding_model", defaultConfig.AIProviderConfig.EmbeddingModel, "Specifies the AI model used for generating text embeddings (e.g., 'text-embedding-ada-002'). This model converts text into vector representations for similarity comparisons.")
 	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
 	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches and should be careful not to lose matches, while lower values provide a wider range of results to prevent losing any matches. (e.g., value should be between '0.2 - 1' and default is '0.3').")
-	rootCmd.PersistentFlags().String("api_key", defaultConfig.AIProviderConfig.ApiKey, "The API key used to authenticate with the AI service provider.")
+	rootCmd.PersistentFlags().String("chat_api_key", defaultConfig.AIProviderConfig.ChatApiKey, "The chat API key used to authenticate with the AI service provider.")
+	rootCmd.PersistentFlags().String("embeddings_api_key", defaultConfig.AIProviderConfig.EmbeddingsApiKey, "The embeddings API key used to authenticate with the AI service provider.")
 }

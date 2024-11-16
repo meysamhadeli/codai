@@ -44,12 +44,14 @@ To use codai, you need to set your environment variable for the API key.
 
 For `Bash`, use:
 ```bash
-export API_KEY="your_api_key"
+export CHAT_API_KEY="your_chat_api_key"
+export EMBEDDINGS_API_KEY="your_embeddings_api_key"     #(Optional, If you want use RAG.)
 ```
 
 For `PowerShell`, use:
 ```powershell
-$env:API_KEY="your_api_key""
+$env:CHAT_API_KEY="your_chat_api_key"
+$env:EMBEDDINGS_API_KEY="your_embeddings_api_key"     #(Optional, If you want use RAG.) 
 ```
 ### 🔧 Configuration
 `codai` requires a `config.yml` file in the `root of your working directory` or using `environment variables` to set below configs `globally` as a configuration.
@@ -59,7 +61,7 @@ The `config` file should be like following example base on your `AI provider`:
 **config.yml**
 ```yml
 ai_provider_config:
-  provider_name: "openai" # openai | ollama
+  provider_name: "openai" # openai | ollama | azure-openai
   chat_completion_url: "https://api.openai.com/v1/chat/completions"
   chat_completion_model: "gpt-4o"
   embedding_url: "https://api.openai.com/v1/embeddings" #(Optional, If you want use RAG.)
