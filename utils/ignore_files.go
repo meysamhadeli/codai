@@ -42,6 +42,7 @@ func GetGitignorePatterns() ([]string, error) {
 func IsDefaultIgnored(path string) bool {
 	// Define ignore patterns
 	ignorePatterns := []string{
+		"codai-config.yml",
 		".git",
 		".svn",
 		".sum",
@@ -58,20 +59,6 @@ func IsDefaultIgnored(path string) bool {
 		"*.dll",
 		"*.log",
 		"*.bak",
-		".mp3",
-		".wav",
-		".aac",
-		".flac",
-		".ogg",
-		".jpg",
-		".jpeg",
-		".png",
-		".gif",
-		".mkv",
-		".mp4",
-		".avi",
-		".mov",
-		".wmv",
 	}
 
 	// Split the path into parts based on the file separator

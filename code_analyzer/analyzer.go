@@ -204,10 +204,26 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 			for _, cap := range match.Captures {
 				element := cap.Node.Content(sourceCode)
-				// Tag the element with its type (e.g., namespace, class, method, interface)
-				taggedElement := fmt.Sprintf("%s\n: %s", tag, element)
-				elements = append(elements, taggedElement)
+				queryName := query.CaptureNameForId(cap.Index)
+
+				if !analyzer.IsRAG {
+					if strings.HasPrefix(queryName, "definition.") {
+						lines := strings.Split(element, "\n")
+						// Get the first line
+						element = lines[0] // First line from the array
+					} else {
+						continue
+					}
+					taggedElement := fmt.Sprintf("%s:\n %s", tag, element)
+					elements = append(elements, taggedElement)
+				} else {
+					if !strings.HasPrefix(queryName, "definition.") {
+						taggedElement := fmt.Sprintf("%s:\n %s", tag, element)
+						elements = append(elements, taggedElement)
+					}
+				}
 			}
+
 		}
 	}
 

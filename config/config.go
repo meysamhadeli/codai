@@ -76,9 +76,9 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 		}
 	} else {
 		// Automatically look for 'config.yml' in the working directory if no CLI file is provided
-		viper.SetConfigName("config") // name of config file (without extension)
-		viper.SetConfigType("yml")    // Required if file extension is not yaml/yml
-		viper.AddConfigPath(cwd)      // Look for config in the current working directory
+		viper.SetConfigName("codai-config") // name of config file (without extension)
+		viper.SetConfigType("yml")          // Required if file extension is not yaml/yml
+		viper.AddConfigPath(cwd)            // Look for config in the current working directory
 	}
 
 	// Read the configuration file if available
