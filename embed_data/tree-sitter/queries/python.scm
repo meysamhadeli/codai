@@ -1,5 +1,5 @@
 {
-     "definition.class": "(class_definition name: (identifier) @name)",
-     "definition.function": "(function_definition name: (identifier) @name)",
-     "definition.decorated" : "(decorated_definition(decorator((identifier) @name)))"
+     "class": "(class_definition name: (identifier) @name) @definition.class",
+     "function": "(function_definition name: (identifier) @name) @definition.function",
+     "decorated" : "(decorated_definition(decorator((identifier) @name))) @definition.decorated"
 }
