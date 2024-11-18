@@ -15,4 +15,5 @@ type CodeChanges struct {
 type CodeChange struct {
 	RelativePath string `xml:"relativePath"`
 	Code         string `xml:"code"`
+	IsTxtFile    bool   `xml:"isTxtFile"`
 }

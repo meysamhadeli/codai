@@ -235,7 +235,7 @@ startLoop: // Label for the start loop
 			changes := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
 			if changes == nil {
-				fmt.Println(lipgloss.BlueSky.Render("\nno code blocks with a valid path detected to apply."))
+				fmt.Println()
 				displayTokens()
 				continue
 			}
