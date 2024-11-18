@@ -275,7 +275,8 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChang
 
 	var currentFilePath string
 	var currentCodeBlock []string
-	insideCodeBlock := false
+	var insideCodeBlock bool
+	var isTxtFile bool
 
 	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
@@ -294,11 +295,13 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChang
 			// Capture the new file path
 			matches := filePathPattern.FindStringSubmatch(trimmedLine)
 			currentFilePath = matches[1]
+			isTxtFile = strings.HasSuffix(currentFilePath, ".md") || strings.HasSuffix(currentFilePath, ".txt")
 			continue
 		}
 
 		// Start of a code block
-		if strings.HasPrefix(trimmedLine, "```") {
+		if !isTxtFile && strings.HasPrefix(trimmedLine, "```") {
+
 			if !insideCodeBlock {
 				// Start a code block only if a file path is defined
 				if currentFilePath != "" {
@@ -320,9 +323,27 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChang
 			}
 		}
 
+		if isTxtFile {
+			currentCodeBlock = append(currentCodeBlock, line)
+		}
+
 		// Collect lines inside a code block
 		if insideCodeBlock {
 			currentCodeBlock = append(currentCodeBlock, line)
+		}
+	}
+
+	if isTxtFile {
+		// Ensure there are lines to process
+		if len(currentCodeBlock) > 2 {
+			// Check if the first line contains "```"
+			if strings.Contains(currentCodeBlock[0], "```") {
+				currentCodeBlock = currentCodeBlock[1:] // Remove the first line
+			}
+			// Check if the last line contains "```"
+			if strings.Contains(currentCodeBlock[len(currentCodeBlock)-1], "```") {
+				currentCodeBlock = currentCodeBlock[:len(currentCodeBlock)-1] // Remove the last line
+			}
 		}
 	}
 
@@ -331,6 +352,7 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChang
 		fileChanges = append(fileChanges, models.CodeChange{
 			RelativePath: currentFilePath,
 			Code:         strings.Join(currentCodeBlock, "\n"),
+			IsTxtFile:    isTxtFile,
 		})
 	}
 

@@ -68,7 +68,7 @@ ai_provider_config:
   chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like AzureOpenai has chat api version.)
   embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like AzureOpenai has embeddings api version.)
   temperature: 0.2
-  threshold: 0.3     #(Optional, If you want use RAG.)
+  threshold: 0.2     #(Optional, If you want use RAG.)
 theme: "dracula"
 rag: true     #(Optional, If you want use RAG.)
 ```

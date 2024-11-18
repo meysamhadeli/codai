@@ -18,19 +18,19 @@ type EmbeddingStore struct {
 func (store *EmbeddingStore) FindThresholdByModel(modelName string) float64 {
 	switch modelName {
 	case "all-minilm:l6-v2":
-		return 0.22
+		return 0.2
 	case "mxbai-embed-large":
-		return 0.4
-	case "nomic-embed-text":
-		return 0.4
-	case "text-embedding-3-large":
-		return 0.4
-	case "text-embedding-3-small":
-		return 0.4
-	case "text-embedding-ada-002":
-		return 0.75
-	default:
 		return 0.3
+	case "nomic-embed-text":
+		return 0.3
+	case "text-embedding-3-large":
+		return 0.3
+	case "text-embedding-3-small":
+		return 0.3
+	case "text-embedding-ada-002":
+		return 0.7
+	default:
+		return 0.2
 	}
 }
 
