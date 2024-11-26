@@ -114,28 +114,28 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			// Split file into chunks of up to 8000 tokens
 			fileChunks, err := utils.SplitIntoChunks(dataFile.Code, maxTokens)
 			if err != nil {
-				spinnerLoadContext.Stop()
+				spinnerEmbeddingContext.Stop()
 				fmt.Print("\r")
 				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to split file '%s' into chunks: %v", dataFile.RelativePath, err)))
-				break
+				return
 			}
 
 			for _, chunk := range fileChunks {
 				tokenCount, err := utils.TokenCount(chunk)
 				if err != nil {
-					spinnerLoadContext.Stop()
+					spinnerEmbeddingContext.Stop()
 					fmt.Print("\r")
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to calculate token count: %v", err)))
-					break
+					return
 				}
 
 				if currentTokenCount+tokenCount > maxTokens {
 					// Process the current chunks before adding more
 					if err := processEmbeddingsChunks(); err != nil {
-						spinnerLoadContext.Stop()
+						spinnerEmbeddingContext.Stop()
 						fmt.Print("\r")
 						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to process chunk: %v", err)))
-						break
+						return
 					}
 				}
 
@@ -150,9 +150,10 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 		// Process any remaining chunks
 		if err := processEmbeddingsChunks(); err != nil {
-			spinnerLoadContext.Stop()
+			spinnerEmbeddingContext.Stop()
 			fmt.Print("\r")
 			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to process remaining chunks: %v", err)))
+			return
 		}
 
 		spinnerEmbeddingContext.Stop()
@@ -317,9 +318,7 @@ startLoop: // Label for the start loop
 						RelativePath: change.RelativePath,
 					})
 
-					err = processEmbeddingsChunks()
-
-					if err != nil {
+					if err := processEmbeddingsChunks(); err != nil {
 						spinnerUpdateContext.Stop()
 						fmt.Print("\r")
 						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
