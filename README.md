@@ -61,11 +61,13 @@ The `codai-config` file should be like following example base on your `AI provid
 **codai-config.yml**
 ```yml
 ai_provider_config:
-  provider_name: "openai"     # openai | ollama | azure-openai
-  base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
-  chat_completion_model: "gpt-4o"
-  embedding_model: "text-embedding-3-small"     #(Optional, If you want use RAG.)
+  chat_provider_name: "openai"     # openai | ollama | azure-openai
+  chat_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
+  chat_model: "gpt-4o"
   chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like AzureOpenai has chat api version.)
+  embeddings_provider_name: "openai"     # openai | ollama | azure-openai
+  embeddings_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
+  embeddings_model: "text-embedding-3-small"     #(Optional, If you want use RAG.)
   embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like AzureOpenai has embeddings api version.)
   temperature: 0.2
   threshold: 0.2     #(Optional, If you want use RAG.)
@@ -86,6 +88,11 @@ Additionally, you can pass configuration options directly in the command line. F
 codai code --provider_name openapi --temperature 0.8 --chat_api_key test-chat-key --embeddings_api_key test-embeddings-key
 ```
 This flexibility allows you to customize config of codai on the fly.
+
+
+**.codai-gitignore**
+
+Also, you can use `.codai-gitignore` in the `root of your working directory,` and codai will ignore the files that we specify in our `.codai-gitignore`.
 
 > Note: We used [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
 
@@ -112,50 +119,35 @@ This command will initiate the codai assistant to help you with your coding task
 
 ## ✨ Features
 
-🧠 **Intelligent Code Suggestions:**
-Provide context-aware code completion and suggestions as you type.
+🧠 Context-aware code completions.
 
-➕ **Add New Features or Test Cases:**
-Suggest new features or generate test cases based on existing code, helping to enhance functionality and ensure code reliability.
+➕ Propose new features or test cases.
 
-🔄 **Code Refactoring:**
-Provide specific suggestions to improve the structure and efficiency of existing code, making it cleaner and easier to maintain.
+🔄 Improve code structure and efficiency.
 
-🐛 **Describe a Bug:**
-Users can describe bugs in their code, allowing the AI to analyze the issue and provide targeted suggestions for resolution or debugging steps.
+🐛 Diagnose and suggest fixes for bugs.
 
-✅ **Code Review Assistance:**
-Analyze code and identify potential bugs, providing suggestions to refactor for cleaner and better-performing code.
+✅ Identify issues and optimize code quality.
 
-✔️ **Direct Code Acceptance:**
-After receiving code suggestions from the AI, users can directly accept changes, which will be applied immediately to the codebase.
+✔️ Accept and apply AI-generated changes.
 
-📚 **Documentation Generation:**
-Automatically generate documentation based on the codebase, including function descriptions, parameter details, and usage examples.
+📚 Generate comprehensive documentation.
 
-🌐 **Multi-Language Support:**
-Support for various programming languages `(C#, Go, Python, Java, Javascript, Typescript)` to cater to a wider range of developers.
+🌐 Works with multiple programming languages.
 
-⚙️ **Customizable Config:**
-Allow users to customize settings through a config file (e.g., changing AI provider, tuning temperature settings).
+⚙️ Adjust settings via a config file.
 
-📊 **Project Context Awareness:**
-Maintain awareness of the entire project context to provide more accurate suggestions.
+📊 Maintain understanding of the entire project.
 
-🌳 **Full Context Summarization with Tree-sitter:**
-Summarize the full context of your codebase using Tree-sitter for accurate and efficient code analysis.
+🌳 Summarize code context using Tree-sitter.
 
-🔍 **RAG System Implementation:**
-Implement a Retrieval-Augmented Generation system to improve the relevance and accuracy of code suggestions by retrieving relevant context from the project.
+🔍 Retrieve relevant context for precise suggestions.
 
-⚡ **Support variety of LLM models:**
-Work with advanced LLM models like `GPT-4o, GPT-4 and Ollama` to get high-quality code suggestions and interactions.
+⚡ Leverage models like GPT-4o, GPT-4, and Ollama.
 
-🗂️ **Edit Multiple Files at Once:**
-Enable the AI to modify several files at the same time, making it easier to handle complex requests that need changes in different areas of the code.
+🗂️ Modify several files simultaneously.
 
-💳 **Token Management:**
-Track and represent the token consumption for each request, providing transparency on how many tokens are used, which helps in managing API costs effectively.
+💳 Track and display API token usage.
 
 ## 🗺️ Plan
 🌀 This project is a work in progress; new features will be added over time. 🌀

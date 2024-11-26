@@ -5,7 +5,10 @@ import (
 	"github.com/meysamhadeli/codai/providers/models"
 )
 
-type IAIProvider interface {
+type IEmbeddingAIProvider interface {
+	EmbeddingRequest(ctx context.Context, prompt []string) ([][]float64, error)
+}
+
+type IChatAIProvider interface {
 	ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse
-	EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error)
 }

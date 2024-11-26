@@ -10,8 +10,8 @@ import (
 
 // GetGitignorePatterns reads and returns the patterns from the .gitignore file.
 // If the file does not exist, it returns an empty pattern list.
-func GetGitignorePatterns() ([]string, error) {
-	gitignorePath := filepath.Join("./", ".gitignore")
+func GetGitignorePatterns(cwd string) ([]string, error) {
+	gitignorePath := filepath.Join(cwd, ".codai-gitignore")
 
 	// Check if the .gitignore file exists
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
@@ -19,13 +19,13 @@ func GetGitignorePatterns() ([]string, error) {
 		return []string{}, nil
 	} else if err != nil {
 		// Some other error occurred while checking the file
-		return nil, fmt.Errorf("error checking .gitignore: %w", err)
+		return nil, fmt.Errorf("error checking .codai-gitignore: %w", err)
 	}
 
 	// Read and parse the .gitignore file if it exists
 	ignorePatterns, err := readGitignore(gitignorePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read .gitignore: %w", err)
+		return nil, fmt.Errorf("failed to read .codai-gitignore: %w", err)
 	}
 
 	// Validate patterns to ignore those that start with .git and .idea
@@ -59,6 +59,20 @@ func IsDefaultIgnored(path string) bool {
 		"*.dll",
 		"*.log",
 		"*.bak",
+		".mp3",
+		".wav",
+		".aac",
+		".flac",
+		".ogg",
+		".jpg",
+		".jpeg",
+		".png",
+		".gif",
+		".mkv",
+		".mp4",
+		".avi",
+		".mov",
+		".wmv",
 	}
 
 	// Split the path into parts based on the file separator

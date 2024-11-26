@@ -16,13 +16,14 @@ import (
 
 // RootDependencies holds the dependencies for the root command
 type RootDependencies struct {
-	CurrentProvider contracts_provider.IAIProvider
-	Store           contracts_store.IEmbeddingStore
-	Analyzer        contracts_analyzer.ICodeAnalyzer
-	Cwd             string
-	Config          *config.Config
-	ChatHistory     contracts_provider.IChatHistory
-	TokenManagement contracts_provider.ITokenManagement
+	CurrentChatProvider      contracts_provider.IChatAIProvider
+	CurrentEmbeddingProvider contracts_provider.IEmbeddingAIProvider
+	Store                    contracts_store.IEmbeddingStore
+	Analyzer                 contracts_analyzer.ICodeAnalyzer
+	Cwd                      string
+	Config                   *config.Config
+	ChatHistory              contracts_provider.IChatHistory
+	TokenManagement          contracts_provider.ITokenManagement
 }
 
 // RootCmd represents the 'context' command
@@ -66,7 +67,13 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.Store = embedding_store.NewEmbeddingStoreModel()
 
-	rootDependencies.CurrentProvider, err = providers.ProviderFactory(rootDependencies.Config.AIProviderConfig, rootDependencies.TokenManagement)
+	rootDependencies.CurrentEmbeddingProvider, err = providers.EmbeddingsProviderFactory(rootDependencies.Config.AIProviderConfig, rootDependencies.TokenManagement)
+
+	if err != nil {
+		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+	}
+
+	rootDependencies.CurrentChatProvider, err = providers.ChatProviderFactory(rootDependencies.Config.AIProviderConfig, rootDependencies.TokenManagement)
 
 	if err != nil {
 		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
