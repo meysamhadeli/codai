@@ -63,7 +63,7 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 	var codes []string
 
 	// Retrieve the ignore patterns from .gitignore, if it exists
-	gitIgnorePatterns, err := utils.GetGitignorePatterns()
+	gitIgnorePatterns, err := utils.GetGitignorePatterns(rootDir)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -116,6 +116,7 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 
 			// Append the file data to the result
 			result = append(result, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
+
 			codes = append(codes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, strings.Join(codeParts, "\n")))
 		}
 

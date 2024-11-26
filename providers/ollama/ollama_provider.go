@@ -16,37 +16,50 @@ import (
 	"strings"
 )
 
-// OllamaConfig implements the Provider interface for Ollama.
+// OllamaConfig implements the Provider interface for OpenAPI.
 type OllamaConfig struct {
-	BaseURL             string
-	EmbeddingModel      string
-	ChatCompletionModel string
-	Temperature         float32
-	EncodingFormat      string
-	MaxTokens           int
-	Threshold           float64
-	TokenManagement     contracts.ITokenManagement
+	ChatBaseURL       string
+	EmbeddingsBaseURL string
+	EmbeddingsModel   string
+	ChatModel         string
+	Temperature       float32
+	EncodingFormat    string
+	MaxTokens         int
+	Threshold         float64
+	TokenManagement   contracts.ITokenManagement
 }
 
-// NewOllamaProvider initializes a new OllamaProvider.
-func NewOllamaProvider(config *OllamaConfig) contracts.IAIProvider {
+// NewOllamaChatProvider initializes a new OpenAPIProvider.
+func NewOllamaChatProvider(config *OllamaConfig) contracts.IChatAIProvider {
 	return &OllamaConfig{
-		BaseURL:             config.BaseURL,
-		ChatCompletionModel: config.ChatCompletionModel,
-		EmbeddingModel:      config.EmbeddingModel,
-		EncodingFormat:      config.EncodingFormat,
-		Temperature:         config.Temperature,
-		MaxTokens:           config.MaxTokens,
-		Threshold:           config.Threshold,
-		TokenManagement:     config.TokenManagement,
+		ChatBaseURL:     config.ChatBaseURL,
+		ChatModel:       config.ChatModel,
+		Temperature:     config.Temperature,
+		EncodingFormat:  config.EncodingFormat,
+		MaxTokens:       config.MaxTokens,
+		Threshold:       config.Threshold,
+		TokenManagement: config.TokenManagement,
 	}
 }
 
-func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error) {
+// NewOllamaEmbeddingsProvider initializes a new OpenAPIProvider.
+func NewOllamaEmbeddingsProvider(config *OllamaConfig) contracts.IEmbeddingAIProvider {
+	return &OllamaConfig{
+		EmbeddingsBaseURL: config.EmbeddingsBaseURL,
+		EmbeddingsModel:   config.EmbeddingsModel,
+		Temperature:       config.Temperature,
+		EncodingFormat:    config.EncodingFormat,
+		MaxTokens:         config.MaxTokens,
+		Threshold:         config.Threshold,
+		TokenManagement:   config.TokenManagement,
+	}
+}
+
+func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt []string) ([][]float64, error) {
 	// Create the request payload
 	requestBody := ollama_models.OllamaEmbeddingRequest{
 		Input: prompt,
-		Model: ollamaProvider.EmbeddingModel,
+		Model: ollamaProvider.EmbeddingsModel,
 	}
 
 	// Convert the request payload to JSON
@@ -56,7 +69,7 @@ func (ollamaProvider *OllamaConfig) EmbeddingRequest(ctx context.Context, prompt
 	}
 
 	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/embed", ollamaProvider.BaseURL), bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/embed", ollamaProvider.EmbeddingsBaseURL), bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
@@ -117,7 +130,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 
 		// Prepare the request body
 		reqBody := ollama_models.OllamaChatCompletionRequest{
-			Model: ollamaProvider.ChatCompletionModel,
+			Model: ollamaProvider.ChatModel,
 			Messages: []ollama_models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
@@ -134,7 +147,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/chat", ollamaProvider.BaseURL), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/chat", ollamaProvider.ChatBaseURL), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}

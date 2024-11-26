@@ -64,12 +64,12 @@ func (tm *tokenManager) UsedEmbeddingTokens(inputToken int, outputToken int) {
 	tm.usedEmbeddingToken += inputToken + outputToken
 }
 
-func (tm *tokenManager) DisplayTokens(providerName string, model string, embeddingModel string, isRag bool) {
+func (tm *tokenManager) DisplayTokens(chatProviderName string, embeddingProviderName string, chatModel string, embeddingModel string, isRag bool) {
 
-	cost := tm.CalculateCost(providerName, model, tm.usedInputToken, tm.usedOutputToken)
-	costEmbedding := tm.CalculateCost(providerName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
+	cost := tm.CalculateCost(chatProviderName, chatModel, tm.usedInputToken, tm.usedOutputToken)
+	costEmbedding := tm.CalculateCost(embeddingProviderName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
 
-	tokenInfo := fmt.Sprintf("Token Used: %s - Cost: %s $ - Chat Model: %s", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), model)
+	tokenInfo := fmt.Sprintf("Token Used: %s - Cost: %s $ - Chat Model: %s", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), chatModel)
 
 	if isRag {
 		embeddingTokenDetails := fmt.Sprintf("Token Used: %s - Cost: %s $ - Embedding Model: %s", fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding), embeddingModel)

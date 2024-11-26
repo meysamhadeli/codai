@@ -18,9 +18,10 @@ import (
 
 // AzureOpenAIConfig implements the Provider interface for OpenAPI.
 type AzureOpenAIConfig struct {
-	BaseURL              string
-	EmbeddingModel       string
-	ChatCompletionModel  string
+	ChatBaseURL          string
+	EmbeddingsBaseURL    string
+	EmbeddingsModel      string
+	ChatModel            string
 	Temperature          float32
 	EncodingFormat       string
 	ChatApiKey           string
@@ -32,30 +33,42 @@ type AzureOpenAIConfig struct {
 	EmbeddingsApiVersion string
 }
 
-// NewAzureOpenAIProvider initializes a new OpenAPIProvider.
-func NewAzureOpenAIProvider(config *AzureOpenAIConfig) contracts.IAIProvider {
+// NewAzureOpenAIChatProvider initializes a new OpenAPIProvider.
+func NewAzureOpenAIChatProvider(config *AzureOpenAIConfig) contracts.IChatAIProvider {
 	return &AzureOpenAIConfig{
-		BaseURL:              config.BaseURL,
-		EmbeddingModel:       config.EmbeddingModel,
-		ChatCompletionModel:  config.ChatCompletionModel,
+		ChatBaseURL:     config.ChatBaseURL,
+		ChatModel:       config.ChatModel,
+		Temperature:     config.Temperature,
+		EncodingFormat:  config.EncodingFormat,
+		MaxTokens:       config.MaxTokens,
+		Threshold:       config.Threshold,
+		ChatApiKey:      config.ChatApiKey,
+		ChatApiVersion:  config.ChatApiVersion,
+		TokenManagement: config.TokenManagement,
+	}
+}
+
+// NewAzureOpenAIEmbeddingsProvider initializes a new OpenAPIProvider.
+func NewAzureOpenAIEmbeddingsProvider(config *AzureOpenAIConfig) contracts.IEmbeddingAIProvider {
+	return &AzureOpenAIConfig{
+		EmbeddingsBaseURL:    config.EmbeddingsBaseURL,
+		EmbeddingsModel:      config.EmbeddingsModel,
 		Temperature:          config.Temperature,
 		EncodingFormat:       config.EncodingFormat,
 		MaxTokens:            config.MaxTokens,
 		Threshold:            config.Threshold,
-		ChatApiKey:           config.ChatApiKey,
 		EmbeddingsApiKey:     config.EmbeddingsApiKey,
-		ChatApiVersion:       config.ChatApiVersion,
 		EmbeddingsApiVersion: config.EmbeddingsApiVersion,
 		TokenManagement:      config.TokenManagement,
 	}
 }
 
-func (azureOpenAIProvider *AzureOpenAIConfig) EmbeddingRequest(ctx context.Context, prompt string) ([][]float64, error) {
+func (azureOpenAIProvider *AzureOpenAIConfig) EmbeddingRequest(ctx context.Context, prompt []string) ([][]float64, error) {
 
 	// Create the request payload
 	requestBody := azure_openai_models.OpenAIEmbeddingRequest{
 		Input:          prompt,
-		Model:          azureOpenAIProvider.EmbeddingModel,
+		Model:          azureOpenAIProvider.EmbeddingsModel,
 		EncodingFormat: azureOpenAIProvider.EncodingFormat,
 	}
 
@@ -66,7 +79,7 @@ func (azureOpenAIProvider *AzureOpenAIConfig) EmbeddingRequest(ctx context.Conte
 	}
 
 	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/openai/deployments/%s/embeddings?api-version=%s", azureOpenAIProvider.BaseURL, azureOpenAIProvider.EmbeddingModel, azureOpenAIProvider.EmbeddingsApiVersion), bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/openai/deployments/%s/embeddings?api-version=%s", azureOpenAIProvider.EmbeddingsBaseURL, azureOpenAIProvider.EmbeddingsModel, azureOpenAIProvider.EmbeddingsApiVersion), bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
@@ -115,7 +128,13 @@ func (azureOpenAIProvider *AzureOpenAIConfig) EmbeddingRequest(ctx context.Conte
 		azureOpenAIProvider.TokenManagement.UsedEmbeddingTokens(embeddingResponse.UsageEmbedding.TotalTokens, 0)
 	}
 
-	return [][]float64{embeddingResponse.Data[0].Embedding}, nil
+	// Extract all embeddings
+	var embeddings [][]float64
+	for _, data := range embeddingResponse.Data {
+		embeddings = append(embeddings, data.Embedding)
+	}
+
+	return embeddings, nil
 }
 
 func (azureOpenAIProvider *AzureOpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse {
@@ -128,7 +147,7 @@ func (azureOpenAIProvider *AzureOpenAIConfig) ChatCompletionRequest(ctx context.
 
 		// Prepare the request body
 		reqBody := azure_openai_models.OpenAIChatCompletionRequest{
-			Model: azureOpenAIProvider.ChatCompletionModel,
+			Model: azureOpenAIProvider.ChatModel,
 			Messages: []azure_openai_models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
@@ -148,7 +167,7 @@ func (azureOpenAIProvider *AzureOpenAIConfig) ChatCompletionRequest(ctx context.
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", azureOpenAIProvider.BaseURL, azureOpenAIProvider.ChatCompletionModel, azureOpenAIProvider.ChatApiVersion), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/openai/deployments/%s/chat/completions?api-version=%s", azureOpenAIProvider.ChatBaseURL, azureOpenAIProvider.ChatModel, azureOpenAIProvider.ChatApiVersion), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
