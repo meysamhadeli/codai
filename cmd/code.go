@@ -112,7 +112,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 		for _, dataFile := range fullContext {
 			// Split file into chunks of up to 8000 tokens
-			fileChunks, err := utils.SplitIntoChunks(dataFile.Code, maxTokens)
+			fileChunks, err := rootDependencies.TokenManagement.SplitTokenIntoChunks(dataFile.Code, maxTokens)
 			if err != nil {
 				spinnerEmbeddingContext.Stop()
 				fmt.Print("\r")
@@ -121,7 +121,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 			}
 
 			for _, chunk := range fileChunks {
-				tokenCount, err := utils.TokenCount(chunk)
+				tokenCount, err := rootDependencies.TokenManagement.TokenCount(chunk)
 				if err != nil {
 					spinnerEmbeddingContext.Stop()
 					fmt.Print("\r")

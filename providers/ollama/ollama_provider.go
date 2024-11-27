@@ -10,6 +10,7 @@ import (
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
 	ollama_models "github.com/meysamhadeli/codai/providers/ollama/models"
+	contracts2 "github.com/meysamhadeli/codai/token_management/contracts"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -26,7 +27,7 @@ type OllamaConfig struct {
 	EncodingFormat    string
 	MaxTokens         int
 	Threshold         float64
-	TokenManagement   contracts.ITokenManagement
+	TokenManagement   contracts2.ITokenManagement
 }
 
 // NewOllamaChatProvider initializes a new OpenAPIProvider.

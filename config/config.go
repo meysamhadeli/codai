@@ -19,7 +19,7 @@ type Config struct {
 
 // Default configuration values
 var defaultConfig = Config{
-	Version: "1.7.4",
+	Version: "1.7.5",
 	Theme:   "dracula",
 	RAG:     true,
 	AIProviderConfig: &providers.AIProviderConfig{

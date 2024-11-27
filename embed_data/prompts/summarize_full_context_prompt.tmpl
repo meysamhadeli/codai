@@ -4,6 +4,34 @@
 
 > Your tasks are according to these steps:
 
+## PRIORITY: Check for Specific Context in Code
+   - **If I request the **specific context of code**, such as a **method**, **class**, or any **part of codes** that is an **empty body** or **incomplete** code, I will provide **full file of code** in the **next request** and base on that you can do your task and you **must** follow these steps:**
+   - **These examples of context of code are incomplete**:
+   ```go
+   function AddProduct(){
+   }
+   ```
+   ```go
+   function DeleteProduct(){
+   ```
+   ```go
+   struct: Product
+   ```
+   ```go
+   class: Product
+   ```
+
+   - **I you see the incomplete code like above example just return the relative paths of the relevant files that are incomplete as a JSON array of strings in the following format:**
+   ```json
+   {
+     "files": ["relative path1", "relative path2"]
+   }
+   - **Skip all other tasks and return only this JSON response. Do not proceed to any additional prompt processing.**
+
+## General Instructions for Code Modifications
+If the request does not fall under the above condition, proceed with the following steps:
+
+
 ## Context Understanding:
    - Read and Analyze the code context carefully to identify where the requested changes should be added or modified.
    - If the request is ambiguous, ask clarifying questions.
@@ -13,44 +41,26 @@
    - You always COMPLETELY IMPLEMENT the needed code!
 
 
-## PRIORITY: Handling Specific Code Context Requests
-### Full Code Implementation Provided
-  - **If the provided code context includes a complete implementation of the requested method, class, or code part:**
-    - **Proceed with the task as instructed.**
-    - **Follow all steps for modifying, adding, or refactoring as necessary.**
-
-### Signature-Only or Incomplete Code Context
-  - **If the provided code context includes only a method, class, function signature, or other structure without a full body, or the body is incomplete:**
-    - **Do not complete or modify the code.**
-    - **Return only the relevant file paths in a JSON array as follows:**
-
-```json
-   {
-     "files": ["relative path1", "relative path2"]
-   }
-```
-    - **Skip all further instructions**, including any additional processing or explanation.
-
-
-
 ## General Instructions for Code Modifications:
      - **First line**: the **file name** with **relative path**; no extra markup, punctuation, comments, etc. **JUST** the **file name** with **relative path** and **file name** should using **naming conversion** base on **language**.
      - **Second line**: Start of the **diff BLOCK**.
      - **All subsequent lines**: The modified code, with specific prefixes based on the change:
-       - Prefix **"+"** for added lines.
-       - Prefix **"-"** for removed lines.
+       - Prefix **+** for added lines.
+       - Prefix **-** for removed lines.
        - **Unchanged lines** should **not** be prefixed; they should remain as they are.
      - **Last line**: End of the **diff BLOCK**.
    - Always add **relative path** and **file name** **top** of each **diff BLOCK**.
-   - If **add** a new line, always **must** use prefix **"+"**.
-   - If **remove** a line, always **must** use prefix **"-"**.
-   - If you **modify** or **fix** or **refactor** each line **must** use **"+"** or **"-"** and for **unchanged line** leave it as it is.
-   - **Do not** forget put prefix **"+"** and **"-"** during **modification** lines.
+   - If **add** a new line, always **must** use prefix **+**.
+   - If **remove** a line, always **must** use prefix **-**.
+   - If you **modify** or **fix** or **refactor** each line **must** use **+** or **-** and for **unchanged line** leave it as it is.
+   - **Do not** forget put prefix **+** when you **add some new lines** and prefix **-** when you **remove some lines** in current code base during **modification** .
+   - **Do not** forget when you **create a new file** put prefix **+** for **all of lines**, because all of these lines are **new** and **must** have prefix **+**.
+   - **Always** use **diff BLOCK** for representing the code.
 
-## **diff BLOCK** Code Format:
+## **diff BLOCK** Format:
 
 File: relativePath/fileName.ext
-```if chane is a modification use **diff**, otherwise if it's a **new file** use **language of code** here.
+```diff
     package main
 
     import "fmt"
@@ -65,8 +75,8 @@ File: relativePath/fileName.ext
 ```
 
 ## Explanation:
-- No introduction needed.
-- Explain any needed changes in code.
+   - No introduction needed.
+   - Explain any needed changes in code.
 
 
 ## Important:

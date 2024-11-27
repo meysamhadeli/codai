@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/meysamhadeli/codai/chat_history"
+	contracts2 "github.com/meysamhadeli/codai/chat_history/contracts"
 	"github.com/meysamhadeli/codai/code_analyzer"
 	contracts_analyzer "github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/config"
@@ -10,6 +12,8 @@ import (
 	contracts_store "github.com/meysamhadeli/codai/embedding_store/contracts"
 	"github.com/meysamhadeli/codai/providers"
 	contracts_provider "github.com/meysamhadeli/codai/providers/contracts"
+	"github.com/meysamhadeli/codai/token_management"
+	"github.com/meysamhadeli/codai/token_management/contracts"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -22,8 +26,8 @@ type RootDependencies struct {
 	Analyzer                 contracts_analyzer.ICodeAnalyzer
 	Cwd                      string
 	Config                   *config.Config
-	ChatHistory              contracts_provider.IChatHistory
-	TokenManagement          contracts_provider.ITokenManagement
+	ChatHistory              contracts2.IChatHistory
+	TokenManagement          contracts.ITokenManagement
 }
 
 // RootCmd represents the 'context' command
@@ -59,9 +63,9 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.Config = config.LoadConfigs(cmd, rootDependencies.Cwd)
 
-	rootDependencies.TokenManagement = providers.NewTokenManager()
+	rootDependencies.TokenManagement = token_management.NewTokenManager()
 
-	rootDependencies.ChatHistory = providers.NewChatHistory()
+	rootDependencies.ChatHistory = chat_history.NewChatHistory()
 
 	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd, rootDependencies.Config.RAG)
 

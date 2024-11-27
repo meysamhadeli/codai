@@ -121,33 +121,33 @@ This command will initiate the codai assistant to help you with your coding task
 
 🧠 Context-aware code completions.
 
-➕ Propose new features or test cases.
+➕ Adding new features or test cases.
 
-🔄 Improve code structure and efficiency.
+🔄 Refactoring code structure and efficiency.
 
-🐛 Diagnose and suggest fixes for bugs.
+🐛 Describe and suggest fixes for bugs.
 
-✅ Identify issues and optimize code quality.
+✅ Code Review Assistance and optimize code quality.
 
-✔️ Accept and apply AI-generated changes.
+✔️ Accept and apply AI-generated code changes.
 
 📚 Generate comprehensive documentation.
 
-🌐 Works with multiple programming languages.
+🌐 Works with multiple programming languages such as (C#, Go, Python, Java, Javascript, Typescript).
 
 ⚙️ Adjust settings via a config file.
 
 📊 Maintain understanding of the entire project.
 
-🌳 Summarize code context using Tree-sitter.
+🔍 Retrieve relevant context for accurate suggestions using RAG.
 
-🔍 Retrieve relevant context for precise suggestions.
+🌳 Summarize Full Project Context using Tree-sitter.
 
-⚡ Leverage models like GPT-4o, GPT-4, and Ollama.
+⚡ Support variety of LLM models like GPT-4o, GPT-4, and Ollama.
 
-🗂️ Modify several files simultaneously.
+🗂️ Enable the AI to modify several files at the same time.
 
-💳 Track and display API token usage.
+💳 Track and represent the token consumption for each request.
 
 ## 🗺️ Plan
 🌀 This project is a work in progress; new features will be added over time. 🌀
