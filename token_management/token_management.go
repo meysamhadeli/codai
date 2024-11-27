@@ -1,11 +1,12 @@
-package providers
+package token_management
 
 import (
 	"encoding/json"
 	"fmt"
 	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"github.com/meysamhadeli/codai/embed_data"
-	"github.com/meysamhadeli/codai/providers/contracts"
+	"github.com/meysamhadeli/codai/token_management/contracts"
+	"github.com/pkoukk/tiktoken-go"
 	"log"
 	"strings"
 )
@@ -46,6 +47,46 @@ func NewTokenManager() contracts.ITokenManagement {
 		usedEmbeddingInputToken:  0,
 		usedEmbeddingOutputToken: 0,
 	}
+}
+
+// TokenCount calculates the number of tokens in a given string.
+func (tm *tokenManager) TokenCount(content string) (int, error) {
+	encoder, err := tiktoken.EncodingForModel("gpt-4o")
+	if err != nil {
+		return 0, err
+	}
+
+	// Encode the content to calculate tokens
+	tokens := encoder.Encode(content, nil, nil)
+	return len(tokens), nil
+}
+
+// SplitTokenIntoChunks splits the content into chunks that each have up to maxTokens tokens.
+func (tm *tokenManager) SplitTokenIntoChunks(content string, maxTokens int) ([]string, error) {
+	// Load the tokenizer for the target OpenAI model
+	encoder, err := tiktoken.EncodingForModel("gpt-4")
+	if err != nil {
+		return nil, err
+	}
+
+	// Tokenize the content
+	tokens := encoder.Encode(content, nil, nil)
+
+	// Split tokens into chunks
+	var chunks []string
+	for start := 0; start < len(tokens); start += maxTokens {
+		end := start + maxTokens
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+
+		// Decode the chunk of tokens back into a string
+		chunk := encoder.Decode(tokens[start:end])
+
+		chunks = append(chunks, chunk)
+	}
+
+	return chunks, nil
 }
 
 // UsedTokens deducts the token count from the available tokens.

@@ -170,7 +170,14 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	default:
 		// If the language doesn't match, process the original source code directly
 		elements = append(elements, filePath)
-		elements = append(elements, string(sourceCode)) // Adding original source code
+		if analyzer.IsRAG {
+			elements = append(elements, string(sourceCode)) // Adding original source code
+		} else {
+			lines := strings.Split(string(sourceCode), "\n")
+			// Get the first line
+			elements = append(elements, lines[0]) // Adding First line from the array
+		}
+
 		return elements
 	}
 
@@ -205,26 +212,10 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 			for _, cap := range match.Captures {
 				element := cap.Node.Content(sourceCode)
-				queryName := query.CaptureNameForId(cap.Index)
-
-				if !analyzer.IsRAG {
-					if strings.HasPrefix(queryName, "definition.") {
-						lines := strings.Split(element, "\n")
-						// Get the first line
-						element = lines[0] // First line from the array
-					} else {
-						continue
-					}
-					taggedElement := fmt.Sprintf("%s:\n %s", tag, element)
-					elements = append(elements, taggedElement)
-				} else {
-					if !strings.HasPrefix(queryName, "definition.") {
-						taggedElement := fmt.Sprintf("%s:\n %s", tag, element)
-						elements = append(elements, taggedElement)
-					}
-				}
+				// Tag the element with its type (e.g., namespace, class, method, interface)
+				taggedElement := fmt.Sprintf("%s: %s", tag, element)
+				elements = append(elements, taggedElement)
 			}
-
 		}
 	}
 
@@ -386,7 +377,7 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 	}
 
 	// Handle deletion if code is empty
-	if diff == "" {
+	if strings.TrimSpace(strings.Join(updatedContent, "\n")) == "" {
 		// Check if file exists, then delete if it does
 		if err := os.Remove(relativePath); err != nil {
 			if os.IsNotExist(err) {

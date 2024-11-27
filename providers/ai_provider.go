@@ -6,6 +6,7 @@ import (
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/ollama"
 	"github.com/meysamhadeli/codai/providers/openai"
+	contracts2 "github.com/meysamhadeli/codai/token_management/contracts"
 )
 
 type AIProviderConfig struct {
@@ -27,7 +28,7 @@ type AIProviderConfig struct {
 }
 
 // ChatProviderFactory creates a Provider based on the given provider config.
-func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenManagement) (contracts.IChatAIProvider, error) {
+func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts2.ITokenManagement) (contracts.IChatAIProvider, error) {
 	switch config.ChatProviderName {
 	case "ollama":
 		return ollama.NewOllamaChatProvider(&ollama.OllamaConfig{
@@ -77,7 +78,7 @@ func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITo
 }
 
 // EmbeddingsProviderFactory creates a Provider based on the given provider config.
-func EmbeddingsProviderFactory(config *AIProviderConfig, tokenManagement contracts.ITokenManagement) (contracts.IEmbeddingAIProvider, error) {
+func EmbeddingsProviderFactory(config *AIProviderConfig, tokenManagement contracts2.ITokenManagement) (contracts.IEmbeddingAIProvider, error) {
 	switch config.EmbeddingsProviderName {
 	case "ollama":
 		return ollama.NewOllamaEmbeddingsProvider(&ollama.OllamaConfig{

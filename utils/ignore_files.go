@@ -59,6 +59,7 @@ func IsDefaultIgnored(path string) bool {
 		"*.dll",
 		"*.log",
 		"*.bak",
+		"*.bkp",
 		".mp3",
 		".wav",
 		".aac",
@@ -73,6 +74,8 @@ func IsDefaultIgnored(path string) bool {
 		".avi",
 		".mov",
 		".wmv",
+		".drawio",
+		".excalidraw",
 	}
 
 	// Split the path into parts based on the file separator

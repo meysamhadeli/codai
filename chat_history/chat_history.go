@@ -1,8 +1,8 @@
-package providers
+package chat_history
 
 import (
 	"fmt"
-	"github.com/meysamhadeli/codai/providers/contracts"
+	"github.com/meysamhadeli/codai/chat_history/contracts"
 	"time"
 )
 
