@@ -54,7 +54,7 @@ func TestRunInSequence(t *testing.T) {
 	t.Run("TestGeneratePrompt_ActualImplementation", TestGeneratePrompt_ActualImplementation)
 	t.Run("TestNewCodeAnalyzer", TestNewCodeAnalyzer)
 	t.Run("TestGetProjectFiles", TestGetProjectFiles)
-	t.Run("TestProcessFile", TestProcessFile)
+	t.Run("TestProcessFileWithSupportedLanguageReturnTreeSitterResult", TestProcessFileWithSupportedLanguageReturnTreeSitterResult)
 	t.Run("TestApplyChanges_NewFile", TestApplyChanges_NewFile)
 	t.Run("TestApplyChanges_ModifyFile", TestApplyChanges_ModifyFile)
 	t.Run("TestApplyChanges_DeletedFile", TestApplyChanges_DeletedFile)
@@ -148,13 +148,13 @@ func TestGetProjectFiles(t *testing.T) {
 }
 
 // Test for ProcessFile
-func TestProcessFile(t *testing.T) {
+func TestProcessFileWithSupportedLanguageReturnTreeSitterResult(t *testing.T) {
 	setup(t)
 	content := []byte("class Test {}")
 
 	result := analyzer.ProcessFile("test.cs", content)
 
-	assert.Contains(t, result, "test.cs")
+	assert.Contains(t, result, "class: Test")
 	assert.NotEmpty(t, result)
 }
 

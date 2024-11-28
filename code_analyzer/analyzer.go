@@ -191,8 +191,6 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 		log.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	elements = append(elements, filePath)
-
 	// Execute each query and capture results
 	for tag, queryStr := range queries {
 		query, err := sitter.NewQuery([]byte(queryStr), lang) // Use the appropriate language
@@ -247,7 +245,7 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 			continue
 		}
 
-		codes = append(codes, fmt.Sprintf("File: %s\n\n%s", relativePath, content))
+		codes = append(codes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, content))
 	}
 
 	if len(codes) == 0 {

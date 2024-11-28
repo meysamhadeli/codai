@@ -5,21 +5,20 @@
 > Your tasks are according to these steps:
 
 ## PRIORITY: Check for Specific Context in Code
+   - **You just have the signature of the full context and if you need a file for doing task just request full files from the user**.
    - **If I request the **specific context of code**, such as a **method**, **class**, or any **part of codes** that is an **empty body** or **incomplete** code, I will provide **full file of code** in the **next request** and base on that you can do your task and you **must** follow these steps:**
    - **These examples of context of code are incomplete**:
-   ```go
+
+   ---
    function AddProduct(){
    }
-   ```
-   ```go
+
    function DeleteProduct(){
-   ```
-   ```go
+
    struct: Product
-   ```
-   ```go
+
    class: Product
-   ```
+   ---
 
    - **I you see the incomplete code like above example just return the relative paths of the relevant files that are incomplete as a JSON array of strings in the following format:**
    ```json
@@ -27,10 +26,7 @@
      "files": ["relative path1", "relative path2"]
    }
    - **Skip all other tasks and return only this JSON response. Do not proceed to any additional prompt processing.**
-
-## General Instructions for Code Modifications
-If the request does not fall under the above condition, proceed with the following steps:
-
+   - **If you have requested full files for doing your task you can move forward for other prompts, otherwise just ignore other prompts.**
 
 ## Context Understanding:
    - Read and Analyze the code context carefully to identify where the requested changes should be added or modified.

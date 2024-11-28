@@ -75,33 +75,35 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	// Helper function to process and send the current chunks
 	processEmbeddingsChunks := func() error {
-		if len(currentChunks) == 0 {
-			return nil // Nothing to process
+		if rootDependencies.Config.RAG {
+			if len(currentChunks) == 0 {
+				return nil // Nothing to process
+			}
+
+			// Extract the content from the currentChunks
+			var contents []string
+			for _, chunk := range currentChunks {
+				contents = append(contents, chunk.Content)
+			}
+
+			// Delay before sending the request
+			time.Sleep(requestDelay)
+
+			// Make an embedding request for the current chunks
+			embedding, err := rootDependencies.CurrentEmbeddingProvider.EmbeddingRequest(ctx, contents)
+			if err != nil {
+				return err
+			}
+
+			// Save embeddings to the embedding store
+			for i, chunk := range currentChunks {
+				rootDependencies.Store.Save(chunk.RelativePath, chunk.Content, embedding[i])
+			}
+
+			// Reset the chunks and token count
+			currentChunks = []general_models.ChunkData{}
+			currentTokenCount = 0
 		}
-
-		// Extract the content from the currentChunks
-		var contents []string
-		for _, chunk := range currentChunks {
-			contents = append(contents, chunk.Content)
-		}
-
-		// Delay before sending the request
-		time.Sleep(requestDelay)
-
-		// Make an embedding request for the current chunks
-		embedding, err := rootDependencies.CurrentEmbeddingProvider.EmbeddingRequest(ctx, contents)
-		if err != nil {
-			return err
-		}
-
-		// Save embeddings to the embedding store
-		for i, chunk := range currentChunks {
-			rootDependencies.Store.Save(chunk.RelativePath, chunk.Content, embedding[i])
-		}
-
-		// Reset the chunks and token count
-		currentChunks = []general_models.ChunkData{}
-		currentTokenCount = 0
 
 		return nil
 	}
@@ -272,12 +274,25 @@ startLoop: // Label for the start loop
 				if requestedContext != "" && err == nil {
 					aiResponseBuilder.Reset()
 
-					fmt.Println(lipgloss.BlueSky.Render("\nThese files need to changes...\n"))
+					fmt.Print("\n")
 
-					if err := chatRequestOperation(); err != nil {
-						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-						displayTokens()
+					contextAccepted, err := utils.ConfirmAdditinalContext()
+					if err != nil {
+						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
 						continue
+					}
+
+					if contextAccepted {
+						fmt.Println(lipgloss.Green.Render("✔️ Context accepted!"))
+
+						if err := chatRequestOperation(); err != nil {
+							fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+							displayTokens()
+							continue
+						}
+
+					} else {
+						fmt.Println(lipgloss.Red.Render("❌ Context rejected."))
 					}
 				}
 			}
@@ -291,7 +306,7 @@ startLoop: // Label for the start loop
 				continue
 			}
 
-			fmt.Print("\n\n")
+			fmt.Print("\n")
 
 			// Try to apply changes
 			for _, change := range changes {
