@@ -191,8 +191,6 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 		log.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	elements = append(elements, filePath)
-
 	// Execute each query and capture results
 	for tag, queryStr := range queries {
 		query, err := sitter.NewQuery([]byte(queryStr), lang) // Use the appropriate language
