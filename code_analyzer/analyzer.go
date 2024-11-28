@@ -245,7 +245,7 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 			continue
 		}
 
-		codes = append(codes, fmt.Sprintf("File: %s\n\n%s", relativePath, content))
+		codes = append(codes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, content))
 	}
 
 	if len(codes) == 0 {
