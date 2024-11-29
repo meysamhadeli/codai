@@ -61,21 +61,21 @@ The `codai-config` file should be like following example base on your `AI provid
 **codai-config.yml**
 ```yml
 ai_provider_config:
-  chat_provider_name: "openai"     # openai | ollama | azure-openai
-  chat_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
+  chat_provider_name: "openai"     # openai | ollama | azure-openai | anthropic | openrouter
+  chat_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com" | "https://api.anthropic.com" | "https://openrouter.ai"
   chat_model: "gpt-4o"
-  chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like AzureOpenai has chat api version.)
+  chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' or 'Anthropic' has chat api version.)
   embeddings_provider_name: "openai"     # openai | ollama | azure-openai
   embeddings_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
-  embeddings_model: "text-embedding-3-small"     #(Optional, If you want use RAG.)
-  embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like AzureOpenai has embeddings api version.)
+  embeddings_model: "text-embedding-3-small"     #(Optional, If you want use 'RAG'.)
+  embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' has embeddings api version.)
   temperature: 0.2
-  threshold: 0.2     #(Optional, If you want use RAG.)
+  threshold: 0.2     #(Optional, If you want use 'RAG'.)
 theme: "dracula"
-rag: true     #(Optional, If you want use RAG.)
+rag: true     #(Optional, If you want use 'RAG'.)
 ```
 
-> Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction), [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md) and [Azure Openai](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference) and you can find more details in documentation of each APIs.
+> Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction), [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md), [Azure Openai](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference), [Anthropic](https://docs.anthropic.com/en/api/getting-started), [OpenRouter](https://openrouter.ai/docs/quick-start) and you can find more details in documentation of each AI provider APIs.
 
 If you wish to customize your configuration, you can create your own `codai-config.yml` file and place it in the `root directory` of `each project` you want to analyze with codai. If `no configuration` file is provided, codai will use the `default settings`.
 
