@@ -98,7 +98,7 @@ Also, you can use `.codai-gitignore` in the `root of your working directory,` an
 
 ## 🔮 LLM Models
 ### ⚡ Best Models
-The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o` and `GPT-4`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
+The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o`, `GPT-4`, `Claude 3.5 Sonnet` and `Claude 3 Opus`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
 
 ### 💻 Local Models
 In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like [Phi-3-medium instruct (128k)](https://github.com/marketplace/models/azureml/Phi-3-medium-128k-instruct), [Mistral Large (2407)](https://github.com/marketplace/models/azureml-mistral/Mistral-large-2407) and [Meta-Llama-3.1-70B-Instruct](https://github.com/marketplace/models/azureml-meta/Meta-Llama-3-1-70B-Instruct). These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
