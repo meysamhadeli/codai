@@ -2,10 +2,12 @@ package providers
 
 import (
 	"errors"
+	"github.com/meysamhadeli/codai/providers/anthropic"
 	azure_openai "github.com/meysamhadeli/codai/providers/azure-openai"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/ollama"
 	"github.com/meysamhadeli/codai/providers/openai"
+	"github.com/meysamhadeli/codai/providers/openrouter"
 	contracts2 "github.com/meysamhadeli/codai/token_management/contracts"
 )
 
@@ -56,7 +58,7 @@ func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts2.IT
 			ChatApiVersion:       config.ChatApiVersion,
 			EmbeddingsApiVersion: config.EmbeddingsApiVersion,
 		}), nil
-	case "azure-openai", "azure_openai":
+	case "azure-openai":
 		return azure_openai.NewAzureOpenAIChatProvider(&azure_openai.AzureOpenAIConfig{
 			Temperature:          config.Temperature,
 			EncodingFormat:       config.EncodingFormat,
@@ -70,6 +72,30 @@ func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts2.IT
 			TokenManagement:      tokenManagement,
 			ChatApiVersion:       config.ChatApiVersion,
 			EmbeddingsApiVersion: config.EmbeddingsApiVersion,
+		}), nil
+
+	case "openrouter":
+		return openrouter.NewOpenRouterChatProvider(&openrouter.OpenRouterConfig{
+			Temperature:     config.Temperature,
+			EncodingFormat:  config.EncodingFormat,
+			ChatModel:       config.ChatModel,
+			ChatApiKey:      config.ChatApiKey,
+			MaxTokens:       config.MaxTokens,
+			Threshold:       config.Threshold,
+			TokenManagement: tokenManagement,
+			ChatApiVersion:  config.ChatApiVersion,
+		}), nil
+
+	case "anthropic":
+		return anthropic.NewAnthropicMessageProvider(&anthropic.AnthropicConfig{
+			Temperature:       config.Temperature,
+			EncodingFormat:    config.EncodingFormat,
+			MessageModel:      config.ChatModel,
+			MessageApiKey:     config.ChatApiKey,
+			MaxTokens:         config.MaxTokens,
+			Threshold:         config.Threshold,
+			TokenManagement:   tokenManagement,
+			MessageApiVersion: config.ChatApiVersion,
 		}), nil
 	default:
 
@@ -106,7 +132,7 @@ func EmbeddingsProviderFactory(config *AIProviderConfig, tokenManagement contrac
 			ChatApiVersion:       config.ChatApiVersion,
 			EmbeddingsApiVersion: config.EmbeddingsApiVersion,
 		}), nil
-	case "azure-openai", "azure_openai":
+	case "azure-openai":
 		return azure_openai.NewAzureOpenAIEmbeddingsProvider(&azure_openai.AzureOpenAIConfig{
 			Temperature:          config.Temperature,
 			EncodingFormat:       config.EncodingFormat,
