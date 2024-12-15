@@ -17,9 +17,9 @@ type Config struct {
 	AIProviderConfig *providers.AIProviderConfig `mapstructure:"ai_provider_config"`
 }
 
-// Default configuration values
-var defaultConfig = Config{
-	Version: "1.7.5",
+// DefaultConfig values
+var DefaultConfig = Config{
+	Version: "1.8.1",
 	Theme:   "dracula",
 	RAG:     true,
 	AIProviderConfig: &providers.AIProviderConfig{
@@ -48,23 +48,22 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	var config *Config
 
 	// Set default values using Viper
-	viper.SetDefault("version", defaultConfig.Version)
-	viper.SetDefault("theme", defaultConfig.Theme)
-	viper.SetDefault("rag", defaultConfig.RAG)
-	viper.SetDefault("ai_provider_config.chat_provider_name", defaultConfig.AIProviderConfig.ChatProviderName)
-	viper.SetDefault("ai_provider_config.embeddings_provider_name", defaultConfig.AIProviderConfig.EmbeddingsProviderName)
-	viper.SetDefault("ai_provider_config.chat_base_url", defaultConfig.AIProviderConfig.ChatBaseURL)
-	viper.SetDefault("ai_provider_config.embeddings_base_url", defaultConfig.AIProviderConfig.EmbeddingsBaseURL)
-	viper.SetDefault("ai_provider_config.chat_model", defaultConfig.AIProviderConfig.ChatModel)
-	viper.SetDefault("ai_provider_config.embeddings_model", defaultConfig.AIProviderConfig.EmbeddingsModel)
-	viper.SetDefault("ai_provider_config.encoding_format", defaultConfig.AIProviderConfig.EncodingFormat)
-	viper.SetDefault("ai_provider_config.temperature", defaultConfig.AIProviderConfig.Temperature)
-	viper.SetDefault("ai_provider_config.threshold", defaultConfig.AIProviderConfig.Threshold)
-	viper.SetDefault("ai_provider_config.stream", defaultConfig.AIProviderConfig.Stream)
-	viper.SetDefault("ai_provider_config.chat_api_key", defaultConfig.AIProviderConfig.ChatApiKey)
-	viper.SetDefault("ai_provider_config.embeddings_api_key", defaultConfig.AIProviderConfig.EmbeddingsApiKey)
-	viper.SetDefault("ai_provider_config.chat_api_version", defaultConfig.AIProviderConfig.ChatApiVersion)
-	viper.SetDefault("ai_provider_config.embeddings_api_version", defaultConfig.AIProviderConfig.EmbeddingsApiVersion)
+	viper.SetDefault("theme", DefaultConfig.Theme)
+	viper.SetDefault("rag", DefaultConfig.RAG)
+	viper.SetDefault("ai_provider_config.chat_provider_name", DefaultConfig.AIProviderConfig.ChatProviderName)
+	viper.SetDefault("ai_provider_config.embeddings_provider_name", DefaultConfig.AIProviderConfig.EmbeddingsProviderName)
+	viper.SetDefault("ai_provider_config.chat_base_url", DefaultConfig.AIProviderConfig.ChatBaseURL)
+	viper.SetDefault("ai_provider_config.embeddings_base_url", DefaultConfig.AIProviderConfig.EmbeddingsBaseURL)
+	viper.SetDefault("ai_provider_config.chat_model", DefaultConfig.AIProviderConfig.ChatModel)
+	viper.SetDefault("ai_provider_config.embeddings_model", DefaultConfig.AIProviderConfig.EmbeddingsModel)
+	viper.SetDefault("ai_provider_config.encoding_format", DefaultConfig.AIProviderConfig.EncodingFormat)
+	viper.SetDefault("ai_provider_config.temperature", DefaultConfig.AIProviderConfig.Temperature)
+	viper.SetDefault("ai_provider_config.threshold", DefaultConfig.AIProviderConfig.Threshold)
+	viper.SetDefault("ai_provider_config.stream", DefaultConfig.AIProviderConfig.Stream)
+	viper.SetDefault("ai_provider_config.chat_api_key", DefaultConfig.AIProviderConfig.ChatApiKey)
+	viper.SetDefault("ai_provider_config.embeddings_api_key", DefaultConfig.AIProviderConfig.EmbeddingsApiKey)
+	viper.SetDefault("ai_provider_config.chat_api_version", DefaultConfig.AIProviderConfig.ChatApiVersion)
+	viper.SetDefault("ai_provider_config.embeddings_api_version", DefaultConfig.AIProviderConfig.EmbeddingsApiVersion)
 
 	// Automatically read environment variables
 	viper.AutomaticEnv() // This will look for variables that match config keys directly
@@ -147,19 +146,18 @@ func bindFlags(rootCmd *cobra.Command) {
 func InitFlags(rootCmd *cobra.Command) {
 	// Use PersistentFlags so that these flags are available in all subcommands
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Specifies the path to a configuration file that contains all the settings for the application. This file can be used to override defaults.")
-	rootCmd.PersistentFlags().String("theme", defaultConfig.Theme, "Set customize theme for buffering response from ai. (e.g., 'dracula', 'light', 'dark')")
-	rootCmd.PersistentFlags().Bool("rag", defaultConfig.RAG, "Enable Retrieval-Augmented Generation (RAG) for enhanced responses using relevant data retrieval (e.g., default is 'enabled' and just retrieve related context base on user request).")
-	rootCmd.PersistentFlags().StringP("version", "v", defaultConfig.Version, "Specifies the version of the application or service. This helps to track the release or update of the software.")
-	rootCmd.PersistentFlags().String("chat_provider_name", defaultConfig.AIProviderConfig.ChatProviderName, "Specifies the name of the chat AI service provider (e.g., 'openai' or 'ollama'). This determines which service or API will be used for AI-related functions.")
-	rootCmd.PersistentFlags().String("embeddings_provider_name", defaultConfig.AIProviderConfig.EmbeddingsProviderName, "Specifies the name of the embeddings AI service provider (e.g., 'openai' or 'ollama'). This determines which service or API will be used for AI-related functions.")
-	rootCmd.PersistentFlags().String("chat_base_url", defaultConfig.AIProviderConfig.ChatBaseURL, "The chat base URL of AI Provider (e.g., default is 'https://api.openai.com'.")
-	rootCmd.PersistentFlags().String("embeddings_base_url", defaultConfig.AIProviderConfig.EmbeddingsBaseURL, "The embeddings base URL of AI Provider (e.g., default is 'https://api.openai.com'.")
-	rootCmd.PersistentFlags().String("chat_model", defaultConfig.AIProviderConfig.ChatModel, "The name of the model used for chat completions, such as 'gpt-4o'. Different models offer varying levels of performance and capabilities.")
-	rootCmd.PersistentFlags().String("embeddings_model", defaultConfig.AIProviderConfig.EmbeddingsModel, "Specifies the AI model used for generating text embeddings (e.g., 'text-embedding-ada-002'). This model converts text into vector representations for similarity comparisons.")
-	rootCmd.PersistentFlags().Float32("temperature", defaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
-	rootCmd.PersistentFlags().Float64("threshold", defaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches and should be careful not to lose matches, while lower values provide a wider range of results to prevent losing any matches. (e.g., value should be between '0.2 - 1' and default is '0.3').")
-	rootCmd.PersistentFlags().String("chat_api_key", defaultConfig.AIProviderConfig.ChatApiKey, "The chat API key used to authenticate with the AI service provider.")
-	rootCmd.PersistentFlags().String("embeddings_api_key", defaultConfig.AIProviderConfig.EmbeddingsApiKey, "The embeddings API key used to authenticate with the AI service provider.")
-	rootCmd.PersistentFlags().String("chat_api_version", defaultConfig.AIProviderConfig.ChatApiVersion, "The API version used to authenticate with the chat AI service provider.")
-	rootCmd.PersistentFlags().String("embeddings_api_version", defaultConfig.AIProviderConfig.EmbeddingsApiVersion, "The API version used to authenticate with the embeddings AI service provider.")
+	rootCmd.PersistentFlags().String("theme", DefaultConfig.Theme, "Set customize theme for buffering response from ai. (e.g., 'dracula', 'light', 'dark')")
+	rootCmd.PersistentFlags().Bool("rag", DefaultConfig.RAG, "Enable Retrieval-Augmented Generation (RAG) for enhanced responses using relevant data retrieval (e.g., default is 'enabled' and just retrieve related context base on user request).")
+	rootCmd.Flags().BoolP("version", "v", false, "Specifies the version of the application.")
+	rootCmd.PersistentFlags().String("embeddings_provider_name", DefaultConfig.AIProviderConfig.EmbeddingsProviderName, "Specifies the name of the embeddings AI service provider (e.g., 'openai' or 'ollama'). This determines which service or API will be used for AI-related functions.")
+	rootCmd.PersistentFlags().String("chat_base_url", DefaultConfig.AIProviderConfig.ChatBaseURL, "The chat base URL of AI Provider (e.g., default is 'https://api.openai.com'.")
+	rootCmd.PersistentFlags().String("embeddings_base_url", DefaultConfig.AIProviderConfig.EmbeddingsBaseURL, "The embeddings base URL of AI Provider (e.g., default is 'https://api.openai.com'.")
+	rootCmd.PersistentFlags().String("chat_model", DefaultConfig.AIProviderConfig.ChatModel, "The name of the model used for chat completions, such as 'gpt-4o'. Different models offer varying levels of performance and capabilities.")
+	rootCmd.PersistentFlags().String("embeddings_model", DefaultConfig.AIProviderConfig.EmbeddingsModel, "Specifies the AI model used for generating text embeddings (e.g., 'text-embedding-ada-002'). This model converts text into vector representations for similarity comparisons.")
+	rootCmd.PersistentFlags().Float32("temperature", DefaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
+	rootCmd.PersistentFlags().Float64("threshold", DefaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches and should be careful not to lose matches, while lower values provide a wider range of results to prevent losing any matches. (e.g., value should be between '0.2 - 1' and default is '0.3').")
+	rootCmd.PersistentFlags().String("chat_api_key", DefaultConfig.AIProviderConfig.ChatApiKey, "The chat API key used to authenticate with the AI service provider.")
+	rootCmd.PersistentFlags().String("embeddings_api_key", DefaultConfig.AIProviderConfig.EmbeddingsApiKey, "The embeddings API key used to authenticate with the AI service provider.")
+	rootCmd.PersistentFlags().String("chat_api_version", DefaultConfig.AIProviderConfig.ChatApiVersion, "The API version used to authenticate with the chat AI service provider.")
+	rootCmd.PersistentFlags().String("embeddings_api_version", DefaultConfig.AIProviderConfig.EmbeddingsApiVersion, "The API version used to authenticate with the embeddings AI service provider.")
 }
