@@ -66,7 +66,7 @@ ai_provider_config:
   chat_model: "gpt-4o"
   chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' or 'Anthropic' has chat api version.)
   embeddings_provider_name: "openai"     # openai | ollama | azure-openai
-  embeddings_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com"
+  embeddings_base_url: "https://api.openai.com" | "http://localhost:11434" | "https://test.openai.azure.com"
   embeddings_model: "text-embedding-3-small"     #(Optional, If you want use 'RAG'.)
   embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' has embeddings api version.)
   temperature: 0.2
