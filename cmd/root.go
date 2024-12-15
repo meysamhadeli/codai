@@ -34,8 +34,13 @@ type RootDependencies struct {
 var rootCmd = &cobra.Command{
 	Use:   "codai",
 	Short: "codai CLI for coding and chatting",
-	Long:  `codai is a CLI tool that assists developers by providing intelligent code suggestions, refactoring, and code reviews based on the full context of your project. It operates in a session-based manner, allowing for continuous context throughout interactions. Codai supports multiple LLMs, including GPT-3.5, GPT-4, and Ollama, to streamline daily development tasks.`,
+	Long:  `Codai is an AI code assistant that helps developers through a session-based CLI, providing intelligent code suggestions, refactoring, and code reviews based on the full context of the project. It supports multiple LLM providers, such as OpenAI, Azure OpenAI, Ollama, Anthropic, and OpenRouter, to streamline daily development tasks.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		versionFlag, _ := cmd.Flags().GetBool("version")
+		if versionFlag {
+			fmt.Printf("version: %s\n", config.DefaultConfig.Version)
+			return
+		}
 		// Check if any arguments or subcommands were provided
 		if len(args) == 0 {
 			err := cmd.Help() // Display help if no subcommand or argument is provided
