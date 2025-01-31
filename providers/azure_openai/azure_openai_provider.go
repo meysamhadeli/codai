@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	azure_openai_models "github.com/meysamhadeli/codai/providers/azure-openai/models"
+	azure_openai_models "github.com/meysamhadeli/codai/providers/azure_openai/models"
 	"github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/providers/models"
 	contracts2 "github.com/meysamhadeli/codai/token_management/contracts"

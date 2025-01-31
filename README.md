@@ -7,7 +7,7 @@
 
 > 💡 **Codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
 and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
-and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM providers, such as OpenAI, Azure OpenAI, Ollama, Anthropic, and OpenRouter.**
+and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM providers, such as OpenAI, DeepSeek, Azure OpenAI, Ollama, Anthropic, and OpenRouter.**
 
 ![](./assets/codai-demo.gif)
 
@@ -61,9 +61,9 @@ The `codai-config` file should be like following example base on your `AI provid
 **codai-config.yml**
 ```yml
 ai_provider_config:
-  chat_provider_name: "openai"     # openai | ollama | azure-openai | anthropic | openrouter
-  chat_base_url: "https://api.openai.com"     # "http://localhost:11434" | "https://test,openai.azure.com" | "https://api.anthropic.com" | "https://openrouter.ai"
-  chat_model: "gpt-4o"
+  chat_provider_name: "openai"     # openai | deepseek | ollama | azure-openai | anthropic | openrouter
+  chat_base_url: "https://api.openai.com"     # "https://api.deepseek.com" | "http://localhost:11434" | "https://test,openai.azure.com" | "https://api.anthropic.com" | "https://openrouter.ai"
+  chat_model: "gpt-4o"     # "deepseek-chat" | "claude-3-5-sonnet" | "llama3.3"
   chat_api_version: "2024-04-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' or 'Anthropic' has chat api version.)
   embeddings_provider_name: "openai"     # openai | ollama | azure-openai
   embeddings_base_url: "https://api.openai.com" | "http://localhost:11434" | "https://test.openai.azure.com"
@@ -98,7 +98,7 @@ Also, you can use `.codai-gitignore` in the `root of your working directory,` an
 
 ## 🔮 LLM Models
 ### ⚡ Best Models
-The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o`, `GPT-4`, `Claude 3.5 Sonnet` and `Claude 3 Opus`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
+The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4o`, `GPT-4`, `deepseek-chat` and `claude-3-5-sonnet`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
 
 ### 💻 Local Models
 In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like [Phi-3-medium instruct (128k)](https://github.com/marketplace/models/azureml/Phi-3-medium-128k-instruct), [Mistral Large (2407)](https://github.com/marketplace/models/azureml-mistral/Mistral-large-2407) and [Meta-Llama-3.1-70B-Instruct](https://github.com/marketplace/models/azureml-meta/Meta-Llama-3-1-70B-Instruct). These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
@@ -143,7 +143,7 @@ This command will initiate the codai assistant to help you with your coding task
 
 🌳 Summarize Full Project Context using Tree-sitter.
 
-⚡ Support variety of LLM models like GPT-4o, GPT-4, and Ollama.
+⚡ Support variety of LLM models like GPT-4o, GPT-4, deepseek-chat, claude-3-5-sonnet, and Ollama.
 
 🗂️ Enable the AI to modify several files at the same time.
 
