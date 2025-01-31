@@ -3,8 +3,9 @@ package providers
 import (
 	"errors"
 	"github.com/meysamhadeli/codai/providers/anthropic"
-	azure_openai "github.com/meysamhadeli/codai/providers/azure-openai"
+	"github.com/meysamhadeli/codai/providers/azure_openai"
 	"github.com/meysamhadeli/codai/providers/contracts"
+	"github.com/meysamhadeli/codai/providers/deepseek"
 	"github.com/meysamhadeli/codai/providers/ollama"
 	"github.com/meysamhadeli/codai/providers/openai"
 	"github.com/meysamhadeli/codai/providers/openrouter"
@@ -39,6 +40,17 @@ func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts2.IT
 			ChatModel:       config.ChatModel,
 			EmbeddingsModel: config.EmbeddingsModel,
 			ChatBaseURL:     config.ChatBaseURL,
+			MaxTokens:       config.MaxTokens,
+			Threshold:       config.Threshold,
+			TokenManagement: tokenManagement,
+		}), nil
+	case "deepseek":
+		return deepseek.NewDeepSeekChatProvider(&deepseek.DeepSeekConfig{
+			Temperature:     config.Temperature,
+			EncodingFormat:  config.EncodingFormat,
+			ChatModel:       config.ChatModel,
+			ChatBaseURL:     config.ChatBaseURL,
+			ChatApiKey:      config.ChatApiKey,
 			MaxTokens:       config.MaxTokens,
 			Threshold:       config.Threshold,
 			TokenManagement: tokenManagement,
