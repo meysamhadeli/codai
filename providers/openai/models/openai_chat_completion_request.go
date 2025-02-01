@@ -7,6 +7,7 @@ type OpenAIChatCompletionRequest struct {
 	Temperature   *float32      `json:"temperature,omitempty"` // Optional field (pointer to float32)
 	Stream        bool          `json:"stream"`
 	StreamOptions StreamOptions `json:"stream_options"`
+	ReasoningEffort string      `json:"reasoning_effort,omitempty"` // Optional field
 }
 
 // Message Define the request body structure

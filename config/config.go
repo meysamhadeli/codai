@@ -37,6 +37,7 @@ var DefaultConfig = Config{
 		EmbeddingsApiVersion:   "",
 		ChatApiKey:             "",
 		EmbeddingsApiKey:       "",
+		ReasoningEffort:        "",
 	},
 }
 
@@ -64,6 +65,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	viper.SetDefault("ai_provider_config.embeddings_api_key", DefaultConfig.AIProviderConfig.EmbeddingsApiKey)
 	viper.SetDefault("ai_provider_config.chat_api_version", DefaultConfig.AIProviderConfig.ChatApiVersion)
 	viper.SetDefault("ai_provider_config.embeddings_api_version", DefaultConfig.AIProviderConfig.EmbeddingsApiVersion)
+	viper.SetDefault("ai_provider_config.reasoning_effort", DefaultConfig.AIProviderConfig.ReasoningEffort)
 
 	// Automatically read environment variables
 	viper.AutomaticEnv() // This will look for variables that match config keys directly
@@ -122,6 +124,7 @@ func bindEnv() {
 	_ = viper.BindEnv("ai_provider_config.embeddings_api_key", "EMBEDDINGS_API_KEY")
 	_ = viper.BindEnv("ai_provider_config.chat_api_version", "CHAT_API_VERSION")
 	_ = viper.BindEnv("ai_provider_config.embeddings_api_version", "EMBEDDINGS_API_VERSION")
+	_ = viper.BindEnv("ai_provider_config.reasoning_effort", "CHAT_REASONING_EFFORT")
 }
 
 // bindFlags binds the CLI flags to configuration values.
@@ -140,6 +143,7 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.embeddings_api_key", rootCmd.Flags().Lookup("embeddings_api_key"))
 	_ = viper.BindPFlag("ai_provider_config.chat_api_version", rootCmd.Flags().Lookup("chat_api_version"))
 	_ = viper.BindPFlag("ai_provider_config.embeddings_api_version", rootCmd.Flags().Lookup("embeddings_api_version"))
+	_ = viper.BindPFlag("ai_provider_config.reasoning_effort", rootCmd.Flags().Lookup("reasoning_effort"))
 }
 
 // InitFlags initializes the flags for the root command.
@@ -160,4 +164,5 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("embeddings_api_key", DefaultConfig.AIProviderConfig.EmbeddingsApiKey, "The embeddings API key used to authenticate with the AI service provider.")
 	rootCmd.PersistentFlags().String("chat_api_version", DefaultConfig.AIProviderConfig.ChatApiVersion, "The API version used to authenticate with the chat AI service provider.")
 	rootCmd.PersistentFlags().String("embeddings_api_version", DefaultConfig.AIProviderConfig.EmbeddingsApiVersion, "The API version used to authenticate with the embeddings AI service provider.")
+	rootCmd.PersistentFlags().String("reasoning_effort", DefaultConfig.AIProviderConfig.ReasoningEffort, "Sets the AI model's reasoning effort level (e.g., 'low', 'medium', 'high'). This affects how thoroughly the model thinks through responses.")
 }
