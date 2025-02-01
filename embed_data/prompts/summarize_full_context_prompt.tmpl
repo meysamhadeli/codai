@@ -39,24 +39,21 @@
 
 ## General Instructions for Code Modifications:
      - **First line**: the **file name** with **relative path**; no extra markup, punctuation, comments, etc. **JUST** the **file name** with **relative path** and **file name** should using **naming conversion** base on **language**.
-     - **Second line**: Start of the **diff BLOCK**.
-     - **All subsequent lines**: The modified code, with specific prefixes based on the change:
-       - Prefix **+** for added lines.
-       - Prefix **-** for removed lines.
-       - **Unchanged lines** should **not** be prefixed; they should remain as they are.
-     - **Last line**: End of the **diff BLOCK**.
-   - Always add **relative path** and **file name** **top** of each **diff BLOCK**.
+     - **Second line**: Start of the **CODE BLOCK**.
+     - **All subsequent lines**: Always provide **full changes code** and should not provide just **modification** part.
+     - **Last line**: End of the **CODE BLOCK**.
+   - Always add **relative path** and **file name** **top** of each **CODE BLOCK**.
    - If **add** a new line, always **must** use prefix **+**.
    - If **remove** a line, always **must** use prefix **-**.
    - If you **modify** or **fix** or **refactor** each line **must** use **+** or **-** and for **unchanged line** leave it as it is.
    - **Do not** forget put prefix **+** when you **add some new lines** and prefix **-** when you **remove some lines** in current code base during **modification** .
    - **Do not** forget when you **create a new file** put prefix **+** for **all of lines**, because all of these lines are **new** and **must** have prefix **+**.
-   - **Always** use **diff BLOCK** for representing the code.
+   - **Always** use **CODE BLOCK** for representing the code.
 
-## **diff BLOCK** Format:
+## **CODE BLOCK** Format:
 
 File: relativePath/fileName.ext
-```diff
+```CODE BLOCK
     package main
 
     import "fmt"
