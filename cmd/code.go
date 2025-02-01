@@ -199,38 +199,6 @@ startLoop: // Label for the start loop
 				return
 			}
 
-			// If RAG is enabled, we use RAG system for retrieving the most relevant data due to user request
-			if rootDependencies.Config.RAG {
-				queryEmbeddingOperation := func() error {
-					// Step 5: Generate embedding for the user query
-					queryEmbedding, err := rootDependencies.CurrentEmbeddingProvider.EmbeddingRequest(ctx, []string{userInput})
-					if err != nil {
-						return err
-					}
-
-					// Ensure there's an embedding for the user query
-					if len(queryEmbedding[0]) == 0 {
-						return fmt.Errorf(lipgloss.Red.Render("no embeddings returned for user query"))
-					}
-
-					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
-					topN := -1
-
-					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingsModel, rootDependencies.Config.AIProviderConfig.Threshold)
-					return nil
-				}
-
-				if err := queryEmbeddingOperation(); err != nil {
-					fmt.Print("\r")
-					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-					displayTokens()
-					continue startLoop
-				}
-
-				fmt.Print("\r")
-			}
-
 			var aiResponseBuilder strings.Builder
 
 			chatRequestOperation := func() error {
@@ -261,13 +229,37 @@ startLoop: // Label for the start loop
 				return nil
 			}
 
-			if err := chatRequestOperation(); err != nil {
-				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-				displayTokens()
-				continue startLoop
-			}
+			// If RAG is enabled, we use RAG system for retrieving the most relevant data due to user request
+			if rootDependencies.Config.RAG {
+				queryEmbeddingOperation := func() error {
+					// Step 5: Generate embedding for the user query
+					queryEmbedding, err := rootDependencies.CurrentEmbeddingProvider.EmbeddingRequest(ctx, []string{userInput})
+					if err != nil {
+						return err
+					}
 
-			if !rootDependencies.Config.RAG {
+					// Ensure there's an embedding for the user query
+					if len(queryEmbedding[0]) == 0 {
+						return fmt.Errorf(lipgloss.Red.Render("no embeddings returned for user query"))
+					}
+
+					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
+					topN := -1
+
+					// Step 6: Find relevant code chunks based on the user query embedding
+					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingsModel, rootDependencies.Config.AIProviderConfig.Threshold)
+					return nil
+				}
+
+				if err := queryEmbeddingOperation(); err != nil {
+					fmt.Print("\r")
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+					displayTokens()
+					continue startLoop
+				}
+
+				fmt.Print("\r")
+			} else {
 				// Try to get full block code if block codes is summarized and incomplete
 				requestedContext, err = rootDependencies.Analyzer.TryGetInCompletedCodeBlocK(aiResponseBuilder.String())
 
@@ -297,6 +289,12 @@ startLoop: // Label for the start loop
 				}
 			}
 
+			if err := chatRequestOperation(); err != nil {
+				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+				displayTokens()
+				continue startLoop
+			}
+
 			// Extract code from AI response and structure this code to apply to git
 			changes := rootDependencies.Analyzer.ExtractCodeChanges(aiResponseBuilder.String())
 
@@ -312,7 +310,7 @@ startLoop: // Label for the start loop
 			for _, change := range changes {
 
 				// Prompt the user to accept or reject the changes
-				promptAccepted, err := utils.ConfirmPrompt(change.RelativePath)
+				promptAccepted, err := utils.ConfirmPrompt(change.RelativePath, reader)
 				if err != nil {
 					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
 					continue

@@ -9,27 +9,20 @@ import (
 )
 
 // ConfirmPrompt prompts the user to accept or reject the changes in a file path
-func ConfirmPrompt(path string) (bool, error) {
-	reader := bufio.NewReader(os.Stdin)
+func ConfirmPrompt(path string, reader *bufio.Reader) (bool, error) {
 
 	// Styled prompt message
 	fmt.Printf(lipgloss.BlueSky.Render(fmt.Sprintf("Do you want to accept the change for file %v%s", lipgloss.LightBlueB.Render(path), lipgloss.BlueSky.Render(" ? (y/n): "))))
 
-	for {
-		// Read user input
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
+	// Read user input
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
 
-		if input == "" {
-			continue
-		}
-
-		if input == "y" || input == "Y" {
-			return true, nil
-		} else if input == "n" || input == "N" {
-			return false, nil
-		}
+	if input == "y" || input == "Y" {
+		return true, nil
 	}
+
+	return false, nil
 }
 
 // ConfirmAdditinalContext prompts the user to accept or reject additional context

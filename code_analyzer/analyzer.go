@@ -361,17 +361,7 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 	var updatedContent []string
 
 	for _, line := range diffLines {
-		trimmedLine := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmedLine, "-") {
-			// Ignore lines that start with "-", effectively deleting them
-			continue
-		} else if strings.HasPrefix(trimmedLine, "+") {
-			// Add lines that start with "+", but remove the "+" symbol
-			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", " "))
-		} else {
-			// Keep all other lines as they are
-			updatedContent = append(updatedContent, line)
-		}
+		updatedContent = append(updatedContent, line)
 	}
 
 	// Handle deletion if code is empty
