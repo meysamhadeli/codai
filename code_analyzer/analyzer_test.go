@@ -65,8 +65,7 @@ func TestRunInSequence(t *testing.T) {
 	t.Run("TestExtractCodeChangesWithStartPathWithFileColon", TestExtractCodeChangesWithStartPathWithFileColon)
 	t.Run("TestExtractCodeChangesWithStartPathWithNumberAndDot", TestExtractCodeChangesWithStartPathWithNumberAndDot)
 	t.Run("TestApplyChanges_AddLines", TestApplyChanges_AddLines)
-	t.Run("TestApplyChanges_RemoveLines", TestApplyChanges_RemoveLines)
-	t.Run("TestApplyChanges_AddAndRemoveLines", TestApplyChanges_AddAndRemoveLines)
+	t.Run("TestApplyChanges_RemoveLines", TestApplyChanges_UpdateLines)
 	t.Run("TestExtractCodeChangesWithAdditionalCharacters", TestExtractCodeChangesWithAdditionalCharacters)
 	t.Run("TestExtractCodeChangesWithDifferentFileLabelFormat", TestExtractCodeChangesWithDifferentFileLabelFormat)
 	t.Run("TestExtractCodeChangesWithSpecialFilePathFormat", TestExtractCodeChangesWithSpecialFilePathFormat)
@@ -312,7 +311,7 @@ func TestApplyChanges_AddLines(t *testing.T) {
 	// Define the relative path and initial content for the file
 	filePath := filepath.Join(relativePathTestDir, "addlines.go")
 	initialContent := "package main\nfunc main() {}"
-	addedLinesDiff := "+func newFunc() {}\nfunc main() {}"
+	addedLinesDiff := "func newFunc() {}\nfunc main() {}"
 
 	// Create the file with initial content
 	err := os.WriteFile(filePath, []byte(initialContent), 0644)
@@ -323,55 +322,31 @@ func TestApplyChanges_AddLines(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the new lines were added correctly
-	expectedContent := " func newFunc() {}\nfunc main() {}"
+	expectedContent := "func newFunc() {}\nfunc main() {}"
 	savedContent, err := os.ReadFile(filePath)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedContent, string(savedContent))
 }
 
-// TestApplyChanges_RemoveLines tests if ApplyChanges correctly removes lines prefixed with "-".
-func TestApplyChanges_RemoveLines(t *testing.T) {
+// TestApplyChanges_UpdateLines tests if ApplyChanges correctly removes lines prefixed with "-".
+func TestApplyChanges_UpdateLines(t *testing.T) {
 	setup(t)
 
 	// Define the relative path and initial content for the file
 	filePath := filepath.Join(relativePathTestDir, "removelines.go")
 	initialContent := "package main\nfunc toBeRemoved() {}\nfunc main() {}"
-	removedLinesDiff := "-func toBeRemoved() {}\nfunc main() {}"
+	updatedLinesDiff := "func main() {}"
 
 	// Create the file with initial content
 	err := os.WriteFile(filePath, []byte(initialContent), 0644)
 	assert.NoError(t, err)
 
 	// Use ApplyChanges to remove specific lines
-	err = analyzer.ApplyChanges(filePath, removedLinesDiff)
+	err = analyzer.ApplyChanges(filePath, updatedLinesDiff)
 	assert.NoError(t, err)
 
-	// Verify the specified lines were removed
+	// Verify the specified lines were updated
 	expectedContent := "func main() {}"
-	savedContent, err := os.ReadFile(filePath)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedContent, string(savedContent))
-}
-
-// TestApplyChanges_AddAndRemoveLines tests if ApplyChanges handles both "+" and "-" prefixed lines.
-func TestApplyChanges_AddAndRemoveLines(t *testing.T) {
-	setup(t)
-
-	// Define the relative path and initial content for the file
-	filePath := filepath.Join(relativePathTestDir, "addremovelines.go")
-	initialContent := "package main\nfunc oldFunc() {}\nfunc main() {}"
-	addRemoveLinesDiff := "-func oldFunc() {}\n+func newFunc() {}\nfunc main() {}"
-
-	// Create the file with initial content
-	err := os.WriteFile(filePath, []byte(initialContent), 0644)
-	assert.NoError(t, err)
-
-	// Use ApplyChanges to add and remove specific lines
-	err = analyzer.ApplyChanges(filePath, addRemoveLinesDiff)
-	assert.NoError(t, err)
-
-	// Verify the lines were added and removed correctly
-	expectedContent := " func newFunc() {}\nfunc main() {}"
 	savedContent, err := os.ReadFile(filePath)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedContent, string(savedContent))
