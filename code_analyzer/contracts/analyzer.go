@@ -5,7 +5,7 @@ import (
 )
 
 type ICodeAnalyzer interface {
-	GetProjectFiles(rootDir string) ([]models.FileData, []string, error)
+	GetProjectFiles(rootDir string) (*models.FullContextData, error)
 	ProcessFile(filePath string, sourceCode []byte) []string
 	GeneratePrompt(codes []string, history []string, userInput string, requestedContext string) (string, string)
 	ExtractCodeChanges(text string) []models.CodeChange

@@ -38,9 +38,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	defer cancel()
 
 	var requestedContext string
-	var fullContext []models.FileData
-	var fullContextCodes []string
-
+	var fullContext *models.FullContextData
 	const maxTokens = 8000           // Max tokens per embedding request
 	const requestDelay = time.Second // requests per second (adjust based on rate limits)
 	var currentChunks []general_models.ChunkData
@@ -62,7 +60,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	spinnerLoadContext, _ := spinner.Start("Loading Context...")
 
 	// Get all data files from the root directory
-	fullContext, fullContextCodes, err := rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
+	fullContext, err := rootDependencies.Analyzer.GetProjectFiles(rootDependencies.Cwd)
 
 	if err != nil {
 		spinnerLoadContext.Stop()
@@ -112,7 +110,7 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 		spinnerEmbeddingContext, _ := spinner.Start("Embedding Context...")
 
-		for _, dataFile := range fullContext {
+		for _, dataFile := range fullContext.FileData {
 			// Split file into chunks of up to 8000 tokens
 			fileChunks, err := rootDependencies.TokenManagement.SplitTokenIntoChunks(dataFile.Code, maxTokens)
 			if err != nil {
@@ -202,7 +200,7 @@ startLoop: // Label for the start loop
 			var aiResponseBuilder strings.Builder
 
 			chatRequestOperation := func() error {
-				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContextCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
+				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContext.RawCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
 				// Step 7: Send the relevant code and user input to the AI API
 				responseChan := rootDependencies.CurrentChatProvider.ChatCompletionRequest(ctx, userInputPrompt, finalPrompt)
@@ -247,7 +245,7 @@ startLoop: // Label for the start loop
 					topN := -1
 
 					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContextCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingsModel, rootDependencies.Config.AIProviderConfig.Threshold)
+					fullContext.RawCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingsModel, rootDependencies.Config.AIProviderConfig.Threshold)
 					return nil
 				}
 

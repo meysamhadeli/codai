@@ -6,3 +6,8 @@ type FileData struct {
 	Code           string
 	TreeSitterCode string
 }
+
+type FullContextData struct {
+	FileData []FileData
+	RawCodes []string
+}
