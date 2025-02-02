@@ -32,6 +32,7 @@ type OpenAIConfig struct {
 	TokenManagement      contracts2.ITokenManagement
 	ChatApiVersion       string
 	EmbeddingsApiVersion string
+	ReasoningEffort      string
 }
 
 // NewOpenAIChatProvider initializes a new OpenAPIProvider.
@@ -46,6 +47,7 @@ func NewOpenAIChatProvider(config *OpenAIConfig) contracts.IChatAIProvider {
 		ChatApiKey:      config.ChatApiKey,
 		ChatApiVersion:  config.ChatApiVersion,
 		TokenManagement: config.TokenManagement,
+		ReasoningEffort: config.ReasoningEffort,
 	}
 }
 
@@ -154,12 +156,20 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 				{Role: "user", Content: userInput},
 			},
 			Stream:      true,
-			Temperature: &openAIProvider.Temperature,
 			StreamOptions: openai_models.StreamOptions{
 				IncludeUsage: true,
 			},
 		}
 
+		// Only set temperature for models that support it
+		if !strings.Contains(openAIProvider.ChatModel, "o3-") && !strings.Contains(openAIProvider.ChatModel, "o1-") {
+			reqBody.Temperature = &openAIProvider.Temperature
+		}
+
+		// Add reasoning effort if set
+		if openAIProvider.ReasoningEffort != "" {
+			reqBody.ReasoningEffort = openAIProvider.ReasoningEffort
+		}
 		jsonData, err := json.Marshal(reqBody)
 		if err != nil {
 			markdownBuffer.Reset()

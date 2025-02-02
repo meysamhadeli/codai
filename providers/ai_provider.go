@@ -28,6 +28,7 @@ type AIProviderConfig struct {
 	EmbeddingsApiKey       string  `mapstructure:"embeddings_api_key"`
 	ChatApiVersion         string  `mapstructure:"chat_api_version"`
 	EmbeddingsApiVersion   string  `mapstructure:"embeddings_api_version"`
+	ReasoningEffort        string  `mapstructure:"reasoning_effort"`
 }
 
 // ChatProviderFactory creates a Provider based on the given provider config.
@@ -69,6 +70,7 @@ func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts2.IT
 			TokenManagement:      tokenManagement,
 			ChatApiVersion:       config.ChatApiVersion,
 			EmbeddingsApiVersion: config.EmbeddingsApiVersion,
+			ReasoningEffort:      config.ReasoningEffort,
 		}), nil
 	case "azure-openai":
 		return azure_openai.NewAzureOpenAIChatProvider(&azure_openai.AzureOpenAIConfig{

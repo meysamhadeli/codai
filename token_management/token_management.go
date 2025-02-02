@@ -7,7 +7,6 @@ import (
 	"github.com/meysamhadeli/codai/embed_data"
 	"github.com/meysamhadeli/codai/token_management/contracts"
 	"github.com/pkoukk/tiktoken-go"
-	"log"
 	"strings"
 )
 
@@ -106,11 +105,22 @@ func (tm *tokenManager) UsedEmbeddingTokens(inputToken int, outputToken int) {
 }
 
 func (tm *tokenManager) DisplayTokens(chatProviderName string, embeddingProviderName string, chatModel string, embeddingModel string, isRag bool) {
+	// We'll update this with the actual cost after token counts are set
+	var tokenInfo string
+	var cost float64
+	var costEmbedding float64
 
-	cost := tm.CalculateCost(chatProviderName, chatModel, tm.usedInputToken, tm.usedOutputToken)
-	costEmbedding := tm.CalculateCost(embeddingProviderName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
+	// Calculate costs after token counts have been set
+	cost = tm.CalculateCost(chatProviderName, chatModel, tm.usedInputToken, tm.usedOutputToken)
 
-	tokenInfo := fmt.Sprintf("Token Used: %s - Cost: %s $ - Chat Model: %s", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), chatModel)
+	// Only calculate embedding costs if RAG is enabled
+	// Fix bug where cost is not calculated right when RAG is disabled
+	if isRag {
+		costEmbedding = tm.CalculateCost(embeddingProviderName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
+	}
+
+	// Format display text
+	tokenInfo = fmt.Sprintf("Token Used: %s - Cost: %.8f $ - Chat Model: %s", fmt.Sprint(tm.usedToken), cost, chatModel)
 
 	if isRag {
 		embeddingTokenDetails := fmt.Sprintf("Token Used: %s - Cost: %s $ - Embedding Model: %s", fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding), embeddingModel)
@@ -164,7 +174,6 @@ func getModelDetails(providerName string, modelName string) (details, error) {
 	// Unmarshal the JSON data from the embedded file
 	err := json.Unmarshal(embed_data.ModelDetails, &models)
 	if err != nil {
-		log.Fatalf("Error unmarshaling JSON: %v", err)
 		return details{}, err
 	}
 
