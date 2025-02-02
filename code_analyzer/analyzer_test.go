@@ -134,13 +134,13 @@ func TestGetProjectFiles(t *testing.T) {
 	_ = os.WriteFile(testFilePath, []byte("package main\nfunc main() {}"), 0644)
 	_ = os.WriteFile(ignoreFilePath, []byte("node_modules\n"), 0644)
 
-	files, codes, err := analyzer.GetProjectFiles(relativePathTestDir)
+	fullContext, err := analyzer.GetProjectFiles(relativePathTestDir)
 
 	assert.NoError(t, err)
-	assert.Len(t, files, 1)
-	assert.Len(t, codes, 1)
+	assert.Len(t, fullContext.FileData, 1)
+	assert.Len(t, fullContext.RawCodes, 1)
 
-	for _, file := range files {
+	for _, file := range fullContext.FileData {
 		assert.NotEmpty(t, file.RelativePath)
 		assert.Equal(t, "test.go", filepath.Base(file.RelativePath))
 	}

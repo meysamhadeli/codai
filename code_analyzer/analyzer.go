@@ -58,14 +58,13 @@ func NewCodeAnalyzer(cwd string, isRAG bool) contracts.ICodeAnalyzer {
 	return &CodeAnalyzer{Cwd: cwd, IsRAG: isRAG}
 }
 
-func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData, []string, error) {
-	var result []models.FileData
-	var codes []string
+func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) (*models.FullContextData, error) {
+	var result models.FullContextData
 
 	// Retrieve the ignore patterns from .gitignore, if it exists
 	gitIgnorePatterns, err := utils.GetGitignorePatterns(rootDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Walk the directory tree and find all files
@@ -115,19 +114,19 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) ([]models.FileData
 			codeParts := analyzer.ProcessFile(relativePath, content)
 
 			// Append the file data to the result
-			result = append(result, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
+			result.FileData = append(result.FileData, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
 
-			codes = append(codes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, strings.Join(codeParts, "\n")))
+			result.RawCodes = append(result.RawCodes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, strings.Join(codeParts, "\n")))
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return result, codes, nil
+	return &result, nil
 }
 
 // ProcessFile processes a single file using Tree-sitter for syntax analysis (for .cs files).
@@ -361,7 +360,17 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 	var updatedContent []string
 
 	for _, line := range diffLines {
-		updatedContent = append(updatedContent, line)
+		trimmedLine := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmedLine, "-") {
+			// Ignore lines that start with "-", effectively deleting them
+			continue
+		} else if strings.HasPrefix(trimmedLine, "+") {
+			// Add lines that start with "+", but remove the "+" symbol
+			updatedContent = append(updatedContent, strings.ReplaceAll(trimmedLine, "+", " "))
+		} else {
+			// Keep all other lines as they are
+			updatedContent = append(updatedContent, line)
+		}
 	}
 
 	// Handle deletion if code is empty
