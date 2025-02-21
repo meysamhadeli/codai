@@ -22,7 +22,8 @@ import (
 type OpenRouterConfig struct {
 	ChatBaseURL     string
 	ChatModel       string
-	Temperature     float32
+	Temperature     *float32
+	ReasoningEffort *string
 	EncodingFormat  string
 	ChatApiKey      string
 	MaxTokens       int
@@ -37,6 +38,7 @@ func NewOpenRouterChatProvider(config *OpenRouterConfig) contracts.IChatAIProvid
 		ChatBaseURL:     config.ChatBaseURL,
 		ChatModel:       config.ChatModel,
 		Temperature:     config.Temperature,
+		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
 		Threshold:       config.Threshold,
@@ -61,8 +63,9 @@ func (openRouterProvider *OpenRouterConfig) ChatCompletionRequest(ctx context.Co
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
-			Stream:      true,
-			Temperature: &openRouterProvider.Temperature,
+			Stream:          true,
+			Temperature:     openRouterProvider.Temperature,
+			ReasoningEffort: openRouterProvider.ReasoningEffort,
 		}
 
 		jsonData, err := json.Marshal(reqBody)

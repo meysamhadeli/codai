@@ -108,11 +108,12 @@ func (tm *tokenManager) UsedEmbeddingTokens(inputToken int, outputToken int) {
 func (tm *tokenManager) DisplayTokens(chatProviderName string, embeddingProviderName string, chatModel string, embeddingModel string, isRag bool) {
 
 	cost := tm.CalculateCost(chatProviderName, chatModel, tm.usedInputToken, tm.usedOutputToken)
-	costEmbedding := tm.CalculateCost(embeddingProviderName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
 
 	tokenInfo := fmt.Sprintf("Token Used: %s - Cost: %s $ - Chat Model: %s", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), chatModel)
 
 	if isRag {
+		costEmbedding := tm.CalculateCost(embeddingProviderName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
+
 		embeddingTokenDetails := fmt.Sprintf("Token Used: %s - Cost: %s $ - Embedding Model: %s", fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding), embeddingModel)
 		tokenInfo = tokenInfo + "\n" + embeddingTokenDetails
 	}

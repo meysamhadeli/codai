@@ -31,7 +31,8 @@ var DefaultConfig = Config{
 		EmbeddingsModel:        "text-embedding-3-small",
 		Stream:                 true,
 		EncodingFormat:         "float",
-		Temperature:            0.2,
+		Temperature:            nil,
+		ReasoningEffort:        nil,
 		Threshold:              0,
 		ChatApiVersion:         "",
 		EmbeddingsApiVersion:   "",
@@ -58,6 +59,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 	viper.SetDefault("ai_provider_config.embeddings_model", DefaultConfig.AIProviderConfig.EmbeddingsModel)
 	viper.SetDefault("ai_provider_config.encoding_format", DefaultConfig.AIProviderConfig.EncodingFormat)
 	viper.SetDefault("ai_provider_config.temperature", DefaultConfig.AIProviderConfig.Temperature)
+	viper.SetDefault("ai_provider_config.reasoning_effort", DefaultConfig.AIProviderConfig.ReasoningEffort)
 	viper.SetDefault("ai_provider_config.threshold", DefaultConfig.AIProviderConfig.Threshold)
 	viper.SetDefault("ai_provider_config.stream", DefaultConfig.AIProviderConfig.Stream)
 	viper.SetDefault("ai_provider_config.chat_api_key", DefaultConfig.AIProviderConfig.ChatApiKey)
@@ -117,6 +119,7 @@ func bindEnv() {
 	_ = viper.BindEnv("ai_provider_config.chat_model", "CHAT_MODEL")
 	_ = viper.BindEnv("ai_provider_config.embeddings_model", "EMBEDDINGS_MODEL")
 	_ = viper.BindEnv("ai_provider_config.temperature", "TEMPERATURE")
+	_ = viper.BindEnv("ai_provider_config.reasoning_effort", "REASONING_EFFORT")
 	_ = viper.BindEnv("ai_provider_config.threshold", "THRESHOLD")
 	_ = viper.BindEnv("ai_provider_config.chat_api_key", "CHAT_API_KEY")
 	_ = viper.BindEnv("ai_provider_config.embeddings_api_key", "EMBEDDINGS_API_KEY")
@@ -135,6 +138,7 @@ func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("ai_provider_config.chat_model", rootCmd.Flags().Lookup("chat_model"))
 	_ = viper.BindPFlag("ai_provider_config.embeddings_model", rootCmd.Flags().Lookup("embeddings_model"))
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.Flags().Lookup("temperature"))
+	_ = viper.BindPFlag("ai_provider_config.reasoning_effort", rootCmd.Flags().Lookup("reasoning_effort"))
 	_ = viper.BindPFlag("ai_provider_config.threshold", rootCmd.Flags().Lookup("threshold"))
 	_ = viper.BindPFlag("ai_provider_config.chat_api_key", rootCmd.Flags().Lookup("chat_api_key"))
 	_ = viper.BindPFlag("ai_provider_config.embeddings_api_key", rootCmd.Flags().Lookup("embeddings_api_key"))
@@ -154,7 +158,8 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().String("embeddings_base_url", DefaultConfig.AIProviderConfig.EmbeddingsBaseURL, "The embeddings base URL of AI Provider (e.g., default is 'https://api.openai.com'.")
 	rootCmd.PersistentFlags().String("chat_model", DefaultConfig.AIProviderConfig.ChatModel, "The name of the model used for chat completions, such as 'gpt-4o'. Different models offer varying levels of performance and capabilities.")
 	rootCmd.PersistentFlags().String("embeddings_model", DefaultConfig.AIProviderConfig.EmbeddingsModel, "Specifies the AI model used for generating text embeddings (e.g., 'text-embedding-ada-002'). This model converts text into vector representations for similarity comparisons.")
-	rootCmd.PersistentFlags().Float32("temperature", DefaultConfig.AIProviderConfig.Temperature, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
+	rootCmd.PersistentFlags().Float32("temperature", 0, "Adjusts the AI model’s creativity by setting a temperature value. Higher values result in more creative or varied responses, while lower values make them more focused (e.g., value should be between '0 - 1' and default is '0.2').")
+	rootCmd.PersistentFlags().String("reasoning_effort", "", "Adjusts the AI Reasoning model’s (e.g., 'low', 'medium', 'high').")
 	rootCmd.PersistentFlags().Float64("threshold", DefaultConfig.AIProviderConfig.Threshold, "Sets the threshold for similarity calculations in AI systems. Higher values will require closer matches and should be careful not to lose matches, while lower values provide a wider range of results to prevent losing any matches. (e.g., value should be between '0.2 - 1' and default is '0.3').")
 	rootCmd.PersistentFlags().String("chat_api_key", DefaultConfig.AIProviderConfig.ChatApiKey, "The chat API key used to authenticate with the AI service provider.")
 	rootCmd.PersistentFlags().String("embeddings_api_key", DefaultConfig.AIProviderConfig.EmbeddingsApiKey, "The embeddings API key used to authenticate with the AI service provider.")

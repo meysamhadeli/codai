@@ -200,6 +200,7 @@ startLoop: // Label for the start loop
 			var aiResponseBuilder strings.Builder
 
 			chatRequestOperation := func() error {
+
 				finalPrompt, userInputPrompt := rootDependencies.Analyzer.GeneratePrompt(fullContext.RawCodes, rootDependencies.ChatHistory.GetHistory(), userInput, requestedContext)
 
 				// Step 7: Send the relevant code and user input to the AI API
@@ -220,7 +221,7 @@ startLoop: // Label for the start loop
 
 					language := utils.DetectLanguageFromCodeBlock(response.Content)
 					if err := utils.RenderAndPrintMarkdown(response.Content, language, rootDependencies.Config.Theme); err != nil {
-						return fmt.Errorf("error rendering markdown: %v", err)
+						return fmt.Errorf("Error rendering markdown: %v", err)
 					}
 				}
 
@@ -238,7 +239,7 @@ startLoop: // Label for the start loop
 
 					// Ensure there's an embedding for the user query
 					if len(queryEmbedding[0]) == 0 {
-						return fmt.Errorf(lipgloss.Red.Render("no embeddings returned for user query"))
+						return fmt.Errorf(lipgloss.Red.Render("No embeddings returned for user query"))
 					}
 
 					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
@@ -266,7 +267,7 @@ startLoop: // Label for the start loop
 
 					fmt.Print("\n")
 
-					contextAccepted, err := utils.ConfirmAdditinalContext()
+					contextAccepted, err := utils.ConfirmAdditinalContext(reader)
 					if err != nil {
 						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
 						continue
@@ -310,14 +311,14 @@ startLoop: // Label for the start loop
 				// Prompt the user to accept or reject the changes
 				promptAccepted, err := utils.ConfirmPrompt(change.RelativePath, reader)
 				if err != nil {
-					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Error getting user prompt: %v", err)))
 					continue
 				}
 
 				if promptAccepted {
 					err := rootDependencies.Analyzer.ApplyChanges(change.RelativePath, change.Code)
 					if err != nil {
-						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error applying changes: %v", err)))
+						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Error applying changes: %v", err)))
 						continue
 					}
 					fmt.Println(lipgloss.Green.Render("✔️ Changes accepted!"))

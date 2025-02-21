@@ -21,7 +21,8 @@ import (
 type DeepSeekConfig struct {
 	ChatBaseURL     string
 	ChatModel       string
-	Temperature     float32
+	Temperature     *float32
+	ReasoningEffort *string
 	EncodingFormat  string
 	ChatApiKey      string
 	MaxTokens       int
@@ -36,6 +37,7 @@ func NewDeepSeekChatProvider(config *DeepSeekConfig) contracts.IChatAIProvider {
 		ChatBaseURL:     config.ChatBaseURL,
 		ChatModel:       config.ChatModel,
 		Temperature:     config.Temperature,
+		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
 		Threshold:       config.Threshold,
@@ -59,8 +61,9 @@ func (deepSeekProvider *DeepSeekConfig) ChatCompletionRequest(ctx context.Contex
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
-			Stream:      true,
-			Temperature: &deepSeekProvider.Temperature,
+			Stream:          true,
+			Temperature:     deepSeekProvider.Temperature,
+			ReasoningEffort: deepSeekProvider.ReasoningEffort,
 		}
 
 		jsonData, err := json.Marshal(reqBody)

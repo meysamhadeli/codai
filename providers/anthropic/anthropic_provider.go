@@ -21,7 +21,7 @@ import (
 type AnthropicConfig struct {
 	MessageBaseURL    string
 	MessageModel      string
-	Temperature       float32
+	Temperature       *float32
 	EncodingFormat    string
 	MessageApiKey     string
 	MaxTokens         int

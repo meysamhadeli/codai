@@ -23,7 +23,8 @@ type OllamaConfig struct {
 	EmbeddingsBaseURL string
 	EmbeddingsModel   string
 	ChatModel         string
-	Temperature       float32
+	Temperature       *float32
+	ReasoningEffort   *string
 	EncodingFormat    string
 	MaxTokens         int
 	Threshold         float64
@@ -36,6 +37,7 @@ func NewOllamaChatProvider(config *OllamaConfig) contracts.IChatAIProvider {
 		ChatBaseURL:     config.ChatBaseURL,
 		ChatModel:       config.ChatModel,
 		Temperature:     config.Temperature,
+		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
 		Threshold:       config.Threshold,
