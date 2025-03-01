@@ -21,7 +21,7 @@ import (
 type AnthropicConfig struct {
 	MessageBaseURL    string
 	MessageModel      string
-	Temperature       float32
+	Temperature       *float32
 	EncodingFormat    string
 	MessageApiKey     string
 	MaxTokens         int
@@ -60,7 +60,7 @@ func (anthropicProvider *AnthropicConfig) ChatCompletionRequest(ctx context.Cont
 				{Role: "user", Content: userInput},
 			},
 			Model:       anthropicProvider.MessageModel,
-			Temperature: &anthropicProvider.Temperature,
+			Temperature: anthropicProvider.Temperature,
 			Stream:      true,
 		}
 

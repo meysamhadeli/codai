@@ -2,11 +2,12 @@ package models
 
 // OpenAIChatCompletionRequest Define the request body structure
 type OpenAIChatCompletionRequest struct {
-	Model         string        `json:"model"`
-	Messages      []Message     `json:"messages"`
-	Temperature   *float32      `json:"temperature,omitempty"` // Optional field (pointer to float32)
-	Stream        bool          `json:"stream"`
-	StreamOptions StreamOptions `json:"stream_options"`
+	Model           string        `json:"model"`
+	Messages        []Message     `json:"messages"`
+	Temperature     *float32      `json:"temperature,omitempty"`      // Optional field (pointer to float32)
+	ReasoningEffort *string       `json:"reasoning_effort,omitempty"` // Optional field (pointer to string)
+	Stream          bool          `json:"stream"`
+	StreamOptions   StreamOptions `json:"stream_options"`
 }
 
 // Message Define the request body structure

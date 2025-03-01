@@ -23,7 +23,8 @@ type OpenAIConfig struct {
 	EmbeddingsBaseURL    string
 	EmbeddingsModel      string
 	ChatModel            string
-	Temperature          float32
+	Temperature          *float32
+	ReasoningEffort      *string
 	EncodingFormat       string
 	ChatApiKey           string
 	EmbeddingsApiKey     string
@@ -40,6 +41,7 @@ func NewOpenAIChatProvider(config *OpenAIConfig) contracts.IChatAIProvider {
 		ChatBaseURL:     config.ChatBaseURL,
 		ChatModel:       config.ChatModel,
 		Temperature:     config.Temperature,
+		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
 		Threshold:       config.Threshold,
@@ -153,8 +155,9 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
-			Stream:      true,
-			Temperature: &openAIProvider.Temperature,
+			Stream:          true,
+			Temperature:     openAIProvider.Temperature,
+			ReasoningEffort: openAIProvider.ReasoningEffort,
 			StreamOptions: openai_models.StreamOptions{
 				IncludeUsage: true,
 			},

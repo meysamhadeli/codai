@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/meysamhadeli/codai/constants/lipgloss"
-	"os"
 	"strings"
 )
 
@@ -12,6 +11,7 @@ import (
 func ConfirmPrompt(path string, reader *bufio.Reader) (bool, error) {
 
 	// Styled prompt message
+	fmt.Print("\r")
 	fmt.Printf(lipgloss.BlueSky.Render(fmt.Sprintf("Do you want to accept the change for file %v%s", lipgloss.LightBlueB.Render(path), lipgloss.BlueSky.Render(" ? (y/n): "))))
 
 	// Read user input
@@ -26,10 +26,10 @@ func ConfirmPrompt(path string, reader *bufio.Reader) (bool, error) {
 }
 
 // ConfirmAdditinalContext prompts the user to accept or reject additional context
-func ConfirmAdditinalContext() (bool, error) {
-	reader := bufio.NewReader(os.Stdin)
+func ConfirmAdditinalContext(reader *bufio.Reader) (bool, error) {
 
 	// Styled prompt message
+	fmt.Print("\r")
 	fmt.Printf(lipgloss.Gray.Render(fmt.Sprintf("Do you want to add above files to context %s", lipgloss.Gray.Render("? (y/n): "))))
 
 	for {
