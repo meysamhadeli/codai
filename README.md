@@ -69,8 +69,9 @@ ai_provider_config:
   embeddings_base_url: "https://api.openai.com" | "http://localhost:11434" | "https://test.openai.azure.com"
   embeddings_model: "text-embedding-3-small"     #(Optional, If you want use 'RAG'.)
   embeddings_api_version: "2024-01-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' has embeddings api version.)
-  temperature: 0.2
+  temperature: 0.2     #(Optional, If you want use 'Temperature'.)
   threshold: 0.2     #(Optional, If you want use 'RAG'.)
+  reasoning_effort: "low"     #(Optional, If you want use 'Reasoning'.) 
 theme: "dracula"
 rag: true     #(Optional, If you want use 'RAG'.)
 ```
