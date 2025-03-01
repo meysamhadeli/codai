@@ -60,7 +60,7 @@ func (anthropicProvider *AnthropicConfig) ChatCompletionRequest(ctx context.Cont
 				{Role: "user", Content: userInput},
 			},
 			Model:       anthropicProvider.MessageModel,
-			Temperature: &anthropicProvider.Temperature,
+			Temperature: anthropicProvider.Temperature,
 			Stream:      true,
 		}
 

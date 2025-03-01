@@ -139,7 +139,7 @@ func (ollamaProvider *OllamaConfig) ChatCompletionRequest(ctx context.Context, u
 				{Role: "user", Content: userInput},
 			},
 			Stream:      true,
-			Temperature: &ollamaProvider.Temperature,
+			Temperature: ollamaProvider.Temperature,
 		}
 
 		jsonData, err := json.Marshal(reqBody)
