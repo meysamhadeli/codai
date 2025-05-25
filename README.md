@@ -61,7 +61,7 @@ The `codai-config` file should be like following example base on your `AI provid
 **codai-config.yml**
 ```yml
 ai_provider_config:
-  provider_name: "azure-openai"
+  provider: "azure-openai"
   base_url: "https://test.openai.azure.com"
   model: "gpt-4o"
   api_version: "2024-04-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' or 'Anthropic' has chat api version.)
@@ -80,7 +80,7 @@ codai code --config ./codai-config.yml
 ```
 Additionally, you can pass configuration options directly in the command line. For example:
 ```bash
-codai code --provider_name openapi --temperature 0.8 --api_key test-key
+codai code --provider openapi --temperature 0.8 --api_key test-key
 ```
 This flexibility allows you to customize config of codai on the fly.
 
