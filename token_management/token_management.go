@@ -6,7 +6,6 @@ import (
 	"github.com/meysamhadeli/codai/constants/lipgloss"
 	"github.com/meysamhadeli/codai/embed_data"
 	"github.com/meysamhadeli/codai/token_management/contracts"
-	"github.com/pkoukk/tiktoken-go"
 	"log"
 	"strings"
 )
@@ -16,10 +15,6 @@ type tokenManager struct {
 	usedToken       int
 	usedInputToken  int
 	usedOutputToken int
-
-	usedEmbeddingToken       int
-	usedEmbeddingInputToken  int
-	usedEmbeddingOutputToken int
 }
 
 type details struct {
@@ -40,53 +35,10 @@ type Models struct {
 // NewTokenManager creates a new token manager
 func NewTokenManager() contracts.ITokenManagement {
 	return &tokenManager{
-		usedToken:                0,
-		usedInputToken:           0,
-		usedOutputToken:          0,
-		usedEmbeddingToken:       0,
-		usedEmbeddingInputToken:  0,
-		usedEmbeddingOutputToken: 0,
+		usedToken:       0,
+		usedInputToken:  0,
+		usedOutputToken: 0,
 	}
-}
-
-// TokenCount calculates the number of tokens in a given string.
-func (tm *tokenManager) TokenCount(content string) (int, error) {
-	encoder, err := tiktoken.EncodingForModel("gpt-4o")
-	if err != nil {
-		return 0, err
-	}
-
-	// Encode the content to calculate tokens
-	tokens := encoder.Encode(content, nil, nil)
-	return len(tokens), nil
-}
-
-// SplitTokenIntoChunks splits the content into chunks that each have up to maxTokens tokens.
-func (tm *tokenManager) SplitTokenIntoChunks(content string, maxTokens int) ([]string, error) {
-	// Load the tokenizer for the target OpenAI model
-	encoder, err := tiktoken.EncodingForModel("gpt-4")
-	if err != nil {
-		return nil, err
-	}
-
-	// Tokenize the content
-	tokens := encoder.Encode(content, nil, nil)
-
-	// Split tokens into chunks
-	var chunks []string
-	for start := 0; start < len(tokens); start += maxTokens {
-		end := start + maxTokens
-		if end > len(tokens) {
-			end = len(tokens)
-		}
-
-		// Decode the chunk of tokens back into a string
-		chunk := encoder.Decode(tokens[start:end])
-
-		chunks = append(chunks, chunk)
-	}
-
-	return chunks, nil
 }
 
 // UsedTokens deducts the token count from the available tokens.
@@ -97,26 +49,11 @@ func (tm *tokenManager) UsedTokens(inputToken int, outputToken int) {
 	tm.usedToken += inputToken + outputToken
 }
 
-// UsedEmbeddingTokens deducts the token count from the available tokens.
-func (tm *tokenManager) UsedEmbeddingTokens(inputToken int, outputToken int) {
-	tm.usedEmbeddingInputToken = inputToken
-	tm.usedEmbeddingOutputToken = outputToken
-
-	tm.usedEmbeddingToken += inputToken + outputToken
-}
-
-func (tm *tokenManager) DisplayTokens(chatProviderName string, embeddingProviderName string, chatModel string, embeddingModel string, isRag bool) {
+func (tm *tokenManager) DisplayTokens(chatProviderName string, chatModel string) {
 
 	cost := tm.CalculateCost(chatProviderName, chatModel, tm.usedInputToken, tm.usedOutputToken)
 
 	tokenInfo := fmt.Sprintf("Token Used: %s - Cost: %s $ - Chat Model: %s", fmt.Sprint(tm.usedToken), fmt.Sprintf("%.6f", cost), chatModel)
-
-	if isRag {
-		costEmbedding := tm.CalculateCost(embeddingProviderName, embeddingModel, tm.usedEmbeddingInputToken, tm.usedEmbeddingOutputToken)
-
-		embeddingTokenDetails := fmt.Sprintf("Token Used: %s - Cost: %s $ - Embedding Model: %s", fmt.Sprint(tm.usedEmbeddingToken), fmt.Sprintf("%.6f", costEmbedding), embeddingModel)
-		tokenInfo = tokenInfo + "\n" + embeddingTokenDetails
-	}
 
 	tokenBox := lipgloss.BoxStyle.Render(tokenInfo)
 	fmt.Println(tokenBox)
@@ -126,9 +63,6 @@ func (tm *tokenManager) ClearToken() {
 	tm.usedToken = 0
 	tm.usedInputToken = 0
 	tm.usedOutputToken = 0
-	tm.usedEmbeddingToken = 0
-	tm.usedEmbeddingInputToken = 0
-	tm.usedEmbeddingOutputToken = 0
 }
 
 func (tm *tokenManager) CalculateCost(providerName string, modelName string, inputToken int, outputToken int) float64 {

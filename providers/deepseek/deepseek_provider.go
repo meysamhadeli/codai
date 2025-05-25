@@ -19,30 +19,37 @@ import (
 
 // DeepSeekConfig implements the Provider interface for DeepSeek.
 type DeepSeekConfig struct {
-	ChatBaseURL     string
-	ChatModel       string
+	BaseURL         string
+	Model           string
 	Temperature     *float32
 	ReasoningEffort *string
 	EncodingFormat  string
-	ChatApiKey      string
+	ApiKey          string
 	MaxTokens       int
-	Threshold       float64
 	TokenManagement contracts2.ITokenManagement
-	ChatApiVersion  string
+	ApiVersion      string
 }
+
+const (
+	defaultBaseURL = "https://api.deepseek.com"
+)
 
 // NewDeepSeekChatProvider initializes a new DeepSeekAPIProvider.
 func NewDeepSeekChatProvider(config *DeepSeekConfig) contracts.IChatAIProvider {
+	// Set default BaseURL if empty
+	baseURL := config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
 	return &DeepSeekConfig{
-		ChatBaseURL:     config.ChatBaseURL,
-		ChatModel:       config.ChatModel,
+		BaseURL:         config.BaseURL,
+		Model:           config.Model,
 		Temperature:     config.Temperature,
 		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
-		Threshold:       config.Threshold,
-		ChatApiKey:      config.ChatApiKey,
-		ChatApiVersion:  config.ChatApiVersion,
+		ApiKey:          config.ApiKey,
+		ApiVersion:      config.ApiVersion,
 		TokenManagement: config.TokenManagement,
 	}
 }
@@ -56,7 +63,7 @@ func (deepSeekProvider *DeepSeekConfig) ChatCompletionRequest(ctx context.Contex
 
 		// Prepare the request body
 		reqBody := deepseek_models.DeepSeekChatCompletionRequest{
-			Model: deepSeekProvider.ChatModel,
+			Model: deepSeekProvider.Model,
 			Messages: []deepseek_models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
@@ -74,7 +81,7 @@ func (deepSeekProvider *DeepSeekConfig) ChatCompletionRequest(ctx context.Contex
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/chat/completions", deepSeekProvider.ChatBaseURL), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/chat/completions", deepSeekProvider.BaseURL), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
@@ -82,7 +89,7 @@ func (deepSeekProvider *DeepSeekConfig) ChatCompletionRequest(ctx context.Contex
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", deepSeekProvider.ChatApiKey))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", deepSeekProvider.ApiKey))
 
 		client := &http.Client{}
 		resp, err := client.Do(req)

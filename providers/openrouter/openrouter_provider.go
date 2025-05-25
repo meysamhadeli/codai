@@ -20,30 +20,37 @@ import (
 
 // OpenRouterConfig implements the Provider interface for OpenAPI.
 type OpenRouterConfig struct {
-	ChatBaseURL     string
-	ChatModel       string
+	BaseURL         string
+	Model           string
 	Temperature     *float32
 	ReasoningEffort *string
 	EncodingFormat  string
-	ChatApiKey      string
+	ApiKey          string
 	MaxTokens       int
-	Threshold       float64
 	TokenManagement contracts2.ITokenManagement
-	ChatApiVersion  string
+	ApiVersion      string
 }
+
+const (
+	defaultBaseURL = "https://openrouter.ai/api/v1"
+)
 
 // NewOpenRouterChatProvider initializes a new OpenAPIProvider.
 func NewOpenRouterChatProvider(config *OpenRouterConfig) contracts.IChatAIProvider {
+	// Set default BaseURL if empty
+	baseURL := config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
 	return &OpenRouterConfig{
-		ChatBaseURL:     config.ChatBaseURL,
-		ChatModel:       config.ChatModel,
+		BaseURL:         baseURL,
+		Model:           config.Model,
 		Temperature:     config.Temperature,
 		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
-		Threshold:       config.Threshold,
-		ChatApiKey:      config.ChatApiKey,
-		ChatApiVersion:  config.ChatApiVersion,
+		ApiKey:          config.ApiKey,
+		ApiVersion:      config.ApiVersion,
 		TokenManagement: config.TokenManagement,
 	}
 }
@@ -58,7 +65,7 @@ func (openRouterProvider *OpenRouterConfig) ChatCompletionRequest(ctx context.Co
 
 		// Prepare the request body
 		reqBody := models.OpenRouterChatCompletionRequest{
-			Model: openRouterProvider.ChatModel,
+			Model: openRouterProvider.Model,
 			Messages: []models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
@@ -76,7 +83,7 @@ func (openRouterProvider *OpenRouterConfig) ChatCompletionRequest(ctx context.Co
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/api/v1/chat/completions", openRouterProvider.ChatBaseURL), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/chat/completions", openRouterProvider.BaseURL), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- general_models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
@@ -84,7 +91,7 @@ func (openRouterProvider *OpenRouterConfig) ChatCompletionRequest(ctx context.Co
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openRouterProvider.ChatApiKey))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openRouterProvider.ApiKey))
 
 		client := &http.Client{}
 		resp, err := client.Do(req)

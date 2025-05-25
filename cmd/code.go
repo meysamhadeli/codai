@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/meysamhadeli/codai/code_analyzer/models"
 	"github.com/meysamhadeli/codai/constants/lipgloss"
-	general_models "github.com/meysamhadeli/codai/providers/models"
 	"github.com/meysamhadeli/codai/utils"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -14,7 +13,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 )
 
 // CodeCmd: codai code
@@ -39,10 +37,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 
 	var requestedContext string
 	var fullContext *models.FullContextData
-	const maxTokens = 8000           // Max tokens per embedding request
-	const requestDelay = time.Second // requests per second (adjust based on rate limits)
-	var currentChunks []general_models.ChunkData
-	var currentTokenCount int
 
 	spinner := pterm.DefaultSpinner.WithStyle(pterm.NewStyle(pterm.FgLightBlue)).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").WithDelay(100).WithRemoveWhenDone(true)
 
@@ -71,95 +65,6 @@ func handleCodeCommand(rootDependencies *RootDependencies) {
 	spinnerLoadContext.Stop()
 	fmt.Print("\r")
 
-	// Helper function to process and send the current chunks
-	processEmbeddingsChunks := func() error {
-		if rootDependencies.Config.RAG {
-			if len(currentChunks) == 0 {
-				return nil // Nothing to process
-			}
-
-			// Extract the content from the currentChunks
-			var contents []string
-			for _, chunk := range currentChunks {
-				contents = append(contents, chunk.Content)
-			}
-
-			// Delay before sending the request
-			time.Sleep(requestDelay)
-
-			// Make an embedding request for the current chunks
-			embedding, err := rootDependencies.CurrentEmbeddingProvider.EmbeddingRequest(ctx, contents)
-			if err != nil {
-				return err
-			}
-
-			// Save embeddings to the embedding store
-			for i, chunk := range currentChunks {
-				rootDependencies.Store.Save(chunk.RelativePath, chunk.Content, embedding[i])
-			}
-
-			// Reset the chunks and token count
-			currentChunks = []general_models.ChunkData{}
-			currentTokenCount = 0
-		}
-
-		return nil
-	}
-
-	if rootDependencies.Config.RAG {
-
-		spinnerEmbeddingContext, _ := spinner.Start("Embedding Context...")
-
-		for _, dataFile := range fullContext.FileData {
-			// Split file into chunks of up to 8000 tokens
-			fileChunks, err := rootDependencies.TokenManagement.SplitTokenIntoChunks(dataFile.Code, maxTokens)
-			if err != nil {
-				spinnerEmbeddingContext.Stop()
-				fmt.Print("\r")
-				fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to split file '%s' into chunks: %v", dataFile.RelativePath, err)))
-				return
-			}
-
-			for _, chunk := range fileChunks {
-				tokenCount, err := rootDependencies.TokenManagement.TokenCount(chunk)
-				if err != nil {
-					spinnerEmbeddingContext.Stop()
-					fmt.Print("\r")
-					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to calculate token count: %v", err)))
-					return
-				}
-
-				if currentTokenCount+tokenCount > maxTokens {
-					// Process the current chunks before adding more
-					if err := processEmbeddingsChunks(); err != nil {
-						spinnerEmbeddingContext.Stop()
-						fmt.Print("\r")
-						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to process chunk: %v", err)))
-						return
-					}
-				}
-
-				// Add the current chunk and its metadata to the buffer
-				currentChunks = append(currentChunks, general_models.ChunkData{
-					Content:      chunk,
-					RelativePath: dataFile.RelativePath,
-				})
-				currentTokenCount += tokenCount
-			}
-		}
-
-		// Process any remaining chunks
-		if err := processEmbeddingsChunks(); err != nil {
-			spinnerEmbeddingContext.Stop()
-			fmt.Print("\r")
-			fmt.Println(lipgloss.Red.Render(fmt.Sprintf("Failed to process remaining chunks: %v", err)))
-			return
-		}
-
-		spinnerEmbeddingContext.Stop()
-		fmt.Print("\r")
-	}
-
 	// Launch the user input handler in a goroutine
 startLoop: // Label for the start loop
 	for {
@@ -170,7 +75,7 @@ startLoop: // Label for the start loop
 
 		default:
 			displayTokens := func() {
-				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ChatProviderName, rootDependencies.Config.AIProviderConfig.EmbeddingsProviderName, rootDependencies.Config.AIProviderConfig.ChatModel, rootDependencies.Config.AIProviderConfig.EmbeddingsModel, rootDependencies.Config.RAG)
+				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.Model)
 			}
 
 			// Get user input
@@ -228,63 +133,31 @@ startLoop: // Label for the start loop
 				return nil
 			}
 
-			// If RAG is enabled, we use RAG system for retrieving the most relevant data due to user request
-			if rootDependencies.Config.RAG {
-				queryEmbeddingOperation := func() error {
-					// Step 5: Generate embedding for the user query
-					queryEmbedding, err := rootDependencies.CurrentEmbeddingProvider.EmbeddingRequest(ctx, []string{userInput})
-					if err != nil {
-						return err
-					}
+			// Try to get full block code if block codes is summarized and incomplete
+			requestedContext, err = rootDependencies.Analyzer.TryGetInCompletedCodeBlocK(aiResponseBuilder.String())
 
-					// Ensure there's an embedding for the user query
-					if len(queryEmbedding[0]) == 0 {
-						return fmt.Errorf(lipgloss.Red.Render("No embeddings returned for user query"))
-					}
+			if requestedContext != "" && err == nil {
+				aiResponseBuilder.Reset()
 
-					// Find relevant chunks with a similarity threshold of 0.3, no topN limit (-1 means all results and positive number only return this relevant results number)
-					topN := -1
+				fmt.Print("\n")
 
-					// Step 6: Find relevant code chunks based on the user query embedding
-					fullContext.RawCodes = rootDependencies.Store.FindRelevantChunks(queryEmbedding[0], topN, rootDependencies.Config.AIProviderConfig.EmbeddingsModel, rootDependencies.Config.AIProviderConfig.Threshold)
-					return nil
+				contextAccepted, err := utils.ConfirmAdditinalContext(reader)
+				if err != nil {
+					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
+					continue
 				}
 
-				if err := queryEmbeddingOperation(); err != nil {
-					fmt.Print("\r")
-					fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-					displayTokens()
-					continue startLoop
-				}
+				if contextAccepted {
+					fmt.Println(lipgloss.Green.Render("✔️ Context accepted!"))
 
-				fmt.Print("\r")
-			} else {
-				// Try to get full block code if block codes is summarized and incomplete
-				requestedContext, err = rootDependencies.Analyzer.TryGetInCompletedCodeBlocK(aiResponseBuilder.String())
-
-				if requestedContext != "" && err == nil {
-					aiResponseBuilder.Reset()
-
-					fmt.Print("\n")
-
-					contextAccepted, err := utils.ConfirmAdditinalContext(reader)
-					if err != nil {
-						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("error getting user prompt: %v", err)))
+					if err := chatRequestOperation(); err != nil {
+						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
+						displayTokens()
 						continue
 					}
 
-					if contextAccepted {
-						fmt.Println(lipgloss.Green.Render("✔️ Context accepted!"))
-
-						if err := chatRequestOperation(); err != nil {
-							fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-							displayTokens()
-							continue
-						}
-
-					} else {
-						fmt.Println(lipgloss.Red.Render("❌ Context rejected."))
-					}
+				} else {
+					fmt.Println(lipgloss.Red.Render("❌ Context rejected."))
 				}
 			}
 
@@ -323,20 +196,6 @@ startLoop: // Label for the start loop
 					}
 					fmt.Println(lipgloss.Green.Render("✔️ Changes accepted!"))
 
-					spinnerUpdateContext, err := spinner.Start("Updating Context...")
-
-					currentChunks = append(currentChunks, general_models.ChunkData{
-						Content:      change.Code,
-						RelativePath: change.RelativePath,
-					})
-
-					if err := processEmbeddingsChunks(); err != nil {
-						spinnerUpdateContext.Stop()
-						fmt.Print("\r")
-						fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))
-					}
-
-					spinnerUpdateContext.Stop()
 					fmt.Print("\r")
 
 				} else {
@@ -363,11 +222,8 @@ func findCodeSubCommand(command string, rootDependencies *RootDependencies) (boo
 		return false, true
 	case ":token":
 		rootDependencies.TokenManagement.DisplayTokens(
-			rootDependencies.Config.AIProviderConfig.ChatProviderName,
-			rootDependencies.Config.AIProviderConfig.EmbeddingsProviderName,
-			rootDependencies.Config.AIProviderConfig.ChatModel,
-			rootDependencies.Config.AIProviderConfig.EmbeddingsModel,
-			rootDependencies.Config.RAG,
+			rootDependencies.Config.AIProviderConfig.ProviderName,
+			rootDependencies.Config.AIProviderConfig.Model,
 		)
 		return true, false
 	case ":clear-token":
