@@ -22,7 +22,7 @@ var DefaultConfig = Config{
 	Version: "1.8.4",
 	Theme:   "dracula",
 	AIProviderConfig: &providers.AIProviderConfig{
-		ProviderName:    "openai",
+		Provider:        "openai",
 		BaseURL:         "https://api.openai.com/v1",
 		Model:           "gpt-4o",
 		Stream:          true,
@@ -95,7 +95,7 @@ func LoadConfigs(rootCmd *cobra.Command, cwd string) *Config {
 func setDefaults() {
 	viper.SetDefault("version", DefaultConfig.Version)
 	viper.SetDefault("theme", DefaultConfig.Theme)
-	viper.SetDefault("ai_provider_config.provider_name", DefaultConfig.AIProviderConfig.ProviderName)
+	viper.SetDefault("ai_provider_config.provider", DefaultConfig.AIProviderConfig.Provider)
 	viper.SetDefault("ai_provider_config.base_url", DefaultConfig.AIProviderConfig.BaseURL)
 	viper.SetDefault("ai_provider_config.model", DefaultConfig.AIProviderConfig.Model)
 	viper.SetDefault("ai_provider_config.encoding_format", DefaultConfig.AIProviderConfig.EncodingFormat)
@@ -109,7 +109,7 @@ func setDefaults() {
 // bindEnv explicitly binds environment variables to configuration keys
 func bindEnv() {
 	_ = viper.BindEnv("theme", "THEME")
-	_ = viper.BindEnv("ai_provider_config.provider_name", "PROVIDER_NAME")
+	_ = viper.BindEnv("ai_provider_config.provider", "PROVIDER")
 	_ = viper.BindEnv("ai_provider_config.base_url", "BASE_URL")
 	_ = viper.BindEnv("ai_provider_config.model", "MODEL")
 	_ = viper.BindEnv("ai_provider_config.temperature", "TEMPERATURE")
@@ -121,7 +121,7 @@ func bindEnv() {
 // bindFlags binds the CLI flags to configuration values.
 func bindFlags(rootCmd *cobra.Command) {
 	_ = viper.BindPFlag("theme", rootCmd.PersistentFlags().Lookup("theme"))
-	_ = viper.BindPFlag("ai_provider_config.provider_name", rootCmd.PersistentFlags().Lookup("provider_name"))
+	_ = viper.BindPFlag("ai_provider_config.provider", rootCmd.PersistentFlags().Lookup("provider"))
 	_ = viper.BindPFlag("ai_provider_config.base_url", rootCmd.PersistentFlags().Lookup("base_url"))
 	_ = viper.BindPFlag("ai_provider_config.model", rootCmd.PersistentFlags().Lookup("model"))
 	_ = viper.BindPFlag("ai_provider_config.temperature", rootCmd.PersistentFlags().Lookup("temperature"))
@@ -142,7 +142,7 @@ func InitFlags(rootCmd *cobra.Command) {
 	rootCmd.Flags().BoolP("version", "v", false, "Specifies the version of the application.")
 
 	// AI Provider configuration
-	rootCmd.PersistentFlags().String("provider_name", DefaultConfig.AIProviderConfig.ProviderName, "The name of the AI provider (e.g., 'openai', 'azure', 'anthropic')")
+	rootCmd.PersistentFlags().String("provider", DefaultConfig.AIProviderConfig.Provider, "The name of the AI provider (e.g., 'openai', 'azure', 'anthropic')")
 	rootCmd.PersistentFlags().String("base_url", DefaultConfig.AIProviderConfig.BaseURL, "The base URL of AI Provider (e.g., default is 'https://api.openai.com/v1').")
 	rootCmd.PersistentFlags().String("model", DefaultConfig.AIProviderConfig.Model, "The name of the model used for chat completions, such as 'gpt-4o'.")
 	rootCmd.PersistentFlags().Float32("temperature", 0, "Adjusts the AI model's creativity (0-1, default 0.2).")

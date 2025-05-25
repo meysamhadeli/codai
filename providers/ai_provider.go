@@ -17,7 +17,7 @@ import (
 )
 
 type AIProviderConfig struct {
-	ProviderName    string   `mapstructure:"provider_name"`
+	Provider        string   `mapstructure:"provider"`
 	BaseURL         string   `mapstructure:"base_url"`
 	Model           string   `mapstructure:"model"`
 	Stream          bool     `mapstructure:"stream"`
@@ -31,7 +31,7 @@ type AIProviderConfig struct {
 
 // ChatProviderFactory creates a Provider based on the given provider config.
 func ChatProviderFactory(config *AIProviderConfig, tokenManagement contracts2.ITokenManagement) (contracts.IChatAIProvider, error) {
-	switch config.ProviderName {
+	switch config.Provider {
 	case "ollama":
 		return ollama.NewOllamaChatProvider(&ollama.OllamaConfig{
 			Temperature:     config.Temperature,
