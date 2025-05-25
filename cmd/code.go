@@ -75,7 +75,7 @@ startLoop: // Label for the start loop
 
 		default:
 			displayTokens := func() {
-				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.ProviderName, rootDependencies.Config.AIProviderConfig.Model)
+				rootDependencies.TokenManagement.DisplayTokens(rootDependencies.Config.AIProviderConfig.Provider, rootDependencies.Config.AIProviderConfig.Model)
 			}
 
 			// Get user input
@@ -222,7 +222,7 @@ func findCodeSubCommand(command string, rootDependencies *RootDependencies) (boo
 		return false, true
 	case ":token":
 		rootDependencies.TokenManagement.DisplayTokens(
-			rootDependencies.Config.AIProviderConfig.ProviderName,
+			rootDependencies.Config.AIProviderConfig.Provider,
 			rootDependencies.Config.AIProviderConfig.Model,
 		)
 		return true, false
