@@ -8,8 +8,6 @@ import (
 	contracts_analyzer "github.com/meysamhadeli/codai/code_analyzer/contracts"
 	"github.com/meysamhadeli/codai/config"
 	"github.com/meysamhadeli/codai/constants/lipgloss"
-	"github.com/meysamhadeli/codai/embedding_store"
-	contracts_store "github.com/meysamhadeli/codai/embedding_store/contracts"
 	"github.com/meysamhadeli/codai/providers"
 	contracts_provider "github.com/meysamhadeli/codai/providers/contracts"
 	"github.com/meysamhadeli/codai/token_management"
@@ -20,14 +18,12 @@ import (
 
 // RootDependencies holds the dependencies for the root command
 type RootDependencies struct {
-	CurrentChatProvider      contracts_provider.IChatAIProvider
-	CurrentEmbeddingProvider contracts_provider.IEmbeddingAIProvider
-	Store                    contracts_store.IEmbeddingStore
-	Analyzer                 contracts_analyzer.ICodeAnalyzer
-	Cwd                      string
-	Config                   *config.Config
-	ChatHistory              contracts2.IChatHistory
-	TokenManagement          contracts.ITokenManagement
+	CurrentChatProvider contracts_provider.IChatAIProvider
+	Analyzer            contracts_analyzer.ICodeAnalyzer
+	Cwd                 string
+	Config              *config.Config
+	ChatHistory         contracts2.IChatHistory
+	TokenManagement     contracts.ITokenManagement
 }
 
 // RootCmd represents the 'context' command
@@ -72,11 +68,7 @@ func handleRootCommand(cmd *cobra.Command) *RootDependencies {
 
 	rootDependencies.ChatHistory = chat_history.NewChatHistory()
 
-	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd, rootDependencies.Config.RAG)
-
-	rootDependencies.Store = embedding_store.NewEmbeddingStoreModel()
-
-	rootDependencies.CurrentEmbeddingProvider, err = providers.EmbeddingsProviderFactory(rootDependencies.Config.AIProviderConfig, rootDependencies.TokenManagement)
+	rootDependencies.Analyzer = code_analyzer.NewCodeAnalyzer(rootDependencies.Cwd)
 
 	if err != nil {
 		fmt.Println(lipgloss.Red.Render(fmt.Sprintf("%v", err)))

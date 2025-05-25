@@ -25,17 +25,12 @@ import (
 
 // CodeAnalyzer handles the analysis of project files.
 type CodeAnalyzer struct {
-	Cwd   string
-	IsRAG bool
+	Cwd string
 }
 
 func (analyzer *CodeAnalyzer) GeneratePrompt(codes []string, history []string, userInput string, requestedContext string) (string, string) {
-	var promptTemplate string
-	if analyzer.IsRAG {
-		promptTemplate = string(embed_data.RagContextPrompt)
-	} else {
-		promptTemplate = string(embed_data.SummarizeFullContextPrompt)
-	}
+
+	promptTemplate := string(embed_data.SummarizeFullContextPrompt)
 
 	// Combine the relevant code into a single string
 	code := strings.Join(codes, "\n---------\n\n")
@@ -54,8 +49,8 @@ func (analyzer *CodeAnalyzer) GeneratePrompt(codes []string, history []string, u
 }
 
 // NewCodeAnalyzer initializes a new CodeAnalyzer.
-func NewCodeAnalyzer(cwd string, isRAG bool) contracts.ICodeAnalyzer {
-	return &CodeAnalyzer{Cwd: cwd, IsRAG: isRAG}
+func NewCodeAnalyzer(cwd string) contracts.ICodeAnalyzer {
+	return &CodeAnalyzer{Cwd: cwd}
 }
 
 func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) (*models.FullContextData, error) {
@@ -169,13 +164,10 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	default:
 		// If the language doesn't match, process the original source code directly
 		elements = append(elements, filePath)
-		if analyzer.IsRAG {
-			elements = append(elements, string(sourceCode)) // Adding original source code
-		} else {
-			lines := strings.Split(string(sourceCode), "\n")
-			// Get the first line
-			elements = append(elements, lines[0]) // Adding First line from the array
-		}
+
+		lines := strings.Split(string(sourceCode), "\n")
+		// Get the first line
+		elements = append(elements, lines[0]) // Adding First line from the array
 
 		return elements
 	}

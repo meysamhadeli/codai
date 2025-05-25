@@ -29,7 +29,7 @@ func setup(t *testing.T) {
 		t.Fatalf("relativeTestDir should be relative, but got an absolute path: %s", relativePathTestDir)
 	}
 
-	analyzer = NewCodeAnalyzer(relativePathTestDir, true)
+	analyzer = NewCodeAnalyzer(relativePathTestDir)
 
 	// Register cleanup to remove everything inside relativePathTestDir
 	t.Cleanup(func() {

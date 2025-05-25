@@ -19,125 +19,39 @@ import (
 
 // OpenAIConfig implements the Provider interface for OpenAPI.
 type OpenAIConfig struct {
-	ChatBaseURL          string
-	EmbeddingsBaseURL    string
-	EmbeddingsModel      string
-	ChatModel            string
-	Temperature          *float32
-	ReasoningEffort      *string
-	EncodingFormat       string
-	ChatApiKey           string
-	EmbeddingsApiKey     string
-	MaxTokens            int
-	Threshold            float64
-	TokenManagement      contracts2.ITokenManagement
-	ChatApiVersion       string
-	EmbeddingsApiVersion string
+	BaseURL         string
+	Model           string
+	Temperature     *float32
+	ReasoningEffort *string
+	EncodingFormat  string
+	ApiKey          string
+	MaxTokens       int
+	TokenManagement contracts2.ITokenManagement
+	ApiVersion      string
 }
+
+const (
+	defaultBaseURL = "https://api.openai.com/v1"
+)
 
 // NewOpenAIChatProvider initializes a new OpenAPIProvider.
 func NewOpenAIChatProvider(config *OpenAIConfig) contracts.IChatAIProvider {
+	// Set default BaseURL if empty
+	baseURL := config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
 	return &OpenAIConfig{
-		ChatBaseURL:     config.ChatBaseURL,
-		ChatModel:       config.ChatModel,
+		BaseURL:         baseURL,
+		Model:           config.Model,
 		Temperature:     config.Temperature,
 		ReasoningEffort: config.ReasoningEffort,
 		EncodingFormat:  config.EncodingFormat,
 		MaxTokens:       config.MaxTokens,
-		Threshold:       config.Threshold,
-		ChatApiKey:      config.ChatApiKey,
-		ChatApiVersion:  config.ChatApiVersion,
+		ApiKey:          config.ApiKey,
+		ApiVersion:      config.ApiVersion,
 		TokenManagement: config.TokenManagement,
 	}
-}
-
-// NewOpenAIEmbeddingsProvider initializes a new OpenAPIProvider.
-func NewOpenAIEmbeddingsProvider(config *OpenAIConfig) contracts.IEmbeddingAIProvider {
-	return &OpenAIConfig{
-		EmbeddingsBaseURL:    config.EmbeddingsBaseURL,
-		EmbeddingsModel:      config.EmbeddingsModel,
-		Temperature:          config.Temperature,
-		EncodingFormat:       config.EncodingFormat,
-		MaxTokens:            config.MaxTokens,
-		Threshold:            config.Threshold,
-		EmbeddingsApiKey:     config.EmbeddingsApiKey,
-		EmbeddingsApiVersion: config.EmbeddingsApiVersion,
-		TokenManagement:      config.TokenManagement,
-	}
-}
-
-func (openAIProvider *OpenAIConfig) EmbeddingRequest(ctx context.Context, prompt []string) ([][]float64, error) {
-
-	// Create the request payload
-	requestBody := openai_models.OpenAIEmbeddingRequest{
-		Input:          prompt,
-		Model:          openAIProvider.EmbeddingsModel,
-		EncodingFormat: openAIProvider.EncodingFormat,
-	}
-
-	// Convert the request payload to JSON
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("error encoding JSON: %v", err)
-	}
-
-	// Create a new HTTP POST request
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/embeddings", openAIProvider.EmbeddingsBaseURL), bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	// Set required headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openAIProvider.EmbeddingsApiKey))
-
-	// Make the HTTP request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		// Check if the context was canceled
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, fmt.Errorf("request canceled: %v", err)
-		}
-		return nil, fmt.Errorf("error sending request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response: %v", err)
-	}
-
-	// Check for error status code
-	if resp.StatusCode != http.StatusOK {
-		var apiError models.AIError
-		if err := json.Unmarshal(body, &apiError); err != nil {
-			return nil, fmt.Errorf("error parsing error response: %v", err)
-		}
-
-		return nil, fmt.Errorf("embedding request failed with status code '%d' - %s\n", resp.StatusCode, apiError.Error.Message)
-	}
-
-	// Unmarshal the response JSON into the struct
-	var embeddingResponse openai_models.OpenAIEmbeddingResponse
-	err = json.Unmarshal(body, &embeddingResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding JSON response: %v", err)
-	}
-
-	// Count total tokens usage
-	if embeddingResponse.UsageEmbedding.TotalTokens > 0 {
-		openAIProvider.TokenManagement.UsedEmbeddingTokens(embeddingResponse.UsageEmbedding.TotalTokens, 0)
-	}
-
-	// Extract all embeddings
-	var embeddings [][]float64
-	for _, data := range embeddingResponse.Data {
-		embeddings = append(embeddings, data.Embedding)
-	}
-
-	return embeddings, nil
 }
 
 func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, userInput string, prompt string) <-chan models.StreamResponse {
@@ -150,7 +64,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 
 		// Prepare the request body
 		reqBody := openai_models.OpenAIChatCompletionRequest{
-			Model: openAIProvider.ChatModel,
+			Model: openAIProvider.Model,
 			Messages: []openai_models.Message{
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
@@ -171,7 +85,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		// Create a new HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/chat/completions", openAIProvider.ChatBaseURL), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/chat/completions", openAIProvider.BaseURL), bytes.NewBuffer(jsonData))
 		if err != nil {
 			markdownBuffer.Reset()
 			responseChan <- models.StreamResponse{Err: fmt.Errorf("error creating request: %v", err)}
@@ -179,7 +93,7 @@ func (openAIProvider *OpenAIConfig) ChatCompletionRequest(ctx context.Context, u
 		}
 
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openAIProvider.ChatApiKey))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", openAIProvider.ApiKey))
 
 		client := &http.Client{}
 		resp, err := client.Do(req)

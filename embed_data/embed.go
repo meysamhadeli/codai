@@ -2,9 +2,6 @@ package embed_data
 
 import _ "embed"
 
-//go:embed prompts/rag_context_prompt.tmpl
-var RagContextPrompt []byte
-
 //go:embed prompts/summarize_full_context_prompt.tmpl
 var SummarizeFullContextPrompt []byte
 

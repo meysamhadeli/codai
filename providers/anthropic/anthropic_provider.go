@@ -19,29 +19,36 @@ import (
 
 // AnthropicConfig implements the Provider interface for OpenAPI.
 type AnthropicConfig struct {
-	MessageBaseURL    string
-	MessageModel      string
-	Temperature       *float32
-	EncodingFormat    string
-	MessageApiKey     string
-	MaxTokens         int
-	Threshold         float64
-	TokenManagement   contracts2.ITokenManagement
-	MessageApiVersion string
+	BaseURL         string
+	Model           string
+	Temperature     *float32
+	EncodingFormat  string
+	ApiKey          string
+	MaxTokens       int
+	TokenManagement contracts2.ITokenManagement
+	ApiVersion      string
 }
+
+const (
+	defaultBaseURL = "https://api.anthropic.com/v1"
+)
 
 // NewAnthropicMessageProvider initializes a new OpenAPIProvider.
 func NewAnthropicMessageProvider(config *AnthropicConfig) contracts.IChatAIProvider {
+	// Set default BaseURL if empty
+	baseURL := config.BaseURL
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
 	return &AnthropicConfig{
-		MessageBaseURL:    config.MessageBaseURL,
-		MessageModel:      config.MessageModel,
-		Temperature:       config.Temperature,
-		EncodingFormat:    config.EncodingFormat,
-		MaxTokens:         config.MaxTokens,
-		Threshold:         config.Threshold,
-		MessageApiKey:     config.MessageApiKey,
-		MessageApiVersion: config.MessageApiVersion,
-		TokenManagement:   config.TokenManagement,
+		BaseURL:         config.BaseURL,
+		Model:           config.Model,
+		Temperature:     config.Temperature,
+		EncodingFormat:  config.EncodingFormat,
+		MaxTokens:       config.MaxTokens,
+		ApiKey:          config.ApiKey,
+		ApiVersion:      config.ApiVersion,
+		TokenManagement: config.TokenManagement,
 	}
 }
 
@@ -59,7 +66,7 @@ func (anthropicProvider *AnthropicConfig) ChatCompletionRequest(ctx context.Cont
 				{Role: "system", Content: prompt},
 				{Role: "user", Content: userInput},
 			},
-			Model:       anthropicProvider.MessageModel,
+			Model:       anthropicProvider.Model,
 			Temperature: anthropicProvider.Temperature,
 			Stream:      true,
 		}
@@ -71,16 +78,16 @@ func (anthropicProvider *AnthropicConfig) ChatCompletionRequest(ctx context.Cont
 		}
 
 		// Create the HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/messages", anthropicProvider.MessageBaseURL), bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/messages", anthropicProvider.BaseURL), bytes.NewBuffer(jsonData))
 		if err != nil {
 			responseChan <- general_models.StreamResponse{Err: fmt.Errorf("error creating HTTP request: %v", err)}
 			return
 		}
 
 		// Set required headers
-		req.Header.Set("content-type", "application/json")                       // Required content type
-		req.Header.Set("anthropic-version", anthropicProvider.MessageApiVersion) // Required API version
-		req.Header.Set("x-api-key", anthropicProvider.MessageApiKey)             // API key for authentication
+		req.Header.Set("content-type", "application/json")                // Required content type
+		req.Header.Set("anthropic-version", anthropicProvider.ApiVersion) // Required API version
+		req.Header.Set("x-api-key", anthropicProvider.ApiKey)             // API key for authentication
 
 		// Send the HTTP request
 		client := &http.Client{}

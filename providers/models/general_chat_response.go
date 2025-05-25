@@ -8,7 +8,7 @@ type StreamResponse struct {
 
 type Error struct {
 	Message string `json:"message"`
-	Code    string `json:"code"`
+	Code    int    `json:"code"`
 }
 
 // AIError represents an error response from OpenAI.
