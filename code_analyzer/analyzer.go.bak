@@ -15,6 +15,7 @@ import (
 	"github.com/smacker/go-tree-sitter/python"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 	"io/fs"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,42 +23,13 @@ import (
 	"strings"
 )
 
-// ---- security helpers ----
-var allowedRoot string
-
-func init() {
-	// Çalışma dizinini kök kabul ediyoruz (ileride CLI --root ile genişletilebilir)
-	cwd, _ := os.Getwd()
-	allowedRoot = filepath.Clean(cwd)
-}
-
-func sanitizePath(p string) (string, error) {
-	clean := filepath.Clean(p)
-	abs := clean
-	if !filepath.IsAbs(abs) {
-		abs = filepath.Join(allowedRoot, clean)
-	}
-	abs = filepath.Clean(abs)
-
-	root := filepath.Clean(allowedRoot)
-	rel, err := filepath.Rel(root, abs)
-	if err != nil {
-		return "", fmt.Errorf("path resolution error: %w", err)
-	}
-	if strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("blocked path outside root: %s", p)
-	}
-	return abs, nil
-}
-
-// ---- /security helpers ----
-
 // CodeAnalyzer handles the analysis of project files.
 type CodeAnalyzer struct {
 	Cwd string
 }
 
 func (analyzer *CodeAnalyzer) GeneratePrompt(codes []string, history []string, userInput string, requestedContext string) (string, string) {
+
 	promptTemplate := string(embed_data.SummarizeFullContextPrompt)
 
 	// Combine the relevant code into a single string
@@ -96,56 +68,48 @@ func (analyzer *CodeAnalyzer) GetProjectFiles(rootDir string) (*models.FullConte
 			return err
 		}
 
-		relativePath, relErr := filepath.Rel(rootDir, path)
-		if relErr != nil {
-			return relErr
-		}
+		relativePath, err := filepath.Rel(rootDir, path)
 		relativePath = strings.ReplaceAll(relativePath, "\\", "/")
 
-		// Skip default ignored entries early
+		// Check if the current directory or file should be skipped based on default ignore patterns
 		if utils.IsDefaultIgnored(relativePath) {
+			// Skip the directory or file
 			if d.IsDir() {
+				// If it's a directory, skip the whole directory
 				return filepath.SkipDir
 			}
+			// If it's a file, just skip the file
 			return nil
 		}
 
 		// Ensure that the current entry is a file, not a directory
 		if !d.IsDir() {
 
-			// Check file size (<= 100 KB)
-			fileInfo, statErr := os.Stat(path)
-			if statErr != nil {
-				return fmt.Errorf("failed to get file info: %s, error: %w", relativePath, statErr)
+			// Check file size
+			fileInfo, err := os.Stat(path)
+			if err != nil {
+				return fmt.Errorf("failed to get file info: %s, error: %w", relativePath, err)
 			}
+			// Skip files over 100 KB (100 * 1024 bytes)
 			if fileInfo.Size() > 100*1024 {
-				return nil
+				return nil // Skip this file
 			}
 
-			// Respect .gitignore patterns
 			if utils.IsGitIgnored(relativePath, gitIgnorePatterns) {
-				return nil
+				// Debugging: Print the ignored file
+				return nil // Skip this file
 			}
 
-			// Secure path check + read content using absolute safe path
-			absPath, spErr := sanitizePath(path)
-			if spErr != nil {
-				return fmt.Errorf("invalid file path: %s, error: %w", path, spErr)
-			}
-
-			content, rErr := os.ReadFile(absPath)
-			if rErr != nil {
-				return fmt.Errorf("failed to read file: %s, error: %w", relativePath, rErr)
+			// Read the file content using the full path
+			content, err := ioutil.ReadFile(path) // Use full path from WalkDir
+			if err != nil {
+				return fmt.Errorf("failed to read file: %s, error: %w", relativePath, err)
 			}
 
 			codeParts := analyzer.ProcessFile(relativePath, content)
 
 			// Append the file data to the result
-			result.FileData = append(result.FileData, models.FileData{
-				RelativePath:   relativePath,
-				Code:           string(content),
-				TreeSitterCode: strings.Join(codeParts, "\n"),
-			})
+			result.FileData = append(result.FileData, models.FileData{RelativePath: relativePath, Code: string(content), TreeSitterCode: strings.Join(codeParts, "\n")})
 
 			result.RawCodes = append(result.RawCodes, fmt.Sprintf("**File: %s**\n\n%s", relativePath, strings.Join(codeParts, "\n")))
 		}
@@ -200,10 +164,11 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 	default:
 		// If the language doesn't match, process the original source code directly
 		elements = append(elements, filePath)
+
 		lines := strings.Split(string(sourceCode), "\n")
-		if len(lines) > 0 {
-			elements = append(elements, lines[0]) // first line
-		}
+		// Get the first line
+		elements = append(elements, lines[0]) // Adding First line from the array
+
 		return elements
 	}
 
@@ -212,19 +177,20 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 	// Parse JSON data into a map
 	queries := make(map[string]string)
-	if err := json.Unmarshal(query, &queries); err != nil {
+	err := json.Unmarshal(query, &queries)
+	if err != nil {
 		log.Fatalf("failed to parse JSON: %v", err)
 	}
 
 	// Execute each query and capture results
 	for tag, queryStr := range queries {
-		q, err := sitter.NewQuery([]byte(queryStr), lang) // Use the appropriate language
+		query, err := sitter.NewQuery([]byte(queryStr), lang) // Use the appropriate language
 		if err != nil {
 			log.Fatalf("failed to compile query: %v", err)
 		}
 
 		cursor := sitter.NewQueryCursor()
-		cursor.Exec(q, tree.RootNode())
+		cursor.Exec(query, tree.RootNode())
 
 		// Collect the results of the query
 		for {
@@ -235,6 +201,7 @@ func (analyzer *CodeAnalyzer) ProcessFile(filePath string, sourceCode []byte) []
 
 			for _, cap := range match.Captures {
 				element := cap.Node.Content(sourceCode)
+				// Tag the element with its type (e.g., namespace, class, method, interface)
 				taggedElement := fmt.Sprintf("%s: %s", tag, element)
 				elements = append(elements, taggedElement)
 			}
@@ -257,17 +224,14 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 
 	// Parse the match into a slice of strings
 	var filePaths []string
-	if err := json.Unmarshal([]byte(match), &filePaths); err != nil {
+	err := json.Unmarshal([]byte(match), &filePaths)
+	if err != nil {
 		return "", fmt.Errorf("failed to unmarshal JSON: %v", err)
 	}
 
-	// Loop through each relative path and read the file content (secure)
+	// Loop through each relative path and read the file content
 	for _, relativePath := range filePaths {
-		absPath, err := sanitizePath(relativePath)
-		if err != nil {
-			continue
-		}
-		content, err := os.ReadFile(absPath)
+		content, err := os.ReadFile(relativePath)
 		if err != nil {
 			continue
 		}
@@ -280,6 +244,7 @@ func (analyzer *CodeAnalyzer) TryGetInCompletedCodeBlocK(relativePaths string) (
 	}
 
 	requestedContext := strings.Join(codes, "\n---------\n\n")
+
 	return requestedContext, nil
 }
 
@@ -352,12 +317,13 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChang
 	if isTxtFile {
 		// Ensure there are lines to process
 		if len(currentCodeBlock) > 2 {
-			// Remove opening/closing ``` if present
+			// Check if the first line contains "```"
 			if strings.Contains(currentCodeBlock[0], "```") {
-				currentCodeBlock = currentCodeBlock[1:]
+				currentCodeBlock = currentCodeBlock[1:] // Remove the first line
 			}
+			// Check if the last line contains "```"
 			if strings.Contains(currentCodeBlock[len(currentCodeBlock)-1], "```") {
-				currentCodeBlock = currentCodeBlock[:len(currentCodeBlock)-1]
+				currentCodeBlock = currentCodeBlock[:len(currentCodeBlock)-1] // Remove the last line
 			}
 		}
 	}
@@ -375,9 +341,9 @@ func (analyzer *CodeAnalyzer) ExtractCodeChanges(diff string) []models.CodeChang
 }
 
 func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
-	// Ensure the directory structure exists (more restrictive perms on Unix; Windows ignore perms)
+	// Ensure the directory structure exists
 	dir := filepath.Dir(relativePath)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -415,8 +381,8 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 			return err
 		}
 	} else {
-		// Write the updated content to the file (restrictive perms)
-		if err := os.WriteFile(relativePath, []byte(strings.Join(updatedContent, "\n")), 0o600); err != nil {
+		// Write the updated content to the file
+		if err := ioutil.WriteFile(relativePath, []byte(strings.Join(updatedContent, "\n")), 0644); err != nil {
 			return fmt.Errorf("failed to write to file: %w", err)
 		}
 	}
@@ -426,26 +392,17 @@ func (analyzer *CodeAnalyzer) ApplyChanges(relativePath, diff string) error {
 
 // removeEmptyDirectoryIfNeeded checks if a directory is empty, and if so, deletes it
 func removeEmptyDirectoryIfNeeded(dir string) error {
+	// Check if the directory is empty
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", dir, err)
 	}
 
+	// If the directory is empty, remove it
 	if len(entries) == 0 {
 		if err := os.Remove(dir); err != nil {
 			return fmt.Errorf("failed to delete empty directory %s: %w", dir, err)
 		}
 	}
 	return nil
-}
-
-// (opsiyonel) local ignore helper — kullanılmıyorsa bırakılabilir
-func IsIgnoredPath(path string) bool {
-	ignoredDirs := []string{".git", "vendor", "node_modules", "bin", "obj"}
-	for _, dir := range ignoredDirs {
-		if strings.Contains(path, dir) {
-			return true
-		}
-	}
-	return false
 }

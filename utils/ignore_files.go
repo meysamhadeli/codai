@@ -8,6 +8,15 @@ import (
 	"strings"
 )
 
+var ignoredPaths = []string{
+    "node_modules",
+    ".git",
+    "bin",
+    "obj",
+    "__pycache__",
+}
+
+
 // GetGitignorePatterns reads and returns the patterns from the .gitignore file.
 // If the file does not exist, it returns an empty pattern list.
 func GetGitignorePatterns(cwd string) ([]string, error) {
@@ -128,6 +137,17 @@ func IsGitIgnored(path string, patterns []string) bool {
 		}
 		// Handle patterns like "dir/" that ignore entire directories
 		if strings.HasSuffix(pattern, "/") && strings.HasPrefix(path, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsIgnoredPath checks if a file path matches any of the ignored patterns
+func IsIgnoredPath(path string, ignorePatterns []string) bool {
+	for _, pattern := range ignorePatterns {
+		match, _ := filepath.Match(pattern, filepath.Base(path))
+		if match {
 			return true
 		}
 	}
