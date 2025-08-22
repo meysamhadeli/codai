@@ -5,9 +5,7 @@
 
 # Codai
 
-> 💡 **Codai is an AI code assistant designed to help developers efficiently manage their daily tasks through a session-based CLI, such as adding new features, refactoring,
-and performing detailed code reviews. What makes codai stand out is its deep understanding of the entire context of your project, enabling it to analyze your code base
-and suggest improvements or new code based on your context. This AI-powered tool supports multiple LLM providers, such as OpenAI, DeepSeek, Azure OpenAI, Anthropic, Gemini, Qwen, Mistral, Grok, OpenRouter, and Ollama.**
+> 🤖 **AI coding agent for your terminal.**
 
 ![](./assets/codai-demo.gif)
 
