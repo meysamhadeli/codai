@@ -10,12 +10,35 @@
 ![](./assets/codai-demo.gif)
 
 
-> We use **Tree-sitter** to **Summarize Full Context of Code**:
+## ✨ Features
 
-## 🌳 Summarize Full Context of Code with Tree-sitter
-Another approach involves creating a **summary of the full context of project** with **Tree-sitter** and in this approach we just send the **signature body of our code** without **full implementation of code block** to the AI. When a **user requests a specific part of code**,
-the system can **retrieve the full context for just that section**. This approach also **saves tokens** because it just **sends only completed parts**.
+⚡ Support variety of LLMs like OpenAI, Anthropic, Gemini, Grok, DeepSeek, Qween and more.
 
+🧠 Context-aware code completions.
+
+📊 Maintains conversational and code context per session.
+
+🌳 Summarize Full Project Context using Tree-sitter.
+
+➕ Adding new features or test cases.
+
+🔄 Refactoring code structure and efficiency.
+
+🐛 Describe and suggest fixes for bugs.
+
+✅ Code Review Assistance and optimize code quality.
+
+✔️ Accept and apply AI-generated code changes.
+
+📚 Generate comprehensive documentation.
+
+🌐 Works with multiple programming languages such as (C#, Go, Python, Java, Javascript, Typescript).
+
+⚙️ Adjust settings via a config file.
+
+🗂️ Enable the AI to modify several files at the same time.
+
+💳 Track and represent the token consumption for each request.
 
 ## 🚀 Get Started
 To install `codai` globally, you can use the following command:
@@ -31,25 +54,19 @@ go install github.com/meysamhadeli/codai@latest
 export API_KEY="your_api_key"
 ```
 
-<details>
-<summary><strong>Use <code>--provider</code> for using other providers:</strong></summary>
 
-Codai use **OpenApi** as a default model and with subcommand `--provider` you can choose your appropriate model and use subcommand `--model` for choosing appropriate model of each provider.
-
-Current providers are:
-- openai (default)
-- azure
-- anthropic
-- ollama
-- deepseek
-- gemini
-- qwen
-- mistral
-- grok
-
-> **📝 Note:** You can set the base URL by this subcommand `--base_url`. (by default it not needed and will provide automatically, and only for `Azure` you need to set your `custom base URL`.)
-
-</details>
+> [!IMPORTANT]
+> Codai use **OpenApi** as a default model and with subcommand `--provider` you can choose your appropriate model and use subcommand `--model` for choosing appropriate model of each provider.
+> *   [OpenAI](https://platform.openai.com/docs/api-reference/introduction)
+> *   [Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md)
+> *   [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)
+> *   [Anthropic](https://docs.anthropic.com/en/api/getting-started)
+> *   [Gemini](https://ai.google.dev/docs)
+> *   [Mistral](https://docs.mistral.ai/)
+> *   [Grok](https://docs.x.ai/docs)
+> *   [Qwen)](https://help.aliyun.com/zh/dashscope/developer-reference/overview)
+> *   [DeepSeek](https://platform.deepseek.com/docs)
+> *   [OpenRouter](https://openrouter.ai/docs/quick-start)
 
 ### 🔧 Advance Configuration
 For more advance configuration add a `codai-config.yml` file in the `root of your working directory` or using `environment variables` to set below configs `globally` as a configuration.
@@ -68,8 +85,6 @@ ai_provider_config:
 theme: "dracula"
 ```
 
-> Note: We used the standard integration of [OpenAI APIs](https://platform.openai.com/docs/api-reference/introduction), [Ollama APIs](https://github.com/ollama/ollama/blob/main/docs/api.md), [Azure Openai](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference), [Anthropic](https://docs.anthropic.com/en/api/getting-started), [OpenRouter](https://openrouter.ai/docs/quick-start) and you can find more details in documentation of each AI provider APIs.
-
 If you wish to customize your configuration, you can create your own `codai-config.yml` file and place it in the `root directory` of `each project` you want to analyze with codai. If `no configuration` file is provided, codai will use the `default settings`.
 
 You can also specify a configuration file from any directory by using the following CLI command:
@@ -86,15 +101,8 @@ This flexibility allows you to customize config of codai on the fly.
 **.codai-gitignore**
 
 Also, you can use `.codai-gitignore` in the `root of your working directory,` and codai will ignore the files that we specify in our `.codai-gitignore`.
-
-> Note: We used [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
-
-## 🔮 LLM Models
-### ⚡ Best Models
-The codai works well with advanced LLM models specifically designed for code generation, including `GPT-4.1`, `Gemini-2.5-Pro`, `Claude-3-7-Sonnet`, `Qwen3-235B-A22B` and `DeepSeek-V3`. These models leverage the latest in AI technology, providing powerful capabilities for understanding and generating code, making them ideal for enhancing your development workflow.
-
-### 💻 Local Models
-In addition to cloud-based models, codai is compatible with local models such as `Ollama`. To achieve the best results, it is recommended to utilize models like [Phi-3-medium instruct (128k)](https://github.com/marketplace/models/azureml/Phi-3-medium-128k-instruct), [Mistral Large (2407)](https://github.com/marketplace/models/azureml-mistral/Mistral-large-2407) and [Meta-Llama-3.1-70B-Instruct](https://github.com/marketplace/models/azureml-meta/Meta-Llama-3-1-70B-Instruct). These models have been optimized for coding tasks, ensuring that you can maximize the efficiency and effectiveness of your coding projects.
+> [!NOTE]
+> We used [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
 
 ## ▶️ How to Run
 To use `codai` as your code assistant, navigate to the directory where you want to apply codai and run the following command:
@@ -103,36 +111,6 @@ To use `codai` as your code assistant, navigate to the directory where you want 
 codai code
 ```
 This command will initiate the codai assistant to help you with your coding tasks with understanding the context of your code.
-
-## ✨ Features
-
-🧠 Context-aware code completions.
-
-➕ Adding new features or test cases.
-
-🔄 Refactoring code structure and efficiency.
-
-🐛 Describe and suggest fixes for bugs.
-
-✅ Code Review Assistance and optimize code quality.
-
-✔️ Accept and apply AI-generated code changes.
-
-📚 Generate comprehensive documentation.
-
-🌐 Works with multiple programming languages such as (C#, Go, Python, Java, Javascript, Typescript).
-
-⚙️ Adjust settings via a config file.
-
-📊 Maintain understanding of the entire project.
-
-🌳 Summarize Full Project Context using Tree-sitter.
-
-⚡ Support variety of LLM models like GPT-4.1, Gemini-2.5-Pro, Claude-3-7-Sonnet, Qwen3-235B-A22B, DeepSeek-V3, and Ollama.
-
-🗂️ Enable the AI to modify several files at the same time.
-
-💳 Track and represent the token consumption for each request.
 
 ## 🗺️ Plan
 🌀 This project is a work in progress; new features will be added over time. 🌀
