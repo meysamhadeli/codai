@@ -64,7 +64,7 @@ export API_KEY="your_api_key"
 > *   [Gemini](https://ai.google.dev/docs)
 > *   [Mistral](https://docs.mistral.ai/)
 > *   [Grok](https://docs.x.ai/docs)
-> *   [Qwen)](https://help.aliyun.com/zh/dashscope/developer-reference/overview)
+> *   [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/overview)
 > *   [DeepSeek](https://platform.deepseek.com/docs)
 > *   [OpenRouter](https://openrouter.ai/docs/quick-start)
 
