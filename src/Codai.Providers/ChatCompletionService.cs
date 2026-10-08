@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using Codai.Core.Abstractions;
 using Codai.Core.Chat;
 using Codai.Core.Tokens;
+using Codai.Core.Tools;
+using Codai.Providers.Tools;
 using Microsoft.Extensions.AI;
 
 namespace Codai.Providers;
@@ -11,26 +13,45 @@ namespace Codai.Providers;
 /// <see cref="IChatCompletionService"/>, translating streaming updates and
 /// surfacing token usage.
 /// </summary>
+/// <remarks>
+/// When an <see cref="IToolExecutor"/> is supplied, the client is wrapped in
+/// <see cref="FunctionInvokingChatClient"/>. That client runs the
+/// call-tool/append-result/re-ask loop, so this type stays a thin translator and the
+/// loop is not reimplemented per provider.
+/// </remarks>
 public sealed class ChatCompletionService : IChatCompletionService
 {
     private readonly IChatClient _client;
+    private readonly IList<AITool>? _tools;
     private readonly float? _temperature;
     private readonly ReasoningOptions? _reasoning;
     private readonly int _maxTokens;
     private readonly bool _stream;
 
-    public ChatCompletionService(IChatClient client, ResolvedProviderOptions options)
+    public ChatCompletionService(
+        IChatClient client,
+        ResolvedProviderOptions options,
+        IToolExecutor? toolExecutor = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(options);
 
-        _client = client;
         ProviderName = options.Provider;
         ModelName = options.Model;
         _temperature = options.Temperature;
         _reasoning = ReasoningEffortMap.ToReasoningOptions(options.ReasoningEffort);
         _maxTokens = options.MaxTokens;
         _stream = options.Stream;
+
+        var tools = toolExecutor?.Tools ?? [];
+
+        _tools = tools.Count == 0
+            ? null
+            : [.. tools.Select(tool => (AITool)new ToolAIFunction(tool, toolExecutor!))];
+
+        _client = _tools is null
+            ? client
+            : new ChatClientBuilder(client).UseFunctionInvocation().Build();
     }
 
     public string ProviderName { get; }
@@ -55,6 +76,7 @@ public sealed class ChatCompletionService : IChatCompletionService
             Temperature = _temperature,
             Reasoning = _reasoning,
             MaxOutputTokens = _maxTokens > 0 ? _maxTokens : null,
+            Tools = _tools,
         };
 
         if (_stream)

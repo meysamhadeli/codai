@@ -2,6 +2,7 @@ using Codai.Core.Assets;
 using Codai.Core.Chat;
 using Codai.Core.Projects;
 using Codai.Core.Prompting;
+using Codai.Core.Tools;
 using FluentAssertions;
 
 namespace Codai.Core.Tests;
@@ -88,5 +89,86 @@ public class PromptBuilderTests
         var act = () => new PromptBuilder("  ");
 
         act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void Build_omits_the_tools_section_when_no_tools_are_available()
+    {
+        var request = CreateBuilder().Build(Context("code"), [], "x");
+
+        request.SystemPrompt.Should().NotContain("## Here are the tools you can call");
+    }
+
+    [Fact]
+    public void Build_describes_each_tool_and_its_required_arguments()
+    {
+        var builder = new PromptBuilder(
+            EmbeddedResources.FullContextTemplate,
+            [new StubReadTool("grep", "Searches file contents.")]);
+
+        var prompt = builder.Build(Context("code"), [], "x").SystemPrompt;
+
+        prompt.Should().Contain("## Here are the tools you can call");
+        prompt.Should().Contain("- grep: Searches file contents. (required: pattern)");
+        prompt.Should().Contain("Prefer calling a tool over assuming what a file contains");
+    }
+
+    [Fact]
+    public void Build_lists_a_tool_with_no_required_arguments_plainly()
+    {
+        var builder = new PromptBuilder(
+            EmbeddedResources.FullContextTemplate,
+            [new StubReadTool("list_files", "Lists directories.", required: [])]);
+
+        var prompt = builder.Build(Context("code"), [], "x").SystemPrompt;
+
+        prompt.Should().Contain("- list_files: Lists directories.");
+        prompt.Should().NotContain("(required:");
+    }
+
+    [Fact]
+    public void Build_keeps_the_tools_section_before_the_requested_context()
+    {
+        var builder = new PromptBuilder(
+            EmbeddedResources.FullContextTemplate,
+            [new StubReadTool("grep", "Searches file contents.")]);
+
+        var prompt = builder.Build(Context("code"), [], "x", "requested").SystemPrompt;
+
+        prompt.IndexOf("## Here are the tools you can call", StringComparison.Ordinal)
+            .Should().BeLessThan(
+                prompt.IndexOf("Here are the requsted full context files", StringComparison.Ordinal));
+    }
+
+    /// <summary>A tool declared only to render the prompt section.</summary>
+    private sealed class StubReadTool : ITool
+    {
+        private readonly string _schema;
+
+        public StubReadTool(string name, string description, string[]? required = null)
+        {
+            Name = name;
+            Description = description;
+            _schema = required is null
+                ? """{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"]}"""
+                : $$"""{"type":"object","properties":{},"required":[{{string.Join(',', required.Select(r => $"\"{r}\""))}}]}""";
+        }
+
+        public string Name { get; }
+
+        public string Description { get; }
+
+        public bool IsReadOnly => true;
+
+        public string ParametersSchema => _schema;
+
+        public System.Text.Json.JsonElement Schema =>
+            Codai.Core.Tools.JsonSchema.Parse(ParametersSchema);
+
+        public Task<ToolResult> InvokeAsync(
+            System.Text.Json.JsonElement arguments,
+            ToolContext context,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(ToolResult.Success("stub"));
     }
 }

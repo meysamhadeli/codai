@@ -14,7 +14,10 @@ applies the ones you accept — all from the terminal.
 
 🧠 Context-aware assistance built from a summary of your whole project.
 
-📊 Maintains conversational and code context per session.
+�️ Agent tools — `read_file`, `list_files`, `glob` and `grep` let the assistant read the
+files it actually needs instead of only reasoning over the summary.
+
+�📊 Maintains conversational and code context per session.
 
 🌳 Summarises full project context by extracting code signatures.
 
@@ -197,6 +200,49 @@ files are excluded from the project context.
 | `:clear-token` | Reset the token counters |
 | `:clear-history` | Forget the conversation so far |
 
+## 🛠️ Agent tools
+
+Codai does not stop at the project summary: the model can read the real files through
+tools, and every call is reported as it happens.
+
+| Tool | Arguments | What it does |
+| --- | --- | --- |
+| `read_file` | `path`, `offset`, `limit` | Returns a numbered slice of a text file. |
+| `list_files` | `path`, `recursive` | Lists a directory, or every file below it. |
+| `glob` | `pattern`, `path` | Finds files by path pattern, e.g. `**/*.cs`. |
+| `grep` | `pattern`, `path`, `include`, `case_sensitive` | Searches file contents with a regular expression. |
+
+All four are **read-only**, so none of them asks for confirmation. What they can see is
+filtered by the same ignore rules as the project scan (`.codai-gitignore`, `bin/`,
+`obj/`, `node_modules/`, ...), and every path is resolved inside the project root, so a
+tool cannot read or search outside it.
+
+Tool calling works on every provider. The OpenAI-compatible ones (OpenAI, Azure OpenAI,
+DeepSeek, Mistral, Grok, Qwen, OpenRouter, Ollama) go through `Microsoft.Extensions.AI`;
+Anthropic and Gemini have hand-written tool support for their own wire formats.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant S as Session
+    participant AI as Model
+    participant T as ToolRunner
+
+    U->>S: "where is TODO handled?"
+    S->>AI: request + tool declarations
+    AI-->>S: asks for grep(pattern=TODO)
+    S->>T: run grep
+    T-->>S: matching lines
+    S->>AI: request + tool result
+    AI-->>S: final answer
+    S-->>U: streamed answer
+```
+
+> [!NOTE]
+> A tool that writes to disk or runs a command would declare `ITool.IsReadOnly` as
+> `false` and would then be gated by an approval prompt. No such tool ships yet, and the
+> default approver refuses them until one is wired to a prompt.
+
 ## 🏗️ Project layout
 
 | Project | Responsibility |
@@ -206,6 +252,7 @@ files are excluded from the project context.
 | `src/Codai.Tokens` | Embedded `model_pricing.json` catalog and cost calculation. |
 | `src/Codai.Providers` | `IChatCompletionService` implementations for all providers, built on `Microsoft.Extensions.AI`. |
 | `src/Codai.Analysis` | Project scanner, Roslyn C# signature extractor, regex extractors for Go/Python/Java/JS/TS, ignore rules. |
+| `src/Codai.Tools` | The agent tools (`read_file`, `list_files`, `glob`, `grep`) and the glob matcher and project index they share. |
 | `src/Codai.Session` | Session orchestration: `CodeSession`, `ProjectContextLoader`, `ChatExchangeService`, `ChangeApplicator`, `SessionCommandHandler`. |
 | `src/Codai.Cli` | `codai` executable: argument handling, Spectre.Console user interface, DI composition. |
 | `tests/*` | xUnit + FluentAssertions test projects, one per component. |
@@ -219,6 +266,9 @@ files are excluded from the project context.
 - **One provider catalog.** `ProviderCatalog` is the single source of truth for base
   URLs, default models, wire format and whether a credential is required. Both the
   configuration layer and the client factory read it, so they cannot drift apart.
+- **One way out.** The model reaches the file system through `IToolExecutor` and
+  nothing else, so the provider layer never learns how approval, progress reporting or
+  path containment work.
 - **Source-generated JSON.** All serialization uses `JsonSerializerContext`, keeping the
   binary trim/AOT friendly.
 - **Locale independent.** Number and date formatting in prompts uses
@@ -237,6 +287,7 @@ sequenceDiagram
     participant S as CodeSession
     participant SC as ProjectScanner
     participant AI as IChatCompletionService
+    participant AI2 as IToolExecutor
     participant D as DiffApplier
 
     S->>SC: Scan(projectRoot)
@@ -247,6 +298,12 @@ sequenceDiagram
     opt Response asks for full files
         S->>U: "Add these files to context? (y/n)"
         S->>AI: stream(again, with full contents)
+        AI-->>S: response chunks
+    end
+    opt The model asks for a tool
+        S->>AI2: run read_file / list_files / glob / grep
+        AI2-->>S: tool result
+        S->>AI: stream(again, with the result)
         AI-->>S: response chunks
     end
     S->>S: extract code changes
@@ -261,8 +318,9 @@ sequenceDiagram
 dotnet test
 ```
 
-**277 tests** covering the core, configuration, pricing, providers, analysis, session
-and CLI. The suite is warning-clean, and CI builds with `-warnaserror`.
+**414 tests** covering the core, configuration, pricing, providers, analysis, session,
+tools and CLI — of which three are the opt-in live DeepSeek tests. The suite is
+warning-clean, and CI builds with `-warnaserror`.
 
 ### Live integration tests
 

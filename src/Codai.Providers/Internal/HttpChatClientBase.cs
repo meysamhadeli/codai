@@ -38,27 +38,4 @@ internal abstract class HttpChatClientBase : IChatClient
     {
         GC.SuppressFinalize(this);
     }
-
-    /// <summary>Splits the message list into a system instruction and a user payload.</summary>
-    protected static (string? SystemPrompt, string UserContent) Split(IEnumerable<ChatMessage> messages)
-    {
-        ArgumentNullException.ThrowIfNull(messages);
-
-        string? system = null;
-        var user = new List<string>();
-
-        foreach (var message in messages)
-        {
-            if (message.Role == ChatRole.System && system is null)
-            {
-                system = message.Text;
-            }
-            else if (!string.IsNullOrEmpty(message.Text))
-            {
-                user.Add(message.Text);
-            }
-        }
-
-        return (system, string.Join("\n\n", user));
-    }
 }

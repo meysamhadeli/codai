@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent tools.** The assistant can now read the project instead of reasoning only over
+  the scan summary. Four read-only tools ship: `read_file`, `list_files`, `glob` and
+  `grep`, surfaced to the model through `Microsoft.Extensions.AI` function calling.
+- **`Codai.Tools`**, a package holding the tool set, the glob matcher and the shared
+  project file index.
+- **Hand-written tool calling for Anthropic and Gemini**, whose wire formats are not
+  OpenAI-compatible: `tool_use` / `tool_result` blocks and streamed `input_json_delta`
+  fragments on one side, `functionDeclarations` / `functionCall` / `functionResponse` on
+  the other, including filtering out schema keywords Gemini rejects.
+- **Tool progress and approval.** `IToolObserver` reports every call to the session, and
+  `IToolApprover` gates anything that is not read-only. When no user interface is
+  available the defaults stand: progress is dropped and state-changing tools are refused.
+- A **tools section in the system prompt** describing what can be called, emitted only
+  when tools are actually available, so prompts without tools are unchanged.
+
+### Changed
+
+- `Microsoft.Extensions.*` packages moved to 10.0.12, which `Microsoft.Extensions.AI`
+  10.10.0 requires.
+
 ## [2.0.0] - 2026-10-09
 
 Codai is now a .NET application. The Go implementation has been replaced by a

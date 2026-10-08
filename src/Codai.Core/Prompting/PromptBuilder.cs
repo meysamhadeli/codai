@@ -3,6 +3,7 @@ using System.Text;
 using Codai.Core.Abstractions;
 using Codai.Core.Chat;
 using Codai.Core.Projects;
+using Codai.Core.Tools;
 
 namespace Codai.Core.Prompting;
 
@@ -25,14 +26,22 @@ public sealed class PromptBuilder : IPromptBuilder
     private const string TemplateHeader = "## Here is the general template prompt for using AI\n\n";
     private const string RequestedContextHeader =
         "## Here are the requsted full context files for using in your task\n\n";
+    private const string ToolsHeader = "## Here are the tools you can call\n\n";
 
     private readonly string _fullContextTemplate;
+    private readonly IReadOnlyList<ITool> _tools;
 
     /// <summary>Creates the builder from the general "how to answer" template.</summary>
-    public PromptBuilder(string fullContextTemplate)
+    /// <param name="fullContextTemplate">The general "how to answer" template.</param>
+    /// <param name="tools">
+    /// Tools available for this session. When there are none, the prompt is exactly what
+    /// it was before tools existed.
+    /// </param>
+    public PromptBuilder(string fullContextTemplate, IReadOnlyList<ITool>? tools = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fullContextTemplate);
         _fullContextTemplate = fullContextTemplate;
+        _tools = tools ?? [];
     }
 
     /// <inheritdoc />
@@ -57,6 +66,14 @@ public sealed class PromptBuilder : IPromptBuilder
             .Append(_fullContextTemplate)
             .Append("\n\n______\n");
 
+        if (_tools.Count > 0)
+        {
+            systemPrompt
+                .Append(ToolsHeader)
+                .Append(RenderTools())
+                .Append("______\n");
+        }
+
         if (!string.IsNullOrEmpty(requestedContext))
         {
             systemPrompt
@@ -66,6 +83,42 @@ public sealed class PromptBuilder : IPromptBuilder
         }
 
         return new ChatRequest(systemPrompt.ToString(), $"## Here is user request\n{userInput}");
+    }
+
+    /// <summary>
+    /// Describes the tools and how to use them. The project summary above can be stale or
+    /// incomplete, so the model is told it may look at the real files instead of guessing
+    /// at their contents.
+    /// </summary>
+    private string RenderTools() =>
+        new StringBuilder()
+            .Append("You can read the project with these tools. Prefer calling a tool over ")
+            .Append("assuming what a file contains, and base your answer on what a tool ")
+            .AppendLine("actually returned rather than on the summary above.")
+            .AppendLine()
+            .AppendJoin('\n', _tools.Select(RenderTool))
+            .AppendLine()
+            .AppendLine("A call that reports a failure did not run: correct the arguments or ")
+            .AppendLine("use another tool instead of repeating it unchanged.")
+            .Append('\n')
+            .ToString();
+
+    private static string RenderTool(ITool tool)
+    {
+        var required = tool.Schema.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            tool.Schema.TryGetProperty("required", out var requiredElements) &&
+            requiredElements.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? requiredElements.EnumerateArray()
+                    .Select(element => element.GetString())
+                    .Where(name => name is not null)
+                    .ToArray()
+                : [];
+
+        var arguments = required.Length > 0
+            ? $" (required: {string.Join(", ", required)})"
+            : string.Empty;
+
+        return $"- {tool.Name}: {tool.Description}{arguments}";
     }
 
     /// <summary>

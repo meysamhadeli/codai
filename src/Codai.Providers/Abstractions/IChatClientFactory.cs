@@ -14,5 +14,12 @@ public interface IChatClientFactory
     /// Creates a <see cref="Core.Abstractions.IChatCompletionService"/> that reports
     /// provider/model names and token usage.
     /// </summary>
-    Core.Abstractions.IChatCompletionService CreateService(ResolvedProviderOptions options);
+    /// <param name="options">The resolved provider options.</param>
+    /// <param name="toolExecutor">
+    /// When supplied, the tools it exposes are advertised to the model and invoked on
+    /// its behalf. When omitted, no tools are offered.
+    /// </param>
+    Core.Abstractions.IChatCompletionService CreateService(
+        ResolvedProviderOptions options,
+        Core.Tools.IToolExecutor? toolExecutor = null);
 }

@@ -1,5 +1,6 @@
 using Codai.Configuration;
 using Codai.Core.Abstractions;
+using Codai.Core.Tools;
 using Codai.Providers.Abstractions;
 using Codai.Providers.Anthropic;
 using Codai.Providers.Azure;
@@ -37,10 +38,12 @@ public sealed class ChatClientFactory : IChatClientFactory
     }
 
     /// <inheritdoc />
-    public IChatCompletionService CreateService(ResolvedProviderOptions options)
+    public IChatCompletionService CreateService(
+        ResolvedProviderOptions options,
+        IToolExecutor? toolExecutor = null)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return new ChatCompletionService(CreateClient(options), options);
+        return new ChatCompletionService(CreateClient(options), options, toolExecutor);
     }
 }

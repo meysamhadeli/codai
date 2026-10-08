@@ -1,8 +1,10 @@
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using Codai.Configuration;
 using Codai.Core.Abstractions;
+using Codai.Core.Tokens;
 using Codai.Providers.Internal;
 using Microsoft.Extensions.AI;
 
@@ -12,9 +14,18 @@ namespace Codai.Providers.Anthropic;
 /// <see cref="IChatClient"/> for Anthropic's Messages API.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Improvements over the original implementation: the system prompt is sent via the
 /// top-level <c>system</c> field (not as a message), <c>max_tokens</c> is always
 /// supplied, and input/output usage is accumulated across stream events.
+/// </para>
+/// <para>
+/// Tool calling is implemented by hand because Anthropic is not OpenAI-compatible:
+/// tools are advertised as <c>{name, description, input_schema}</c>, a model turn asks
+/// for them with <c>tool_use</c> blocks, and results go back as <c>tool_result</c>
+/// blocks inside a user turn. A streamed call has to be stitched together from its
+/// <c>input_json_delta</c> fragments before it can be parsed.
+/// </para>
 /// </remarks>
 internal sealed class AnthropicChatClient : HttpChatClientBase
 {
@@ -52,27 +63,36 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var (system, user) = Split(messages);
+        var (system, turns) = BuildTurns(messages);
 
-        TextContent? text = null;
-        var usage = Codai.Core.Tokens.TokenUsage.Empty;
+        var text = new StringBuilder();
+        var contents = new List<AIContent>();
+        var usage = TokenUsage.Empty;
 
-        await foreach (var update in StreamCoreAsync(system, user, options, cancellationToken))
+        await foreach (var @event in StreamCoreAsync(system, turns, options, cancellationToken))
         {
-            if (update.ContentDelta is { Length: > 0 } delta)
+            if (@event.Text is { Length: > 0 } delta)
             {
-                text ??= new TextContent(string.Empty);
-                text.Text += delta;
+                text.Append(delta);
             }
 
-            if (update.Usage.HasValue)
+            if (@event.ToolCall is { } toolCall)
             {
-                usage = update.Usage;
+                contents.Add(toolCall);
+            }
+
+            if (@event.HasUsage)
+            {
+                usage = @event.Usage;
             }
         }
 
-        var message = new ChatMessage(ChatRole.Assistant, text is null ? [] : [text]);
-        return new ChatResponse(message)
+        if (text.Length > 0)
+        {
+            contents.Insert(0, new TextContent(text.ToString()));
+        }
+
+        return new ChatResponse(new ChatMessage(ChatRole.Assistant, contents))
         {
             ModelId = _model,
             Usage = new UsageDetails
@@ -89,32 +109,47 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var (system, user) = Split(messages);
+        var (system, turns) = BuildTurns(messages);
 
-        await foreach (var update in StreamCoreAsync(system, user, options, cancellationToken))
+        await foreach (var @event in StreamCoreAsync(system, turns, options, cancellationToken))
         {
-            if (update.ContentDelta is { Length: > 0 } delta)
+            if (@event.Text is { Length: > 0 } delta)
             {
                 yield return new ChatResponseUpdate(ChatRole.Assistant, delta);
             }
 
-            if (update.IsCompleted && update.Usage.HasValue)
+            if (@event.ToolCall is { } toolCall)
+            {
+                yield return new ChatResponseUpdate(ChatRole.Assistant, [toolCall]);
+            }
+
+            if (@event.HasUsage)
             {
                 yield return new ChatResponseUpdate(
                     ChatRole.Assistant,
                     [new UsageContent(new UsageDetails
                     {
-                        InputTokenCount = update.Usage.InputTokens,
-                        OutputTokenCount = update.Usage.OutputTokens,
-                        TotalTokenCount = update.Usage.TotalTokens,
+                        InputTokenCount = @event.Usage.InputTokens,
+                        OutputTokenCount = @event.Usage.OutputTokens,
+                        TotalTokenCount = @event.Usage.TotalTokens,
                     })]);
             }
         }
     }
 
-    private async IAsyncEnumerable<Codai.Core.Chat.ChatStreamUpdate> StreamCoreAsync(
+    /// <summary>
+    /// One step of the streamed response: a text delta, a completed tool call, an
+    /// updated usage total, or nothing at all.
+    /// </summary>
+    private readonly record struct StreamEvent(
+        string? Text,
+        FunctionCallContent? ToolCall,
+        TokenUsage Usage,
+        bool HasUsage);
+
+    private async IAsyncEnumerable<StreamEvent> StreamCoreAsync(
         string? system,
-        string user,
+        IReadOnlyList<object> turns,
         ChatOptions? options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -123,7 +158,7 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
             ["model"] = options?.ModelId ?? _model,
             ["max_tokens"] = options?.MaxOutputTokens ?? _maxTokens,
             ["stream"] = true,
-            ["messages"] = new[] { new Dictionary<string, object?> { ["role"] = "user", ["content"] = user } },
+            ["messages"] = turns,
         };
 
         if (!string.IsNullOrEmpty(system))
@@ -135,6 +170,19 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
         if (temperature is not null)
         {
             requestBody["temperature"] = temperature.Value;
+        }
+
+        var functions = ToolPayloads.Functions(options?.Tools);
+        if (functions.Count > 0)
+        {
+            requestBody["tools"] = functions
+                .Select(function => new Dictionary<string, object?>
+                {
+                    ["name"] = function.Name,
+                    ["description"] = function.Description,
+                    ["input_schema"] = function.JsonSchema,
+                })
+                .ToList();
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/messages")
@@ -157,6 +205,10 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
 
         var inputTokens = 0;
         var outputTokens = 0;
+
+        // A tool call arrives in pieces: a start marker names the call, a run of
+        // input_json_delta chunks carries its arguments, then a stop marker closes it.
+        var pending = new Dictionary<int, PendingToolCall>();
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
@@ -185,29 +237,270 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
                     outputTokens = ReadNested(root, ["message", "usage", "output_tokens"], outputTokens);
                     break;
 
+                case "content_block_start":
+                    StartToolCall(root, pending);
+                    break;
+
                 case "content_block_delta":
-                    if (root.TryGetProperty("delta", out var deltaElement) &&
-                        deltaElement.TryGetProperty("text", out var textElement) &&
-                        textElement.GetString() is { Length: > 0 } text)
+                    if (TryReadTextDelta(root, out var text))
                     {
-                        yield return Codai.Core.Chat.ChatStreamUpdate.Content(text);
+                        yield return new StreamEvent(text, null, default, false);
+                    }
+
+                    AppendToolCallArguments(root, pending);
+                    break;
+
+                case "content_block_stop":
+                    if (TryCompleteToolCall(root, pending, out var toolCall))
+                    {
+                        yield return new StreamEvent(null, toolCall, default, false);
                     }
 
                     break;
 
                 case "message_delta":
                     outputTokens = ReadNested(root, ["usage", "output_tokens"], outputTokens);
+                    yield return new StreamEvent(null, null, new TokenUsage(inputTokens, outputTokens), true);
                     break;
 
                 case "message_stop":
-                    yield return Codai.Core.Chat.ChatStreamUpdate.Completed(
-                        new Codai.Core.Tokens.TokenUsage(inputTokens, outputTokens));
+                    yield return new StreamEvent(null, null, new TokenUsage(inputTokens, outputTokens), true);
                     yield break;
             }
         }
 
-        yield return Codai.Core.Chat.ChatStreamUpdate.Completed(
-            new Codai.Core.Tokens.TokenUsage(inputTokens, outputTokens));
+        yield return new StreamEvent(null, null, new TokenUsage(inputTokens, outputTokens), true);
+    }
+
+    /// <summary>A call being assembled while its <c>input_json_delta</c> fragments arrive.</summary>
+    private sealed class PendingToolCall
+    {
+        public string Id { get; init; } = string.Empty;
+
+        public string Name { get; init; } = string.Empty;
+
+        public StringBuilder Arguments { get; } = new();
+    }
+
+    private static void StartToolCall(JsonElement root, Dictionary<int, PendingToolCall> pending)
+    {
+        if (!TryReadIndex(root, out var index) ||
+            !root.TryGetProperty("content_block", out var block) ||
+            !block.TryGetProperty("type", out var blockType) ||
+            blockType.GetString() != "tool_use")
+        {
+            return;
+        }
+
+        pending[index] = new PendingToolCall
+        {
+            Id = block.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
+            Name = block.TryGetProperty("name", out var name) ? name.GetString() ?? string.Empty : string.Empty,
+        };
+    }
+
+    private static bool TryReadTextDelta(JsonElement root, out string text)
+    {
+        text = string.Empty;
+
+        if (!root.TryGetProperty("delta", out var delta) ||
+            !delta.TryGetProperty("text", out var textElement))
+        {
+            return false;
+        }
+
+        text = textElement.GetString() ?? string.Empty;
+        return text.Length > 0;
+    }
+
+    private static void AppendToolCallArguments(JsonElement root, Dictionary<int, PendingToolCall> pending)
+    {
+        if (!TryReadIndex(root, out var index) ||
+            !pending.TryGetValue(index, out var toolCall) ||
+            !root.TryGetProperty("delta", out var delta) ||
+            !delta.TryGetProperty("partial_json", out var partial))
+        {
+            return;
+        }
+
+        toolCall.Arguments.Append(partial.GetString());
+    }
+
+    private static bool TryCompleteToolCall(
+        JsonElement root,
+        Dictionary<int, PendingToolCall> pending,
+        out FunctionCallContent toolCall)
+    {
+        toolCall = null!;
+
+        if (!TryReadIndex(root, out var index) || !pending.Remove(index, out var completed))
+        {
+            return false;
+        }
+
+        toolCall = new FunctionCallContent(
+            completed.Id,
+            completed.Name,
+            ParseArguments(completed.Arguments));
+
+        return true;
+    }
+
+    /// <summary>
+    /// Parses accumulated argument JSON. A truncated or malformed fragment still yields a
+    /// call, with no arguments, so the model gets feedback rather than an exception.
+    /// </summary>
+    private static Dictionary<string, object?> ParseArguments(StringBuilder json)
+    {
+        if (json.Length == 0)
+        {
+            return new Dictionary<string, object?>(StringComparer.Ordinal);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json.ToString());
+
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return new Dictionary<string, object?>(StringComparer.Ordinal);
+            }
+
+            return document.RootElement
+                .EnumerateObject()
+                .ToDictionary(
+                    property => property.Name,
+                    property => ToolPayloads.ToClrValue(property.Value),
+                    StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, object?>(StringComparer.Ordinal);
+        }
+    }
+
+    private static bool TryReadIndex(JsonElement root, out int index)
+    {
+        index = 0;
+
+        return root.TryGetProperty("index", out var element) && element.TryGetInt32(out index);
+    }
+
+    /// <summary>
+    /// Converts MEAI messages into the top-level <c>system</c> string plus the ordered
+    /// Anthropic turns. Consecutive turns of the same role are merged: the API requires
+    /// alternating roles, and tool results can arrive as several messages.
+    /// </summary>
+    private static (string? System, IReadOnlyList<object> Turns) BuildTurns(IEnumerable<ChatMessage> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+
+        string? system = null;
+        var turns = new List<object>();
+
+        foreach (var message in messages)
+        {
+            if (message.Role == ChatRole.System)
+            {
+                system ??= message.Text;
+                continue;
+            }
+
+            if (message.Role == ChatRole.Tool)
+            {
+                AppendTurn(turns, "user", ToolResultBlocks(message));
+                continue;
+            }
+
+            // Assistant and user turns carry the same shape: text and tool_use blocks.
+            AppendTurn(
+                turns,
+                message.Role == ChatRole.Assistant ? "assistant" : "user",
+                ContentBlocks(message));
+        }
+
+        return (system, turns);
+    }
+
+    private static List<object> ContentBlocks(ChatMessage message)
+    {
+        var blocks = new List<object>();
+
+        foreach (var content in ToolPayloads.AsContents(message.Contents))
+        {
+            switch (content)
+            {
+                case TextContent text:
+                    blocks.Add(new Dictionary<string, object?>
+                    {
+                        ["type"] = "text",
+                        ["text"] = text.Text,
+                    });
+                    break;
+
+                case FunctionCallContent call:
+                    blocks.Add(new Dictionary<string, object?>
+                    {
+                        ["type"] = "tool_use",
+                        ["id"] = call.CallId,
+                        ["name"] = call.Name,
+                        ["input"] = ToolPayloads.ArgumentsOrDefault(call),
+                    });
+                    break;
+            }
+        }
+
+        return blocks;
+    }
+
+    private static List<object> ToolResultBlocks(ChatMessage message)
+    {
+        var blocks = new List<object>();
+
+        foreach (var result in message.Contents.OfType<FunctionResultContent>())
+        {
+            blocks.Add(new Dictionary<string, object?>
+            {
+                ["type"] = "tool_result",
+                ["tool_use_id"] = result.CallId,
+                ["content"] = DescribeResult(result),
+            });
+        }
+
+        return blocks;
+    }
+
+    /// <summary>
+    /// Renders a tool result as text. A tool that threw is reported as an error, so the
+    /// model can see the failure and correct itself.
+    /// </summary>
+    private static string DescribeResult(FunctionResultContent result) =>
+        result.Exception is { } exception
+            ? $"Error: {exception.Message}"
+            : result.Result?.ToString() ?? string.Empty;
+
+    private static void AppendTurn(List<object> turns, string role, List<object> blocks)
+    {
+        if (blocks.Count == 0)
+        {
+            return;
+        }
+
+        if (turns.Count > 0 &&
+            turns[^1] is Dictionary<string, object?> last &&
+            last.TryGetValue("role", out var lastRole) &&
+            lastRole as string == role &&
+            last["content"] is List<object> existing)
+        {
+            existing.AddRange(blocks);
+            return;
+        }
+
+        turns.Add(new Dictionary<string, object?>
+        {
+            ["role"] = role,
+            ["content"] = blocks,
+        });
     }
 
     private static int ReadNested(JsonElement root, IReadOnlyList<string> path, int fallback)

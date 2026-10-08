@@ -1,10 +1,13 @@
 using Codai.Configuration;
 using Codai.Core.Abstractions;
+using Codai.Core.Tools;
 using Codai.Providers;
 using Codai.Providers.Abstractions;
+using Codai.Session.Tools;
 using Codai.Tokens;
 using Codai.Tokens.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Codai.Session;
 
@@ -38,6 +41,7 @@ public static class CodaiSessionBuilder
 
         services.AddCodaiCore();
         services.AddCodaiAnalysis();
+        services.AddCodaiTools();
         services.AddCodaiProviders();
 
         // The pricing catalog implements both contracts; register one instance under
@@ -45,10 +49,35 @@ public static class CodaiSessionBuilder
         services.AddSingleton<IPricingCatalog>(EmbeddedPricingCatalog.Instance);
         services.AddSingleton<ICostCalculator>(sp => sp.GetRequiredService<IPricingCatalog>());
 
+        // Tool activity is reported through the same interface as everything else, so the
+        // host does not have to know tools exist. When no user interface was registered
+        // there is no way to report or to ask, so the safe defaults stand: progress is
+        // dropped and every state-changing tool is refused.
+        services.Replace(ServiceDescriptor.Singleton<IToolObserver>(sp =>
+            sp.GetService<IUserInterface>() is { } ui
+                ? new InteractiveToolObserver(ui)
+                : NullToolObserver.Instance));
+
+        services.Replace(ServiceDescriptor.Singleton<IToolApprover>(sp =>
+            sp.GetService<IUserInterface>() is { } ui
+                ? new InteractiveToolApprover(ui)
+                : DenyAllToolApprover.Instance));
+
+        // The runner is the one seam through which the model reaches the file system,
+        // so the provider layer never learns how approval or progress reporting works.
+        services.AddSingleton(sp => new ToolRunner(
+            sp.GetRequiredService<IToolRegistry>(),
+            sp.GetRequiredService<IToolApprover>(),
+            sp.GetRequiredService<IToolObserver>(),
+            sp.GetRequiredService<IFileSystem>(),
+            root));
+
+        services.AddSingleton<IToolExecutor>(sp => sp.GetRequiredService<ToolRunner>());
+
         services.AddSingleton<IChatCompletionService>(sp =>
         {
             var factory = sp.GetRequiredService<IChatClientFactory>();
-            return factory.CreateService(providerOptions);
+            return factory.CreateService(providerOptions, sp.GetRequiredService<IToolExecutor>());
         });
 
         services.AddSingleton(new SessionOptions
