@@ -48,6 +48,8 @@ public class CliApplicationTests
 
         exitCode.Should().Be(0);
         output.Lines.Should().Contain(line => line.Contains(":clear-token", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains(":compact", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("--continue", StringComparison.Ordinal));
     }
 
     [Fact]

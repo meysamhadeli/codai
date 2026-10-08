@@ -43,7 +43,7 @@ public class PromptBuilderTests
             Context("code1", "code2"),
             history,
             "User request",
-            "Requested context");
+            new PromptExtras { RequestedContext = "Requested context" });
 
         request.SystemPrompt.Should().Contain("code1");
         request.SystemPrompt.Should().Contain("code2");
@@ -133,11 +133,86 @@ public class PromptBuilderTests
             EmbeddedResources.FullContextTemplate,
             [new StubReadTool("grep", "Searches file contents.")]);
 
-        var prompt = builder.Build(Context("code"), [], "x", "requested").SystemPrompt;
+        var prompt = builder.Build(
+            Context("code"),
+            [],
+            "x",
+            new PromptExtras { RequestedContext = "requested" }).SystemPrompt;
 
         prompt.IndexOf("## Here are the tools you can call", StringComparison.Ordinal)
             .Should().BeLessThan(
                 prompt.IndexOf("Here are the requsted full context files", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void New_sections_are_absent_when_no_extras_are_supplied()
+    {
+        var prompt = CreateBuilder().Build(Context("code"), [], "x").SystemPrompt;
+
+        prompt.Should().NotContain("## Here are the project instructions you must follow");
+        prompt.Should().NotContain("## Here are the files the user referenced in this request");
+    }
+
+    [Fact]
+    public void Build_includes_the_project_instructions()
+    {
+        var prompt = CreateBuilder()
+            .Build(Context("code"), [], "x", new PromptExtras { Instructions = "MARKER_INSTRUCTIONS" })
+            .SystemPrompt;
+
+        prompt.Should().Contain("## Here are the project instructions you must follow");
+        prompt.Should().Contain("MARKER_INSTRUCTIONS");
+    }
+
+    [Fact]
+    public void Build_includes_the_files_the_user_referenced()
+    {
+        var prompt = CreateBuilder()
+            .Build(Context("code"), [], "x", new PromptExtras { AttachedContext = "MARKER_ATTACHED" })
+            .SystemPrompt;
+
+        prompt.Should().Contain("## Here are the files the user referenced in this request");
+        prompt.Should().Contain("MARKER_ATTACHED");
+    }
+
+    [Fact]
+    public void New_sections_are_ordered_between_the_template_and_the_requested_context()
+    {
+        var builder = new PromptBuilder(
+            EmbeddedResources.FullContextTemplate,
+            [new StubReadTool("read_file", "Reads a file.")]);
+
+        var prompt = builder.Build(
+            Context("code"),
+            [],
+            "x",
+            new PromptExtras
+            {
+                Instructions = "MARKER_INSTRUCTIONS",
+                AttachedContext = "MARKER_ATTACHED",
+                RequestedContext = "MARKER_REQUESTED",
+            }).SystemPrompt;
+
+        var template = prompt.IndexOf("## Here is the general template prompt for using AI", StringComparison.Ordinal);
+        var instructions = prompt.IndexOf("## Here are the project instructions you must follow", StringComparison.Ordinal);
+        var tools = prompt.IndexOf("## Here are the tools you can call", StringComparison.Ordinal);
+        var attached = prompt.IndexOf("## Here are the files the user referenced in this request", StringComparison.Ordinal);
+        var requested = prompt.IndexOf("## Here are the requsted full context files", StringComparison.Ordinal);
+
+        instructions.Should().BeGreaterThan(template);
+        tools.Should().BeGreaterThan(instructions);
+        attached.Should().BeGreaterThan(tools);
+        requested.Should().BeGreaterThan(attached);
+    }
+
+    [Fact]
+    public void An_empty_instructions_string_does_not_add_a_section()
+    {
+        var prompt = CreateBuilder()
+            .Build(Context("code"), [], "x", new PromptExtras { Instructions = string.Empty })
+            .SystemPrompt;
+
+        prompt.Should().NotContain("## Here are the project instructions you must follow");
     }
 
     /// <summary>A tool declared only to render the prompt section.</summary>

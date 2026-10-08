@@ -1,4 +1,5 @@
 using Codai.Core.Abstractions;
+using Codai.Core.Chat;
 using Codai.Core.Tokens;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
@@ -80,7 +81,10 @@ public class CodeSessionTests
 
         await harness.Build().RunAsync();
 
-        harness.FileSystem.Files.Should().BeEmpty();
+        // The session transcript is written on purpose; no project file may be.
+        harness.FileSystem.Files.Keys
+            .Where(path => !path.Contains("/.codai/", StringComparison.OrdinalIgnoreCase))
+            .Should().BeEmpty();
         harness.Ui.Errors.Should().Contain(message => message.Contains("rejected", StringComparison.Ordinal));
     }
 
@@ -219,6 +223,138 @@ public class CodeSessionTests
 
         harness.Ui.TokenDisplays.Should().ContainSingle()
             .Which.Cost.Should().Be(0.42m);
+    }
+
+    [Fact]
+    public async Task Follows_the_project_instructions_file()
+    {
+        var harness = new SessionHarness { Instructions = "Always write a test." };
+        harness.Chat.Enqueue("ok");
+        harness.QueueInputs("do it");
+
+        await harness.Build().RunAsync();
+
+        harness.Ui.Infos.Should().Contain(message => message.Contains("AGENTS.md", StringComparison.Ordinal));
+        harness.Chat.Requests[0].SystemPrompt.Should().Contain("Always write a test.");
+        harness.Chat.Requests[0].SystemPrompt
+            .Should().Contain("## Here are the project instructions you must follow");
+    }
+
+    [Fact]
+    public async Task Attaches_the_files_the_user_mentions()
+    {
+        var harness = new SessionHarness();
+        harness.FileSystem.AddFile(@"C:\project\src\a.cs", "class A { }");
+        harness.Chat.Enqueue("ok");
+        harness.QueueInputs("explain @src/a.cs");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests[0].SystemPrompt.Should().Contain("class A { }");
+        harness.Ui.Infos.Should().Contain(message => message.Contains("Attached 1 file", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Warns_about_a_mention_that_matches_nothing()
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("ok");
+        harness.QueueInputs("explain @src/missing.cs");
+
+        await harness.Build().RunAsync();
+
+        harness.Ui.Errors.Should().Contain(message => message.Contains("'@src/missing.cs'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Persists_the_conversation_after_every_turn()
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("remembered answer");
+        harness.QueueInputs("remember this");
+
+        await harness.Build().RunAsync();
+
+        var stored = await harness.SessionStore.LoadAsync(harness.Root);
+
+        stored.Should().ContainSingle();
+        stored[0].UserRequest.Should().Be("remember this");
+        stored[0].AiResponse.Should().Be("remembered answer");
+    }
+
+    [Fact]
+    public async Task Resumes_the_stored_conversation_when_asked()
+    {
+        var harness = new SessionHarness();
+        await harness.SessionStore.SaveAsync(
+            harness.Root,
+            [new ChatTurn(DateTimeOffset.UtcNow, "previous question", "previous answer")]);
+
+        harness.Options = new SessionOptions
+        {
+            ProjectRoot = harness.Root,
+            Provider = harness.Options.Provider,
+            Model = harness.Options.Model,
+            ResumePreviousSession = true,
+        };
+
+        harness.Chat.Enqueue("sure");
+        harness.QueueInputs("and now this");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests[0].SystemPrompt.Should().Contain("previous question");
+        harness.History.Turns.Should().HaveCount(2);
+        harness.Ui.Successes.Should().Contain(message => message.Contains("Resumed 1 turn", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Says_so_when_there_is_nothing_to_resume()
+    {
+        var harness = new SessionHarness();
+        harness.Options = new SessionOptions
+        {
+            ProjectRoot = harness.Root,
+            Provider = harness.Options.Provider,
+            Model = harness.Options.Model,
+            ResumePreviousSession = true,
+        };
+
+        harness.QueueInputs(":exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Ui.Infos.Should().Contain("No previous session to continue.");
+    }
+
+    [Fact]
+    public async Task Does_not_resume_unless_asked()
+    {
+        var harness = new SessionHarness();
+        await harness.SessionStore.SaveAsync(
+            harness.Root,
+            [new ChatTurn(DateTimeOffset.UtcNow, "previous question", "previous answer")]);
+
+        harness.Chat.Enqueue("fresh answer");
+        harness.QueueInputs("a new question");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests[0].SystemPrompt.Should().NotContain("previous question");
+        harness.History.Turns.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Clearing_the_history_forgets_the_stored_session()
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("answer");
+        harness.QueueInputs("question", ":clear-history");
+
+        await harness.Build().RunAsync();
+
+        harness.FileSystem.FileExists(FileSessionStore.GetPath(harness.Root)).Should().BeFalse();
+        (await harness.SessionStore.LoadAsync(harness.Root)).Should().BeEmpty();
     }
 
     private sealed class FixedCostCalculator(decimal cost) : ICostCalculator

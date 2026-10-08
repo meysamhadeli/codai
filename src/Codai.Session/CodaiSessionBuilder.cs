@@ -24,6 +24,10 @@ public static class CodaiSessionBuilder
     /// <param name="services">The service collection to populate.</param>
     /// <param name="options">Resolved configuration.</param>
     /// <param name="projectRoot">Directory to scan; defaults to the current directory.</param>
+    /// <param name="resumePreviousSession">
+    /// True when the caller asked to continue the stored conversation instead of
+    /// starting a fresh one.
+    /// </param>
     /// <remarks>
     /// The host is responsible for registering an <see cref="IUserInterface" />
     /// implementation (the CLI registers the Spectre.Console one).
@@ -31,7 +35,8 @@ public static class CodaiSessionBuilder
     public static IServiceCollection AddCodaiSession(
         this IServiceCollection services,
         CodaiOptions options,
-        string? projectRoot = null)
+        string? projectRoot = null,
+        bool resumePreviousSession = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
@@ -74,11 +79,15 @@ public static class CodaiSessionBuilder
 
         services.AddSingleton<IToolExecutor>(sp => sp.GetRequiredService<ToolRunner>());
 
+        services.AddSingleton<IMentionResolver>(sp => new MentionResolver(sp.GetRequiredService<IFileSystem>()));
+
         services.AddSingleton<IChatCompletionService>(sp =>
         {
             var factory = sp.GetRequiredService<IChatClientFactory>();
             return factory.CreateService(providerOptions, sp.GetRequiredService<IToolExecutor>());
         });
+
+        services.AddSingleton<HistoryCompactor>();
 
         services.AddSingleton(new SessionOptions
         {
@@ -86,6 +95,7 @@ public static class CodaiSessionBuilder
             Provider = providerOptions.Provider,
             Model = providerOptions.Model,
             Theme = options.Theme,
+            ResumePreviousSession = resumePreviousSession,
         });
 
         services.AddSingleton<ProjectContextLoader>();

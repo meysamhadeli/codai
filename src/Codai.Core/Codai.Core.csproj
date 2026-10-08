@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\SummarizeFullContextPrompt.tmpl" />
+    <EmbeddedResource Include="Resources\CompactHistoryPrompt.tmpl" />
   </ItemGroup>
 
   <ItemGroup>

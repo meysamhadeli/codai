@@ -23,11 +23,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   available the defaults stand: progress is dropped and state-changing tools are refused.
 - A **tools section in the system prompt** describing what can be called, emitted only
   when tools are actually available, so prompts without tools are unchanged.
+- **Project instructions.** A repository that ships `AGENTS.md`, `CLAUDE.md`, `CODAI.md`,
+  `.codai/instructions.md` or `.github/copilot-instructions.md` is now followed for the
+  whole session. The file is capped at 32 KB and the one that was picked is reported at
+  start-up.
+- **`@` references in a request.** `@src/Foo.cs`, `@src/` and `@**/*.cs` attach file
+  contents to that single request. References resolve through the same file index as the
+  tools, cap at 20 files / 256 KB per request, and a reference that matches nothing is
+  reported instead of silently dropped.
+- **`:compact`** replaces the conversation so far with a summary of it, and
+  `PromptExtras` carries the optional instruction and attached-file prompt sections.
+- **Session persistence.** Every turn is written to `.codai/sessions/latest.json`, and
+  `codai code --continue` resumes that conversation. Losing or corrupting the file is
+  treated as "nothing to resume" rather than a failure to start.
 
 ### Changed
 
 - `Microsoft.Extensions.*` packages moved to 10.0.12, which `Microsoft.Extensions.AI`
   10.10.0 requires.
+- `.codai/` is now a built-in ignore pattern, so the stored session is never read back as
+  if it were project context.
+- `SessionCommandHandler.Handle` became `HandleAsync`, since `:compact` calls the model.
 
 ## [2.0.0] - 2026-10-09
 

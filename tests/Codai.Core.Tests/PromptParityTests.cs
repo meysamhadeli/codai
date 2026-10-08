@@ -127,7 +127,7 @@ public class PromptParityTests
             Context("code"),
             [],
             "x",
-            "**File: full.cs**\n\nclass Full\n---------");
+            new PromptExtras { RequestedContext = "**File: full.cs**\n\nclass Full\n---------" });
 
         actual.SystemPrompt.Should().Be(expected);
     }
@@ -147,7 +147,11 @@ public class PromptParityTests
             EmbeddedResources.FullContextTemplate,
             RequestedContext);
 
-        var actual = CreateBuilder().Build(Context("alpha", "beta"), history, "second", RequestedContext);
+        var actual = CreateBuilder().Build(
+            Context("alpha", "beta"),
+            history,
+            "second",
+            new PromptExtras { RequestedContext = RequestedContext });
 
         actual.SystemPrompt.Should().Be(expected);
     }
@@ -171,7 +175,7 @@ public class PromptParityTests
             Context("MARKER_CODE"),
             [new ChatTurn(timestamp, "MARKER_USER", "MARKER_AI")],
             "input",
-            "MARKER_REQUESTED");
+            new PromptExtras { RequestedContext = "MARKER_REQUESTED" });
 
         var historyIndex = actual.SystemPrompt.IndexOf("## Here is the history of chats", StringComparison.Ordinal);
         var summaryIndex = actual.SystemPrompt.IndexOf("## Here is the summary of context of project", StringComparison.Ordinal);
@@ -225,7 +229,11 @@ public class PromptParityTests
     [Fact]
     public void Requested_context_section_is_omitted_when_empty_string_is_supplied()
     {
-        var actual = CreateBuilder().Build(Context("code"), [], "input", requestedContext: string.Empty);
+        var actual = CreateBuilder().Build(
+            Context("code"),
+            [],
+            "input",
+            new PromptExtras { RequestedContext = string.Empty });
 
         actual.SystemPrompt.Should().NotContain("## Here are the requsted full context files");
     }
@@ -258,7 +266,11 @@ public class PromptParityTests
             EmbeddedResources.FullContextTemplate,
             Requested);
 
-        var actual = CreateBuilder().Build(Context(codes), [turn], Input, Requested);
+        var actual = CreateBuilder().Build(
+            Context(codes),
+            [turn],
+            Input,
+            new PromptExtras { RequestedContext = Requested });
 
         actual.SystemPrompt.Should().Be(expectedSystem);
         actual.UserMessage.Should().Be(expectedUser);

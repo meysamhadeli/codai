@@ -17,6 +17,7 @@ public static class IgnoreRules
     [
         "codai-config.yml",
         ".codai-gitignore",
+        ".codai",
         ".git",
         ".svn",
         ".sum",

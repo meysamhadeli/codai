@@ -32,6 +32,8 @@ public static class CoreServiceCollectionExtensions
             sp.GetService<IToolRegistry>()?.Tools));
 
         services.AddSingleton<IRequestedContextResolver>(_ => new RequestedContextResolver(PhysicalFileSystem.Instance));
+        services.AddSingleton<IProjectInstructionsProvider>(_ => new ProjectInstructionsProvider(PhysicalFileSystem.Instance));
+        services.AddSingleton<ISessionStore>(_ => new FileSessionStore(PhysicalFileSystem.Instance));
         services.AddSingleton<ICodeChangeExtractor, CodeChangeExtractor>();
         services.AddSingleton<IDiffApplier>(_ => new DiffApplier(PhysicalFileSystem.Instance));
 

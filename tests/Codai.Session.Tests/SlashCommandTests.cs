@@ -102,9 +102,32 @@ public class SlashCommandTests
     [InlineData(":token", SlashCommand.Token)]
     [InlineData(":clear-token", SlashCommand.ClearToken)]
     [InlineData(":clear-history", SlashCommand.ClearHistory)]
+    [InlineData(":compact", SlashCommand.Compact)]
     [InlineData("hello", SlashCommand.None)]
     [InlineData("", SlashCommand.None)]
     [InlineData(":unknown", SlashCommand.None)]
     public void Parses_known_commands(string input, SlashCommand expected) =>
         SlashCommandParser.Parse(input).Should().Be(expected);
+
+    [Fact]
+    public async Task Compact_replaces_the_history_with_a_summary()
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("first answer");
+        harness.Chat.Enqueue("second answer");
+        harness.Chat.Enqueue("the summary");
+        harness.QueueInputs("first question", "second question", ":compact", ":exit");
+
+        await harness.Build().RunAsync();
+
+        harness.History.Turns.Should().ContainSingle();
+        harness.History.Turns[0].UserRequest.Should().Be(HistoryCompactor.SummaryTurnLabel);
+        harness.History.Turns[0].AiResponse.Should().Be("the summary");
+    }
+
+    [Fact]
+    public async Task Compact_is_reported_in_the_help_text()
+    {
+        SlashCommandParser.HelpText.Should().Contain(":compact");
+    }
 }

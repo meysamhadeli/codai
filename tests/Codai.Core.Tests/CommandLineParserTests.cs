@@ -51,6 +51,31 @@ public class CommandLineParserTests
     }
 
     [Fact]
+    public void Parses_the_continue_flag()
+    {
+        var result = CommandLineParser.Parse(["code", "--continue"]);
+
+        result.ContinueSession.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+        result.Overrides.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Continue_is_false_unless_asked_for()
+    {
+        CommandLineParser.Parse(["code"]).ContinueSession.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Continue_can_be_combined_with_other_flags()
+    {
+        var result = CommandLineParser.Parse(["code", "--continue", "--model", "gpt-4o"]);
+
+        result.ContinueSession.Should().BeTrue();
+        result.Overrides[ConfigKeys.Model].Should().Be("gpt-4o");
+    }
+
+    [Fact]
     public void Maps_all_supported_flags()
     {
         var result = CommandLineParser.Parse(

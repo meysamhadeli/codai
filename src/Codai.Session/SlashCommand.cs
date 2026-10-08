@@ -25,6 +25,9 @@ public enum SlashCommand
 
     /// <summary><c>:clear-history</c> — forget the conversation so far.</summary>
     ClearHistory,
+
+    /// <summary><c>:compact</c> — summarise the conversation so far and keep only the summary.</summary>
+    Compact,
 }
 
 /// <summary>
@@ -40,7 +43,8 @@ public static class SlashCommandParser
         ":exit  Exit from codai\n" +
         ":token  Token information\n" +
         ":clear-token  Clear token from session\n" +
-        ":clear-history  Clear history of chat from session";
+        ":clear-history  Clear history of chat from session\n" +
+        ":compact  Summarize the chat history and keep only the summary";
 
     /// <summary>Maps a raw input line onto a <see cref="SlashCommand"/>.</summary>
     public static SlashCommand Parse(string? input)
@@ -65,6 +69,7 @@ public static class SlashCommandParser
             ":token" => SlashCommand.Token,
             ":clear-token" => SlashCommand.ClearToken,
             ":clear-history" => SlashCommand.ClearHistory,
+            ":compact" => SlashCommand.Compact,
             _ => SlashCommand.None,
         };
     }

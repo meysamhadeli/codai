@@ -90,7 +90,7 @@ public sealed class CliApplication
 
         var services = new ServiceCollection();
         services.AddSingleton<IUserInterface>(_uiOverride ?? new SpectreUserInterface());
-        services.AddCodaiSession(options, workingDirectory);
+        services.AddCodaiSession(options, workingDirectory, parsed.ContinueSession);
 
         await using var provider = services.BuildServiceProvider();
 
@@ -134,6 +134,7 @@ public sealed class CliApplication
                   --stream <bool>         Stream the response (default: true).
                   --api-key <key>         API key (prefer the API_KEY environment variable).
                   --api-version <v>       Version header for providers that need one (Anthropic).
+                  --continue              Resume the conversation stored for this project.
               -v, --version               Print the version and exit.
               -h, --help                  Print this help and exit.
 

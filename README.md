@@ -16,7 +16,14 @@ applies the ones you accept — all from the terminal.
 
 �️ Agent tools — `read_file`, `list_files`, `glob` and `grep` let the assistant read the
 files it actually needs instead of only reasoning over the summary.
+📄 Project instructions — an `AGENTS.md`, `CLAUDE.md` or `.codai/instructions.md` file in
+the repository steers every request of the session.
 
+📎 `@` references — `@src/Foo.cs`, `@src/` or `@**/*.cs` in a request attaches those files
+to that request, without waiting for the model to ask for them.
+
+🧹 Long sessions stay affordable — `:compact` replaces the conversation with a summary,
+and `--continue` picks that conversation up again next time.
 �📊 Maintains conversational and code context per session.
 
 🌳 Summarises full project context by extracting code signatures.
@@ -156,6 +163,7 @@ codai code [options]
       --stream <bool>        Stream the response
       --api-key <key>        API key (prefer API_KEY)
       --api-version <v>      Version header for providers that need one (Anthropic)
+      --continue             Resume the conversation stored for this project
   -v, --version              Print version
   -h, --help                 Print help
 ```
@@ -187,7 +195,49 @@ changes the request that is sent rather than being accepted and ignored.
 ### Ignoring files
 
 Create a `.codai-gitignore` in the project root using gitignore-style patterns; matching
-files are excluded from the project context.
+files are excluded from the project context. `.codai/` itself is always ignored, so the
+session store is never read back as if it were project context.
+
+### Project instructions
+
+A repository that ships an instructions file steers the whole session. The first file
+found wins:
+
+| Order | File |
+| --- | --- |
+| 1 | `AGENTS.md` |
+| 2 | `CLAUDE.md` |
+| 3 | `CODAI.md` |
+| 4 | `.codai/instructions.md` |
+| 5 | `.github/copilot-instructions.md` |
+
+The file is capped at 32 KB and the one that was picked is reported at start-up
+(`📄 Following project instructions from AGENTS.md`).
+
+### Referencing files from a request
+
+An `@` reference attaches file contents to that one request:
+
+| Reference | Attaches |
+| --- | --- |
+| `@src/Foo.cs` | that file |
+| `@src/` or `@src` | every file below `src/` |
+| `@**/*.cs` | every file matching the glob |
+
+References go through the same file index as the tools, so `bin/`, `obj/`,
+`.codai-gitignore` matches and anything outside the project root stay out, and at most
+20 files (256 KB) are attached per request. A reference that matches nothing is
+reported rather than dropped, so a typo cannot silently cost you the context you asked
+for.
+
+### Continuing a session
+
+Every turn is written to `.codai/sessions/latest.json`, which the project scan ignores.
+`--continue` resumes it:
+
+```bash
+codai code --continue
+```
 
 ## ⌨️ Session commands
 
@@ -199,6 +249,7 @@ files are excluded from the project context.
 | `:token` | Show token usage and estimated cost |
 | `:clear-token` | Reset the token counters |
 | `:clear-history` | Forget the conversation so far |
+| `:compact` | Replace the conversation so far with a summary of it |
 
 ## 🛠️ Agent tools
 
@@ -318,7 +369,7 @@ sequenceDiagram
 dotnet test
 ```
 
-**414 tests** covering the core, configuration, pricing, providers, analysis, session,
+**478 tests** covering the core, configuration, pricing, providers, analysis, session,
 tools and CLI — of which three are the opt-in live DeepSeek tests. The suite is
 warning-clean, and CI builds with `-warnaserror`.
 

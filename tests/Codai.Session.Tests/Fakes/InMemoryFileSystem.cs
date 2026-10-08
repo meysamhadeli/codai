@@ -26,17 +26,17 @@ public sealed class InMemoryFileSystem : IFileSystem
         var normalized = Normalize(path);
         _files[normalized] = content;
 
-        var directory = Path.GetDirectoryName(normalized);
-        while (!string.IsNullOrEmpty(directory))
+        // Walk the parents. Normalize each one: Path.GetDirectoryName gives back
+        // platform separators, and mixing them into the key set would make
+        // enumeration miss directories that do exist.
+        for (var directory = Path.GetDirectoryName(normalized);
+             !string.IsNullOrEmpty(directory);
+             directory = Path.GetDirectoryName(directory))
         {
-            _directories.Add(directory);
-            var parent = Path.GetDirectoryName(directory);
-            if (parent == directory)
+            if (!_directories.Add(Normalize(directory)))
             {
                 break;
             }
-
-            directory = parent;
         }
     }
 
@@ -84,16 +84,29 @@ public sealed class InMemoryFileSystem : IFileSystem
     public IEnumerable<string> EnumerateFiles(string path)
     {
         var normalized = Normalize(path);
-        return _files.Keys.Where(key =>
-            key.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase) &&
-            !key[(normalized.Length + 1)..].Contains('/')).ToList();
+
+        // A real file system hands back paths in the platform's own form, and callers
+        // derive relative paths from them by string comparison.
+        return _files.Keys
+            .Where(key =>
+                key.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase) &&
+                !key[(normalized.Length + 1)..].Contains('/'))
+            .Select(Native)
+            .ToList();
     }
 
     public IEnumerable<string> EnumerateDirectories(string path)
     {
         var normalized = Normalize(path);
-        return _directories.Where(key =>
-            key.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase) &&
-            !key[(normalized.Length + 1)..].Contains('/')).ToList();
+
+        return _directories
+            .Where(key =>
+                key.StartsWith(normalized + "/", StringComparison.OrdinalIgnoreCase) &&
+                !key[(normalized.Length + 1)..].Contains('/'))
+            .Select(Native)
+            .ToList();
     }
+
+    private static string Native(string normalized) =>
+        normalized.Replace('/', Path.DirectorySeparatorChar);
 }

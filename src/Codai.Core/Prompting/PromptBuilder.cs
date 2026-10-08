@@ -27,6 +27,10 @@ public sealed class PromptBuilder : IPromptBuilder
     private const string RequestedContextHeader =
         "## Here are the requsted full context files for using in your task\n\n";
     private const string ToolsHeader = "## Here are the tools you can call\n\n";
+    private const string InstructionsHeader =
+        "## Here are the project instructions you must follow\n\n";
+    private const string AttachedContextHeader =
+        "## Here are the files the user referenced in this request\n\n";
 
     private readonly string _fullContextTemplate;
     private readonly IReadOnlyList<ITool> _tools;
@@ -49,7 +53,7 @@ public sealed class PromptBuilder : IPromptBuilder
         ProjectContext context,
         IReadOnlyList<ChatTurn> history,
         string userInput,
-        string? requestedContext = null)
+        PromptExtras? extras = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(history);
@@ -66,6 +70,14 @@ public sealed class PromptBuilder : IPromptBuilder
             .Append(_fullContextTemplate)
             .Append("\n\n______\n");
 
+        if (!string.IsNullOrEmpty(extras?.Instructions))
+        {
+            systemPrompt
+                .Append(InstructionsHeader)
+                .Append(extras.Instructions)
+                .Append("\n\n______\n");
+        }
+
         if (_tools.Count > 0)
         {
             systemPrompt
@@ -74,11 +86,19 @@ public sealed class PromptBuilder : IPromptBuilder
                 .Append("______\n");
         }
 
-        if (!string.IsNullOrEmpty(requestedContext))
+        if (!string.IsNullOrEmpty(extras?.AttachedContext))
+        {
+            systemPrompt
+                .Append(AttachedContextHeader)
+                .Append(extras.AttachedContext)
+                .Append("______\n");
+        }
+
+        if (!string.IsNullOrEmpty(extras?.RequestedContext))
         {
             systemPrompt
                 .Append(RequestedContextHeader)
-                .Append(requestedContext)
+                .Append(extras.RequestedContext)
                 .Append("______\n");
         }
 

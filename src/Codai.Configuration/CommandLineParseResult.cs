@@ -5,14 +5,16 @@ namespace Codai.Configuration;
 /// </summary>
 /// <param name="ConfigPath">Value of <c>--config</c>/<c>-c</c>, when supplied.</param>
 /// <param name="ShowVersion">True when <c>--version</c>/<c>-v</c> was supplied.</param>
+/// <param name="ContinueSession">True when <c>--continue</c> was supplied.</param>
 /// <param name="Overrides">Flag values keyed by configuration key.</param>
 /// <param name="Errors">Problems detected while parsing.</param>
 public sealed record CommandLineParseResult(
     string? ConfigPath,
     bool ShowVersion,
+    bool ContinueSession,
     IReadOnlyDictionary<string, string?> Overrides,
     IReadOnlyList<string> Errors)
 {
     public static CommandLineParseResult Empty { get; } =
-        new(null, false, new Dictionary<string, string?>(), []);
+        new(null, false, false, new Dictionary<string, string?>(), []);
 }

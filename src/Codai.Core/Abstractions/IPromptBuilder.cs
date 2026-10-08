@@ -1,5 +1,6 @@
 using Codai.Core.Chat;
 using Codai.Core.Projects;
+using Codai.Core.Prompting;
 
 namespace Codai.Core.Abstractions;
 
@@ -12,5 +13,5 @@ public interface IPromptBuilder
         ProjectContext context,
         IReadOnlyList<ChatTurn> history,
         string userInput,
-        string? requestedContext = null);
+        PromptExtras? extras = null);
 }

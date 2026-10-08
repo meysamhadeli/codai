@@ -26,4 +26,10 @@ public sealed class SessionOptions
     /// request that includes those files.
     /// </summary>
     public bool EnableRequestedContext { get; init; } = true;
+
+    /// <summary>
+    /// When true, the stored conversation is loaded before the loop starts, so
+    /// <c>codai code --continue</c> picks up where the previous run stopped.
+    /// </summary>
+    public bool ResumePreviousSession { get; init; }
 }

@@ -8,12 +8,22 @@ public static class EmbeddedResources
     private const string FullContextTemplateResourceName =
         "Codai.Core.Resources.SummarizeFullContextPrompt.tmpl";
 
+    private const string CompactHistoryPromptResourceName =
+        "Codai.Core.Resources.CompactHistoryPrompt.tmpl";
+
     private static readonly Lazy<string> FullContextTemplateValue = new(
         () => ReadResource(FullContextTemplateResourceName),
         LazyThreadSafetyMode.ExecutionAndPublication);
 
+    private static readonly Lazy<string> CompactHistoryPromptValue = new(
+        () => ReadResource(CompactHistoryPromptResourceName),
+        LazyThreadSafetyMode.ExecutionAndPublication);
+
     /// <summary>The general "how to answer" template injected into every system prompt.</summary>
     public static string FullContextTemplate => FullContextTemplateValue.Value;
+
+    /// <summary>The system prompt used when compressing the conversation history.</summary>
+    public static string CompactHistoryPrompt => CompactHistoryPromptValue.Value;
 
     private static string ReadResource(string name)
     {

@@ -45,6 +45,7 @@ public static class CommandLineParser
 
         string? configPath = null;
         var showVersion = false;
+        var continueSession = false;
         var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<string>();
 
@@ -83,6 +84,10 @@ public static class CommandLineParser
                 case "v":
                     showVersion = true;
                     continue;
+
+                case "continue":
+                    continueSession = true;
+                    continue;
             }
 
             if (!FlagToConfigKey.TryGetValue(name, out var configKey))
@@ -101,7 +106,7 @@ public static class CommandLineParser
             overrides[configKey] = value;
         }
 
-        return new CommandLineParseResult(configPath, showVersion, overrides, errors);
+        return new CommandLineParseResult(configPath, showVersion, continueSession, overrides, errors);
     }
 
     private static Dictionary<string, string> BuildFlagMap()

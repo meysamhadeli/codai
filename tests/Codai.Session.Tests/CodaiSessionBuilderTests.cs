@@ -37,6 +37,32 @@ public class CodaiSessionBuilderTests
         provider.GetRequiredService<ICostCalculator>().Should().NotBeNull();
         provider.GetRequiredService<IPromptBuilder>().Should().NotBeNull();
         provider.GetRequiredService<IRequestedContextResolver>().Should().NotBeNull();
+        provider.GetRequiredService<IProjectInstructionsProvider>().Should().NotBeNull();
+        provider.GetRequiredService<IMentionResolver>().Should().NotBeNull();
+        provider.GetRequiredService<ISessionStore>().Should().NotBeNull();
+        provider.GetRequiredService<HistoryCompactor>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Session_does_not_resume_unless_asked()
+    {
+        var services = new ServiceCollection();
+        services.AddCodaiSession(OptionsFor("ollama"), @"C:\project");
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<SessionOptions>().ResumePreviousSession.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Session_resumes_when_asked()
+    {
+        var services = new ServiceCollection();
+        services.AddCodaiSession(OptionsFor("ollama"), @"C:\project", resumePreviousSession: true);
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<SessionOptions>().ResumePreviousSession.Should().BeTrue();
     }
 
     [Fact]

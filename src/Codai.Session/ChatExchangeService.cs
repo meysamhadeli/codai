@@ -25,6 +25,7 @@ public sealed class ChatExchangeService
     private readonly IChatHistory _history;
     private readonly ITokenTracker _tokenTracker;
     private readonly IRequestedContextResolver _requestedContextResolver;
+    private readonly IMentionResolver _mentionResolver;
     private readonly IUserInterface _ui;
 
     /// <summary>Creates the service.</summary>
@@ -35,6 +36,7 @@ public sealed class ChatExchangeService
         IChatHistory history,
         ITokenTracker tokenTracker,
         IRequestedContextResolver requestedContextResolver,
+        IMentionResolver mentionResolver,
         IUserInterface ui)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -43,6 +45,7 @@ public sealed class ChatExchangeService
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(tokenTracker);
         ArgumentNullException.ThrowIfNull(requestedContextResolver);
+        ArgumentNullException.ThrowIfNull(mentionResolver);
         ArgumentNullException.ThrowIfNull(ui);
 
         _options = options;
@@ -51,6 +54,7 @@ public sealed class ChatExchangeService
         _history = history;
         _tokenTracker = tokenTracker;
         _requestedContextResolver = requestedContextResolver;
+        _mentionResolver = mentionResolver;
         _ui = ui;
     }
 
@@ -58,23 +62,63 @@ public sealed class ChatExchangeService
     /// Sends one user request and returns the final response text. Exactly one history
     /// entry is added per request, whatever happens in between.
     /// </summary>
+    /// <param name="context">The project summary the prompt is built from.</param>
+    /// <param name="userInput">The request as the user typed it, mentions included.</param>
+    /// <param name="instructions">
+    /// Project instructions for this session, when the project ships any.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the request.</param>
     public async Task<string> SendAsync(
         ProjectContext context,
         string userInput,
+        ProjectInstructions? instructions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(userInput);
 
-        var response = await CompleteAsync(context, userInput, requestedContext: null, cancellationToken)
+        var extras = new PromptExtras
+        {
+            Instructions = instructions?.Content,
+            AttachedContext = await ResolveMentionsAsync(userInput, cancellationToken)
+                .ConfigureAwait(false),
+        };
+
+        var response = await CompleteAsync(context, userInput, extras, cancellationToken)
             .ConfigureAwait(false);
 
-        response = await TryAddRequestedContextAsync(context, userInput, response, cancellationToken)
+        response = await TryAddRequestedContextAsync(context, userInput, extras, response, cancellationToken)
             .ConfigureAwait(false);
 
         _history.Add(new ChatTurn(DateTimeOffset.UtcNow, userInput, response));
 
         return response;
+    }
+
+    /// <summary>
+    /// Attaches the files the user referenced with <c>@path</c>. A mention that matches
+    /// nothing is reported: staying quiet would hand the model a prompt without the
+    /// context the user asked for, and the answer would look inexplicably wrong.
+    /// </summary>
+    private async Task<string?> ResolveMentionsAsync(
+        string userInput,
+        CancellationToken cancellationToken)
+    {
+        var resolution = await _mentionResolver
+            .ResolveAsync(_options.ProjectRoot, userInput, cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var mention in resolution.Unresolved)
+        {
+            _ui.WriteError($"No file matches '@{mention}'.");
+        }
+
+        if (resolution.Files.Count > 0)
+        {
+            _ui.WriteInfo($"📎 Attached {resolution.Files.Count} file(s): {string.Join(", ", resolution.Files)}");
+        }
+
+        return resolution.Context;
     }
 
     /// <summary>
@@ -84,6 +128,7 @@ public sealed class ChatExchangeService
     private async Task<string> TryAddRequestedContextAsync(
         ProjectContext context,
         string userInput,
+        PromptExtras extras,
         string response,
         CancellationToken cancellationToken)
     {
@@ -118,17 +163,18 @@ public sealed class ChatExchangeService
 
         _ui.WriteSuccess("✔️ Context accepted!");
 
-        return await CompleteAsync(context, userInput, requestedContext, cancellationToken).ConfigureAwait(false);
+        return await CompleteAsync(context, userInput, extras with { RequestedContext = requestedContext }, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Streams one request, renders it and records its token usage.</summary>
     private async Task<string> CompleteAsync(
         ProjectContext context,
         string userInput,
-        string? requestedContext,
+        PromptExtras extras,
         CancellationToken cancellationToken)
     {
-        var request = _promptBuilder.Build(context, _history.Turns, userInput, requestedContext);
+        var request = _promptBuilder.Build(context, _history.Turns, userInput, extras);
 
         var response = new StringBuilder();
         var usage = TokenUsage.Empty;

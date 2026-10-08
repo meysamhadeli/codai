@@ -33,11 +33,12 @@ internal sealed class SessionHarness
         Scanner = new FakeProjectScanner();
         History = new ChatHistory();
         Tokens = new TokenTracker();
+        SessionStore = new FileSessionStore(FileSystem);
     }
 
     public string Root { get; }
 
-    public SessionOptions Options { get; }
+    public SessionOptions Options { get; set; }
 
     public InMemoryFileSystem FileSystem { get; }
 
@@ -53,19 +54,41 @@ internal sealed class SessionHarness
 
     public ICostCalculator? CostCalculator { get; set; }
 
-    public CodeSession Build() => new(
-        Ui,
-        new ProjectContextLoader(Options, Scanner, Ui),
-        new ChatExchangeService(
+    /// <summary>Instructions the project "ships"; null means the project has none.</summary>
+    public string? Instructions { get; set; }
+
+    /// <summary>The store the session persists into. Backed by the in-memory file system.</summary>
+    public ISessionStore SessionStore { get; }
+
+    public CodeSession Build()
+    {
+        var instructionsProvider = new FakeProjectInstructionsProvider(Instructions);
+
+        return new CodeSession(
             Options,
-            new PromptBuilder(Template),
-            Chat,
+            Ui,
+            new ProjectContextLoader(Options, Scanner, Ui),
+            new ChatExchangeService(
+                Options,
+                new PromptBuilder(Template),
+                Chat,
+                History,
+                Tokens,
+                new RequestedContextResolver(FileSystem),
+                new MentionResolver(FileSystem),
+                Ui),
+            new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Ui),
+            new SessionCommandHandler(
+                Options,
+                History,
+                Tokens,
+                CostCalculator ?? NullCostCalculator.Instance,
+                new HistoryCompactor(Chat, History, Tokens, Ui),
+                Ui),
             History,
-            Tokens,
-            new RequestedContextResolver(FileSystem),
-            Ui),
-        new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Ui),
-        new SessionCommandHandler(Options, History, Tokens, CostCalculator ?? NullCostCalculator.Instance, Ui));
+            instructionsProvider,
+            SessionStore);
+    }
 
     /// <summary>Queues the given lines followed by end-of-input.</summary>
     public void QueueInputs(params string[] lines)
