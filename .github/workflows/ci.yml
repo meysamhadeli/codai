@@ -1,16 +1,18 @@
-name: .NET CI
+name: CI
 
 on:
   push:
     branches: ["main"]
-    paths:
-      - "dotnet/**"
-      - ".github/workflows/dotnet-ci.yml"
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTION.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - "assets/**"
   pull_request:
     branches: ["main"]
-    paths:
-      - "dotnet/**"
-      - ".github/workflows/dotnet-ci.yml"
   workflow_dispatch:
 
 env:
@@ -26,10 +28,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-
-    defaults:
-      run:
-        working-directory: dotnet
 
     steps:
       - uses: actions/checkout@v4
@@ -66,14 +64,10 @@ jobs:
           path: ${{ runner.temp }}/test-results
           if-no-files-found: warn
 
-  pack:
+  publish:
     name: Verify publish
     runs-on: ubuntu-latest
     needs: build-and-test
-
-    defaults:
-      run:
-        working-directory: dotnet
 
     steps:
       - uses: actions/checkout@v4

@@ -1,7 +1,7 @@
 # Normalise line endings so byte-parity tests behave identically on every platform.
 #
 # The prompt template and the pricing catalog are compared byte-for-byte against
-# frozen goldens (dotnet/tests/Codai.Core.Tests/Golden/). If git rewrote their line
+# frozen goldens (tests/Codai.Core.Tests/Golden/). If git rewrote their line
 # endings on checkout, those comparisons would break on one platform and pass on
 # another. Forcing LF keeps them deterministic.
 
