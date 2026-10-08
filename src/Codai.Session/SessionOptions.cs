@@ -5,11 +5,12 @@ namespace Codai.Session;
 /// </summary>
 public sealed class SessionOptions
 {
-    /// <summary>Directory whose files are summarised and sent to the model.</summary>
+    /// <summary>
+    /// Directory whose files are summarised, sent to the model, and edited when a
+    /// change is accepted. Every relative path in a model response is resolved against
+    /// it, so it is also the boundary that keeps edits inside the project.
+    /// </summary>
     public required string ProjectRoot { get; init; }
-
-    /// <summary>Directory relative file paths are read from when applying changes.</summary>
-    public string? WorkingDirectory { get; init; }
 
     /// <summary>Active provider identifier, e.g. <c>deepseek</c>.</summary>
     public required string Provider { get; init; }
@@ -25,7 +26,4 @@ public sealed class SessionOptions
     /// request that includes those files.
     /// </summary>
     public bool EnableRequestedContext { get; init; } = true;
-
-    /// <summary>Effective directory used to resolve relative paths.</summary>
-    public string EffectiveWorkingDirectory => WorkingDirectory ?? ProjectRoot;
 }

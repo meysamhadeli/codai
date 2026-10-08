@@ -1,25 +1,47 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
-using Codai.Core.Abstractions;
-using Codai.Providers;
+using Codai.Configuration;
 using FluentAssertions;
 
 namespace Codai.Providers.Tests;
 
-public class ProviderNamesTests
+public class ProviderCatalogTests
 {
     [Fact]
-    public void OpenAiCompatible_set_contains_expected_providers()
+    public void Providers_using_the_openai_wire_format_are_identified_as_such()
     {
-        ProviderNames.OpenAiCompatible.Should().BeEquivalentTo(
+        var openAiCompatible = ProviderCatalog.All
+            .Where(descriptor => descriptor.WireFormat == ProviderWireFormat.OpenAiCompatible)
+            .Select(descriptor => descriptor.Name);
+
+        openAiCompatible.Should().BeEquivalentTo(
             ["openai", "ollama", "deepseek", "openrouter", "qwen", "mistral", "grok"]);
     }
 
     [Fact]
-    public void OpenAiCompatible_is_case_insensitive()
+    public void Lookup_is_case_insensitive_and_trims_whitespace()
     {
-        ProviderNames.OpenAiCompatible.Contains("DeepSeek").Should().BeTrue();
+        ProviderCatalog.Get("  DeepSeek  ").Name.Should().Be(ProviderCatalog.DeepSeek);
+    }
+
+    [Fact]
+    public void Ollama_is_the_only_provider_that_does_not_require_an_api_key()
+    {
+        ProviderCatalog.All
+            .Where(descriptor => !descriptor.RequiresApiKey)
+            .Select(descriptor => descriptor.Name)
+            .Should().Equal(ProviderCatalog.Ollama);
+    }
+
+    [Fact]
+    public void Every_provider_is_described_exactly_once()
+    {
+        ProviderCatalog.All.Select(descriptor => descriptor.Name)
+            .Should().OnlyHaveUniqueItems();
+
+        ProviderCatalog.All.Should().AllSatisfy(descriptor =>
+        {
+            descriptor.DefaultBaseUrl.Should().NotBeNullOrWhiteSpace();
+            descriptor.DefaultModel.Should().NotBeNullOrWhiteSpace();
+        });
     }
 }
 

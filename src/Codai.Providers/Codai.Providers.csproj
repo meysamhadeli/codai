@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Codai.Providers</RootNamespace>
+    <Description>Chat client factory and provider adapters for OpenAI, Azure OpenAI, Anthropic, Gemini, DeepSeek, Mistral, Grok, Qwen, OpenRouter and Ollama, all surfaced through Microsoft.Extensions.AI.</Description>
   </PropertyGroup>
 
   <ItemGroup>

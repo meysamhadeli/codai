@@ -1,7 +1,9 @@
-using Codai.Core.Models;
-using Codai.Providers.Tests.Fakes;
 using Codai.Configuration;
+using Codai.Core.Chat;
+using Codai.Core.Tokens;
+using Codai.Providers.Tests.Fakes;
 using FluentAssertions;
+using Microsoft.Extensions.AI;
 
 namespace Codai.Providers.Tests;
 
@@ -12,7 +14,8 @@ public class ChatCompletionServiceTests
         int maxTokens = 0,
         string provider = "openai",
         string model = "gpt-4o",
-        bool stream = true) =>
+        bool stream = true,
+        ReasoningEffortLevel? reasoningEffort = null) =>
         ResolvedProviderOptions.From(new AiProviderOptions
         {
             Provider = provider,
@@ -21,6 +24,7 @@ public class ChatCompletionServiceTests
             Temperature = temperature,
             MaxTokens = maxTokens,
             Stream = stream,
+            ReasoningEffort = reasoningEffort,
         });
 
     private static async Task<List<ChatStreamUpdate>> DrainAsync(ChatCompletionService service)
@@ -187,6 +191,35 @@ public class ChatCompletionServiceTests
 
         client.CapturedOptions!.Temperature.Should().Be(0.3f);
         client.CapturedOptions.MaxOutputTokens.Should().Be(64);
+    }
+
+    [Theory]
+    [InlineData(ReasoningEffortLevel.Low, ReasoningEffort.Low)]
+    [InlineData(ReasoningEffortLevel.Medium, ReasoningEffort.Medium)]
+    [InlineData(ReasoningEffortLevel.High, ReasoningEffort.High)]
+    public async Task Forwards_the_configured_reasoning_effort(
+        ReasoningEffortLevel configured,
+        ReasoningEffort expected)
+    {
+        var client = ScriptedChatClient.Content("ok");
+        var service = new ChatCompletionService(client, Options(reasoningEffort: configured));
+
+        await DrainAsync(service);
+
+        client.CapturedOptions!.Reasoning.Should().NotBeNull();
+        client.CapturedOptions.Reasoning!.Effort.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Leaves_reasoning_unset_when_not_configured()
+    {
+        var client = ScriptedChatClient.Content("ok");
+        var service = new ChatCompletionService(client, Options());
+
+        await DrainAsync(service);
+
+        client.CapturedOptions!.Reasoning.Should().BeNull(
+            "an unconfigured effort must let the provider choose its own default");
     }
 
     [Fact]

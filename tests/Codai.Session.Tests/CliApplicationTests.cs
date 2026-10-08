@@ -1,6 +1,5 @@
 using Codai.Cli;
 using Codai.Configuration;
-using Codai.Core.Abstractions;
 using FluentAssertions;
 
 namespace Codai.Session.Tests;

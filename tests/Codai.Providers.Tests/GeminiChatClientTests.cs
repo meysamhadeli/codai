@@ -33,7 +33,7 @@ public class GeminiChatClientTests
         var (text, usage) = GeminiChatClient.ParseGenerateContent(payload);
 
         text.Should().BeEmpty();
-        usage.Should().Be(Codai.Core.Models.TokenUsage.Empty);
+        usage.Should().Be(Codai.Core.Tokens.TokenUsage.Empty);
     }
 
     [Fact]
@@ -44,6 +44,6 @@ public class GeminiChatClientTests
         var (text, usage) = GeminiChatClient.ParseGenerateContent(payload);
 
         text.Should().Be("hi");
-        usage.Should().Be(Codai.Core.Models.TokenUsage.Empty);
+        usage.Should().Be(Codai.Core.Tokens.TokenUsage.Empty);
     }
 }

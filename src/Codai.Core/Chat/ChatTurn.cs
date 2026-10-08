@@ -1,4 +1,4 @@
-namespace Codai.Core.Models;
+namespace Codai.Core.Chat;
 
 /// <summary>
 /// One user request and the model response that answered it.

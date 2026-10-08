@@ -115,28 +115,32 @@ public sealed class CliApplication
 
     private void WriteHelp()
     {
-        _output.WriteLine("codai — AI code assistant that works from the full context of your project.");
-        _output.WriteLine(string.Empty);
-        _output.WriteLine("Usage:");
-        _output.WriteLine("  codai code [options]");
-        _output.WriteLine("  codai --version");
-        _output.WriteLine(string.Empty);
-        _output.WriteLine("Options:");
-        _output.WriteLine("  -c, --config <path>        Configuration file (codai-config.yml|yaml|json).");
-        _output.WriteLine("      --provider <name>      Chat provider: openai, azure-openai, anthropic, gemini,");
-        _output.WriteLine("                             ollama, deepseek, openrouter, qwen, mistral, grok.");
-        _output.WriteLine("      --base_url <url>       Provider endpoint override.");
-        _output.WriteLine("      --model <name>         Model identifier (default: deepseek-flash for deepseek).");
-        _output.WriteLine("      --temperature <n>      Sampling temperature.");
-        _output.WriteLine("      --reasoning_effort <l> Reasoning effort (low|medium|high).");
-        _output.WriteLine("      --max_tokens <n>       Maximum output tokens.");
-        _output.WriteLine("      --stream <bool>        Stream the response (default: true).");
-        _output.WriteLine("      --api_key <key>        API key (prefer the API_KEY environment variable).");
-        _output.WriteLine("      --api_version <v>      API version (Azure OpenAI).");
-        _output.WriteLine("  -v, --version              Print the version and exit.");
-        _output.WriteLine("  -h, --help                 Print this help and exit.");
-        _output.WriteLine(string.Empty);
-        _output.WriteLine("Session commands:");
-        _output.WriteLine("  " + SlashCommandParser.HelpText.Replace("\n", "\n  ", StringComparison.Ordinal));
+        _output.WriteLine(
+            $"""
+            codai — AI code assistant that works from the full context of your project.
+
+            Usage:
+              codai code [options]
+              codai --version
+
+            Options:
+              -c, --config <path>         Configuration file (codai-config.yml|yaml|json).
+                  --provider <name>       Chat provider: {string.Join(", ", ProviderCatalog.SupportedNames)}.
+                  --base-url <url>        Provider endpoint override.
+                  --model <name>          Model identifier (provider default applies when omitted).
+                  --temperature <n>       Sampling temperature, 0 to 2.
+                  --reasoning-effort <l>  Reasoning effort: low | medium | high.
+                  --max-tokens <n>        Maximum number of tokens to generate.
+                  --stream <bool>         Stream the response (default: true).
+                  --api-key <key>         API key (prefer the API_KEY environment variable).
+                  --api-version <v>       Version header for providers that need one (Anthropic).
+              -v, --version               Print the version and exit.
+              -h, --help                  Print this help and exit.
+
+            Flags also accept the legacy snake_case spelling (for example --base_url).
+
+            Session commands:
+              {SlashCommandParser.HelpText.Replace("\n", "\n  ", StringComparison.Ordinal)}
+            """);
     }
 }

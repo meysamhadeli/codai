@@ -1,5 +1,4 @@
-using Codai.Core.History;
-using Codai.Core.Models;
+using Codai.Core.Chat;
 using Codai.Core.Tokens;
 using FluentAssertions;
 

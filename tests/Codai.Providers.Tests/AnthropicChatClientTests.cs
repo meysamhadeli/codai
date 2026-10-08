@@ -1,6 +1,7 @@
 using System.Net;
 using Codai.Configuration;
-using Codai.Core.Models;
+using Codai.Core.Chat;
+using Codai.Core.Tokens;
 using Codai.Providers.Anthropic;
 using Codai.Providers.Tests.Fakes;
 using FluentAssertions;

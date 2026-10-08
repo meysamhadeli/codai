@@ -12,30 +12,43 @@ public sealed class AiProviderOptions
     [ConfigurationKeyName("provider")]
     public string Provider { get; set; } = CodaiDefaults.Provider;
 
+    /// <summary>Endpoint override. The provider default applies when unset.</summary>
     [ConfigurationKeyName("base_url")]
     public string? BaseUrl { get; set; }
 
+    /// <summary>Model override. The provider default applies when unset.</summary>
     [ConfigurationKeyName("model")]
     public string Model { get; set; } = string.Empty;
 
+    /// <summary>
+    /// When false the provider is asked for a single completion instead of a stream.
+    /// </summary>
     [ConfigurationKeyName("stream")]
     public bool Stream { get; set; } = true;
 
+    /// <summary>Sampling temperature, between 0 and 2.</summary>
     [ConfigurationKeyName("temperature")]
     public float? Temperature { get; set; }
 
+    /// <summary>
+    /// Reasoning effort for reasoning-capable models: <c>low</c>, <c>medium</c> or
+    /// <c>high</c>. Unset means "use the provider default".
+    /// </summary>
     [ConfigurationKeyName("reasoning_effort")]
-    public string? ReasoningEffort { get; set; }
+    public ReasoningEffortLevel? ReasoningEffort { get; set; }
 
-    [ConfigurationKeyName("encoding_format")]
-    public string EncodingFormat { get; set; } = "float";
-
+    /// <summary>Maximum number of tokens to generate. Unset means "provider default".</summary>
     [ConfigurationKeyName("max_tokens")]
     public int MaxTokens { get; set; }
 
+    /// <summary>API key. Prefer the <c>API_KEY</c> environment variable over storing it here.</summary>
     [ConfigurationKeyName("api_key")]
     public string? ApiKey { get; set; }
 
+    /// <summary>
+    /// Version string for providers that need one. Used by Anthropic as the
+    /// <c>anthropic-version</c> header.
+    /// </summary>
     [ConfigurationKeyName("api_version")]
     public string? ApiVersion { get; set; }
 }

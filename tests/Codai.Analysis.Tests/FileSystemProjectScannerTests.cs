@@ -1,5 +1,4 @@
 using Codai.Analysis.Extractors;
-using Codai.Analysis;
 using Codai.Analysis.Tests.Fakes;
 using FluentAssertions;
 

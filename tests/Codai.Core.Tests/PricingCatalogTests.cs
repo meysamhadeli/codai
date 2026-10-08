@@ -1,4 +1,4 @@
-using Codai.Core.Models;
+using Codai.Core.Tokens;
 using Codai.Tokens;
 using FluentAssertions;
 

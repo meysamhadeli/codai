@@ -46,4 +46,8 @@
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
   </ItemGroup>
 
+  <ItemGroup Label="Build">
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.401" />
+  </ItemGroup>
+
 </Project>

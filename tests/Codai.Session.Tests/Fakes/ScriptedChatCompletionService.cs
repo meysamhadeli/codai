@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.Chat;
+using Codai.Core.Tokens;
 
 namespace Codai.Session.Tests.Fakes;
 

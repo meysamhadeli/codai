@@ -1,0 +1,113 @@
+name: Bug report
+description: Something does not work the way it should.
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report.
+
+        Before you continue, please check that your issue is not already covered by
+        an existing issue, and that it is not a security problem — those go through
+        [private vulnerability reporting](../security/advisories/new) instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched the existing issues and did not find a duplicate.
+          required: true
+        - label: I reproduced this on the latest release.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us what you expected to happen instead.
+      placeholder: |
+        I ran `codai code --provider deepseek` and it exited immediately.
+        I expected an interactive session.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence of steps that shows the problem.
+      placeholder: |
+        1. Create `codai-config.yml` containing ...
+        2. Run `codai code`
+        3. Press ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: |
+        Paste any error text or stack trace. Remove your API keys first.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Codai version
+      description: The output of `codai --version`.
+      placeholder: "2.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Codai?
+      options:
+        - dotnet tool install --global Codai.Tool
+        - Built from source
+        - Release binary
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider in use
+      options:
+        - openai
+        - azure-openai
+        - anthropic
+        - gemini
+        - deepseek
+        - mistral
+        - grok
+        - qwen
+        - openrouter
+        - ollama
+        - Not provider specific
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 24H2, Ubuntu 24.04, macOS 15.1"
+    validations:
+      required: true
+
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET SDK version
+      description: The output of `dotnet --version`.
+      placeholder: "10.0.103"
+    validations:
+      required: true

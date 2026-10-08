@@ -2,10 +2,16 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Codai.Cli</RootNamespace>
     <AssemblyName>codai</AssemblyName>
+    <Description>Run Codai from anywhere with `dotnet tool install --global Codai.Tool`, or grab a self-contained build from the releases page.</Description>
     <IsAotCompatible>true</IsAotCompatible>
     <PublishAot Condition="'$(PublishAot)' == ''">false</PublishAot>
+
+    <!-- Ship the CLI as a .NET tool with a stable command name. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>codai</ToolCommandName>
+    <PackageId>Codai.Tool</PackageId>
+    <PackageTags>$(PackageTags);cli-tool;dotnet-tool</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

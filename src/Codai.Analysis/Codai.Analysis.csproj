@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Codai.Analysis</RootNamespace>
+    <Description>Project scanning, ignore rules and Roslyn/parser based signature extraction that turns a repository into the compact context Codai sends to a model.</Description>
   </PropertyGroup>
 
   <ItemGroup>

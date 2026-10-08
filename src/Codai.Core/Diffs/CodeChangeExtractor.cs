@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
 
 namespace Codai.Core.Diffs;
 
@@ -21,13 +20,14 @@ namespace Codai.Core.Diffs;
 public sealed partial class CodeChangeExtractor : ICodeChangeExtractor
 {
     private const string FilePathPattern =
-        @"(?i)(?:\d+\.\s*|File:\s*)[`']?([^\s*`']+?\.[a-zA-Z0-9]+)[`']?\b";
+        @"(?:\d+\.\s*|File:\s*)[`']?([^\s*`']+?\.[a-zA-Z0-9]+)[`']?\b";
 
     private static readonly string[] TextFileExtensions = [".md", ".txt"];
 
-    [GeneratedRegex(FilePathPattern)]
+    [GeneratedRegex(FilePathPattern, RegexOptions.IgnoreCase)]
     private static partial Regex FilePathRegex();
 
+    /// <inheritdoc />
     public IReadOnlyList<CodeChange> Extract(string aiResponse)
     {
         if (string.IsNullOrEmpty(aiResponse))
@@ -35,7 +35,6 @@ public sealed partial class CodeChangeExtractor : ICodeChangeExtractor
             return [];
         }
 
-        var lines = aiResponse.Split('\n');
         var changes = new List<CodeChange>();
 
         string? currentFilePath = null;
@@ -43,17 +42,18 @@ public sealed partial class CodeChangeExtractor : ICodeChangeExtractor
         var insideCodeBlock = false;
         var isTextFile = false;
 
-        foreach (var line in lines)
+        foreach (var line in aiResponse.Split('\n'))
         {
             var trimmed = line.Trim();
 
             // Detect a new file path header.
-            if (!insideCodeBlock && FilePathRegex().IsMatch(trimmed))
+            var header = FilePathRegex().Match(trimmed);
+            if (!insideCodeBlock && header.Success)
             {
                 Flush(changes, currentFilePath, currentCodeBlock, isTextFile);
                 currentCodeBlock = [];
 
-                currentFilePath = FilePathRegex().Match(trimmed).Groups[1].Value;
+                currentFilePath = header.Groups[1].Value;
                 isTextFile = IsTextFile(currentFilePath);
                 continue;
             }
@@ -61,30 +61,22 @@ public sealed partial class CodeChangeExtractor : ICodeChangeExtractor
             // Fence handling (never for text files, whose bodies are taken verbatim).
             if (!isTextFile && trimmed.StartsWith("```", StringComparison.Ordinal))
             {
-                if (!insideCodeBlock)
-                {
-                    if (currentFilePath is not null)
-                    {
-                        insideCodeBlock = true;
-                    }
-                }
-                else
+                if (insideCodeBlock)
                 {
                     insideCodeBlock = false;
                     Flush(changes, currentFilePath, currentCodeBlock, isTextFile);
                     currentCodeBlock = [];
                     currentFilePath = null;
                 }
+                else if (currentFilePath is not null)
+                {
+                    insideCodeBlock = true;
+                }
 
                 continue;
             }
 
-            if (isTextFile)
-            {
-                currentCodeBlock.Add(line);
-            }
-
-            if (insideCodeBlock)
+            if (isTextFile || insideCodeBlock)
             {
                 currentCodeBlock.Add(line);
             }
@@ -124,6 +116,17 @@ public sealed partial class CodeChangeExtractor : ICodeChangeExtractor
         changes.Add(new CodeChange(filePath, string.Join("\n", codeBlock), isTextFile));
     }
 
-    private static bool IsTextFile(string path) =>
-        TextFileExtensions.Any(ext => path.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
+    private static bool IsTextFile(string path)
+    {
+        foreach (var extension in TextFileExtensions)
+        {
+            if (path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
+

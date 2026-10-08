@@ -1,8 +1,9 @@
-using Codai.Analysis;
 using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Providers;
+using Codai.Providers.Abstractions;
 using Codai.Tokens;
+using Codai.Tokens.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Codai.Session;
@@ -38,8 +39,11 @@ public static class CodaiSessionBuilder
         services.AddCodaiCore();
         services.AddCodaiAnalysis();
         services.AddCodaiProviders();
+
+        // The pricing catalog implements both contracts; register one instance under
+        // each so there is a single source of prices.
         services.AddSingleton<IPricingCatalog>(EmbeddedPricingCatalog.Instance);
-        services.AddSingleton<ICostCalculator>(EmbeddedPricingCatalog.Instance);
+        services.AddSingleton<ICostCalculator>(sp => sp.GetRequiredService<IPricingCatalog>());
 
         services.AddSingleton<IChatCompletionService>(sp =>
         {
@@ -50,12 +54,15 @@ public static class CodaiSessionBuilder
         services.AddSingleton(new SessionOptions
         {
             ProjectRoot = root,
-            WorkingDirectory = root,
             Provider = providerOptions.Provider,
             Model = providerOptions.Model,
             Theme = options.Theme,
         });
 
+        services.AddSingleton<ProjectContextLoader>();
+        services.AddSingleton<ChatExchangeService>();
+        services.AddSingleton<ChangeApplicator>();
+        services.AddSingleton<SessionCommandHandler>();
         services.AddSingleton<CodeSession>();
 
         return services;

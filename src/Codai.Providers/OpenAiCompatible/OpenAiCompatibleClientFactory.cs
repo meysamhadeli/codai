@@ -1,6 +1,6 @@
+using System.ClientModel;
 using Microsoft.Extensions.AI;
 using OpenAI;
-using System.ClientModel;
 
 namespace Codai.Providers.OpenAiCompatible;
 

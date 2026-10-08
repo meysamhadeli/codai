@@ -10,7 +10,7 @@ internal static class AiContentHelpers
     /// <summary>
     /// Extracts token usage from a streaming update, if the update carries it.
     /// </summary>
-    public static Codai.Core.Models.TokenUsage ExtractUsage(ChatResponseUpdate update)
+    public static Codai.Core.Tokens.TokenUsage ExtractUsage(ChatResponseUpdate update)
     {
         foreach (var content in update.Contents)
         {
@@ -20,11 +20,11 @@ internal static class AiContentHelpers
             }
         }
 
-        return Codai.Core.Models.TokenUsage.Empty;
+        return Codai.Core.Tokens.TokenUsage.Empty;
     }
 
     /// <summary>Extracts token usage from a completed response.</summary>
-    public static Codai.Core.Models.TokenUsage ExtractUsage(ChatResponse response)
+    public static Codai.Core.Tokens.TokenUsage ExtractUsage(ChatResponse response)
     {
         ArgumentNullException.ThrowIfNull(response);
 
@@ -46,17 +46,17 @@ internal static class AiContentHelpers
             }
         }
 
-        return Codai.Core.Models.TokenUsage.Empty;
+        return Codai.Core.Tokens.TokenUsage.Empty;
     }
 
-    public static Codai.Core.Models.TokenUsage ToTokenUsage(UsageDetails? details)
+    public static Codai.Core.Tokens.TokenUsage ToTokenUsage(UsageDetails? details)
     {
         if (details is null)
         {
-            return Codai.Core.Models.TokenUsage.Empty;
+            return Codai.Core.Tokens.TokenUsage.Empty;
         }
 
-        return new Codai.Core.Models.TokenUsage(
+        return new Codai.Core.Tokens.TokenUsage(
             (int)(details.InputTokenCount ?? 0),
             (int)(details.OutputTokenCount ?? 0));
     }

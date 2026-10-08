@@ -1,5 +1,5 @@
-using Codai.Core.Models;
 
+using Codai.Core.Diffs;
 namespace Codai.Core.Abstractions;
 
 /// <summary>

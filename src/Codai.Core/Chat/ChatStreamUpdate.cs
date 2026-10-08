@@ -1,4 +1,5 @@
-namespace Codai.Core.Models;
+using Codai.Core.Tokens;
+namespace Codai.Core.Chat;
 
 /// <summary>
 /// A single chunk produced while streaming a chat response.

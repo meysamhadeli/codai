@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Codai.Tokens</RootNamespace>
+    <Description>Embedded model pricing catalog and the cost calculator used to report what each Codai request actually costs.</Description>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 

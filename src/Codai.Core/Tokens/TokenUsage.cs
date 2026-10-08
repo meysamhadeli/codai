@@ -1,4 +1,4 @@
-namespace Codai.Core.Models;
+namespace Codai.Core.Tokens;
 
 /// <summary>
 /// Token usage reported by a provider for a single request.

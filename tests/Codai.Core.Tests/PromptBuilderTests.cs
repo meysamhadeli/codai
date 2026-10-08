@@ -1,5 +1,6 @@
 using Codai.Core.Assets;
-using Codai.Core.Models;
+using Codai.Core.Chat;
+using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using FluentAssertions;
 

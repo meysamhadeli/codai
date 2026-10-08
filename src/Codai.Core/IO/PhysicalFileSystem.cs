@@ -7,41 +7,38 @@ namespace Codai.Core.IO;
 /// </summary>
 public sealed class PhysicalFileSystem : IFileSystem
 {
+    /// <summary>The shared instance; this type is stateless.</summary>
     public static PhysicalFileSystem Instance { get; } = new();
 
+    /// <inheritdoc />
     public bool FileExists(string path) => File.Exists(path);
 
+    /// <inheritdoc />
     public bool DirectoryExists(string path) => Directory.Exists(path);
 
+    /// <inheritdoc />
     public long GetFileSize(string path) => new FileInfo(path).Length;
 
-    public async Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default)
-    {
-#if NET10_0_OR_GREATER
-        return await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-#else
-        cancellationToken.ThrowIfCancellationRequested();
-        return await Task.Run(() => File.ReadAllText(path), cancellationToken).ConfigureAwait(false);
-#endif
-    }
+    /// <inheritdoc />
+    public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) =>
+        File.ReadAllTextAsync(path, cancellationToken);
 
-    public async Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default)
-    {
-#if NET10_0_OR_GREATER
-        await File.WriteAllTextAsync(path, contents, cancellationToken).ConfigureAwait(false);
-#else
-        cancellationToken.ThrowIfCancellationRequested();
-        await Task.Run(() => File.WriteAllText(path, contents), cancellationToken).ConfigureAwait(false);
-#endif
-    }
+    /// <inheritdoc />
+    public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default) =>
+        File.WriteAllTextAsync(path, contents, cancellationToken);
 
+    /// <inheritdoc />
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
 
+    /// <inheritdoc />
     public void DeleteFile(string path) => File.Delete(path);
 
+    /// <inheritdoc />
     public void DeleteDirectory(string path, bool recursive) => Directory.Delete(path, recursive);
 
+    /// <inheritdoc />
     public IEnumerable<string> EnumerateFiles(string path) => Directory.EnumerateFiles(path);
 
+    /// <inheritdoc />
     public IEnumerable<string> EnumerateDirectories(string path) => Directory.EnumerateDirectories(path);
 }

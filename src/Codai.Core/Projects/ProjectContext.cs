@@ -1,4 +1,4 @@
-namespace Codai.Core.Models;
+namespace Codai.Core.Projects;
 
 /// <summary>
 /// The result of scanning a project: the raw files plus the pre-rendered

@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.Chat;
+using Codai.Core.Tokens;
 using Microsoft.Extensions.AI;
 
 namespace Codai.Providers;
@@ -14,6 +15,7 @@ public sealed class ChatCompletionService : IChatCompletionService
 {
     private readonly IChatClient _client;
     private readonly float? _temperature;
+    private readonly ReasoningOptions? _reasoning;
     private readonly int _maxTokens;
     private readonly bool _stream;
 
@@ -26,6 +28,7 @@ public sealed class ChatCompletionService : IChatCompletionService
         ProviderName = options.Provider;
         ModelName = options.Model;
         _temperature = options.Temperature;
+        _reasoning = ReasoningEffortMap.ToReasoningOptions(options.ReasoningEffort);
         _maxTokens = options.MaxTokens;
         _stream = options.Stream;
     }
@@ -50,6 +53,7 @@ public sealed class ChatCompletionService : IChatCompletionService
         {
             ModelId = ModelName,
             Temperature = _temperature,
+            Reasoning = _reasoning,
             MaxOutputTokens = _maxTokens > 0 ? _maxTokens : null,
         };
 

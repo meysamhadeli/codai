@@ -1,5 +1,5 @@
-using Codai.Core.Models;
 
+using Codai.Core.Tokens;
 namespace Codai.Core.Abstractions;
 
 /// <summary>
@@ -32,7 +32,7 @@ public interface IUserInterface
         CancellationToken cancellationToken = default);
 
     /// <summary>Displays accumulated token usage and cost.</summary>
-    void ShowTokens(string provider, string model, TokenUsage session, TokenUsage last, decimal cost);
+    void ShowTokens(string model, TokenUsage session, TokenUsage last, decimal cost);
 
     /// <summary>Clears the screen.</summary>
     void Clear();

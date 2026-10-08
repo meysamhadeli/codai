@@ -1,4 +1,5 @@
-using Codai.Core.Models;
+using Codai.Core.Chat;
+using Codai.Core.Projects;
 
 namespace Codai.Core.Abstractions;
 

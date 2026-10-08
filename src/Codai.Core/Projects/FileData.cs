@@ -1,4 +1,4 @@
-namespace Codai.Core.Models;
+namespace Codai.Core.Projects;
 
 /// <summary>
 /// A single project file discovered by the scanner.

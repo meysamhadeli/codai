@@ -10,20 +10,29 @@ namespace Codai.Configuration;
 /// </remarks>
 public static class CommandLineParser
 {
-    private static readonly Dictionary<string, string> FlagToConfigKey = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["theme"] = ConfigKeys.Theme,
-        ["provider"] = ConfigKeys.Provider,
-        ["base_url"] = ConfigKeys.BaseUrl,
-        ["model"] = ConfigKeys.Model,
-        ["temperature"] = ConfigKeys.Temperature,
-        ["reasoning_effort"] = ConfigKeys.ReasoningEffort,
-        ["api_key"] = ConfigKeys.ApiKey,
-        ["api_version"] = ConfigKeys.ApiVersion,
-        ["encoding_format"] = ConfigKeys.EncodingFormat,
-        ["max_tokens"] = ConfigKeys.MaxTokens,
-        ["stream"] = ConfigKeys.Stream,
-    };
+    /// <summary>
+    /// Canonical flag spellings, paired with the configuration key each one overrides.
+    /// </summary>
+    private static readonly (string Canonical, string ConfigKey)[] KnownFlags =
+    [
+        ("theme", ConfigKeys.Theme),
+        ("provider", ConfigKeys.Provider),
+        ("base-url", ConfigKeys.BaseUrl),
+        ("model", ConfigKeys.Model),
+        ("temperature", ConfigKeys.Temperature),
+        ("reasoning-effort", ConfigKeys.ReasoningEffort),
+        ("api-key", ConfigKeys.ApiKey),
+        ("api-version", ConfigKeys.ApiVersion),
+        ("max-tokens", ConfigKeys.MaxTokens),
+        ("stream", ConfigKeys.Stream),
+    ];
+
+    /// <summary>
+    /// Flag name to configuration key. The kebab-case spelling is the documented one;
+    /// the snake_case spelling is accepted as an alias so command lines written against
+    /// the original Go CLI keep working.
+    /// </summary>
+    private static readonly Dictionary<string, string> FlagToConfigKey = BuildFlagMap();
 
     public static CommandLineParseResult Parse(IReadOnlyList<string> args)
     {
@@ -93,6 +102,19 @@ public static class CommandLineParser
         }
 
         return new CommandLineParseResult(configPath, showVersion, overrides, errors);
+    }
+
+    private static Dictionary<string, string> BuildFlagMap()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (canonical, configKey) in KnownFlags)
+        {
+            map[canonical] = configKey;
+            map[canonical.Replace('-', '_')] = configKey;
+        }
+
+        return map;
     }
 
     private static (string Name, string? Value) SplitFlag(string token)

@@ -56,17 +56,60 @@ public class CommandLineParserTests
         var result = CommandLineParser.Parse(
         [
             "--theme", "dracula",
-            "--base_url", "https://example.test",
-            "--reasoning_effort", "high",
-            "--api_key", "secret",
-            "--api_version", "2024-04-01-preview",
+            "--base-url", "https://example.test",
+            "--reasoning-effort", "high",
+            "--api-key", "secret",
+            "--api-version", "2024-04-01-preview",
+            "--max-tokens", "1024",
+            "--stream", "false",
         ]);
 
+        result.Errors.Should().BeEmpty();
         result.Overrides[ConfigKeys.Theme].Should().Be("dracula");
         result.Overrides[ConfigKeys.BaseUrl].Should().Be("https://example.test");
         result.Overrides[ConfigKeys.ReasoningEffort].Should().Be("high");
         result.Overrides[ConfigKeys.ApiKey].Should().Be("secret");
         result.Overrides[ConfigKeys.ApiVersion].Should().Be("2024-04-01-preview");
+        result.Overrides[ConfigKeys.MaxTokens].Should().Be("1024");
+        result.Overrides[ConfigKeys.Stream].Should().Be("false");
+    }
+
+    [Theory]
+    [InlineData("base_url", ConfigKeys.BaseUrl)]
+    [InlineData("base-url", ConfigKeys.BaseUrl)]
+    [InlineData("api_key", ConfigKeys.ApiKey)]
+    [InlineData("api-key", ConfigKeys.ApiKey)]
+    [InlineData("api_version", ConfigKeys.ApiVersion)]
+    [InlineData("api-version", ConfigKeys.ApiVersion)]
+    [InlineData("max_tokens", ConfigKeys.MaxTokens)]
+    [InlineData("max-tokens", ConfigKeys.MaxTokens)]
+    [InlineData("reasoning_effort", ConfigKeys.ReasoningEffort)]
+    [InlineData("reasoning-effort", ConfigKeys.ReasoningEffort)]
+    public void Accepts_both_kebab_case_and_legacy_snake_case_spellings(
+        string flag,
+        string expectedKey)
+    {
+        var result = CommandLineParser.Parse([$"--{flag}", "value"]);
+
+        result.Errors.Should().BeEmpty();
+        result.Overrides[expectedKey].Should().Be("value");
+    }
+
+    [Fact]
+    public void Rejects_the_removed_encoding_format_flag()
+    {
+        var result = CommandLineParser.Parse(["--encoding_format", "float"]);
+
+        result.Errors.Should().ContainMatch("*encoding_format*");
+    }
+
+    [Fact]
+    public void Rejects_negative_numbers_as_values()
+    {
+        // Sanity check that the value scanner still treats a leading '-' followed by a
+        // digit as a value rather than the next flag.
+        CommandLineParser.Parse(["--temperature", "-1"])
+            .Overrides[ConfigKeys.Temperature].Should().Be("-1");
     }
 
     [Fact]

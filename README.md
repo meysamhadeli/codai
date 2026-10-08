@@ -103,9 +103,9 @@ ai_provider_config:
   base_url: "https://api.deepseek.com"   # optional, provider default applies
   model: "deepseek-flash"                # optional, provider default applies
   api_key: "sk-..."                      # prefer the API_KEY env var
-  api_version: "2024-04-01-preview"      # optional, Azure OpenAI / Anthropic
+  api_version: "2023-06-01"              # optional, Anthropic only (see note)
   temperature: 0.2                       # optional
-  reasoning_effort: "low"                # optional
+  reasoning_effort: "low"                # optional: low | medium | high
   max_tokens: 4096                       # optional
   stream: true                           # optional, default true
 theme: "dracula"
@@ -113,6 +113,12 @@ theme: "dracula"
 
 If no config file is provided, the defaults are used. `.yml`, `.yaml` and `.json` are
 all supported.
+
+> [!NOTE]
+> `api_version` is currently honoured by Anthropic only, where it is sent as the
+> `anthropic-version` header. The Azure OpenAI SDK used by Codai pins the API version
+> itself and does not expose a way to override it, so the setting has no effect for
+> `azure-openai`.
 
 You can also point at a config file from anywhere, or override settings inline:
 
@@ -124,29 +130,35 @@ codai code --provider deepseek --temperature 0.8
 ### Environment variables
 
 `API_KEY`, `PROVIDER`, `BASE_URL`, `MODEL`, `TEMPERATURE`, `REASONING_EFFORT`,
-`ENCODING_FORMAT`, `MAX_TOKENS`, `API_VERSION`, `THEME`.
+`MAX_TOKENS`, `API_VERSION`, `THEME`.
 
 Nested keys can also be supplied with the `__` separator, e.g.
 `AI_PROVIDER_CONFIG__MODEL=deepseek-flash`.
 
 ### CLI flags
 
+Flags use kebab-case. The older snake_case spellings (`--base_url`, `--api_key`,
+`--api_version`, `--max_tokens`, `--reasoning_effort`) are still accepted as aliases.
+
 ```
 codai code [options]
 
   -c, --config <path>        Configuration file
       --provider <name>      Chat provider
-      --base_url <url>       Provider endpoint override
+      --base-url <url>       Provider endpoint override
       --model <name>         Model identifier
       --temperature <n>      Sampling temperature
-      --reasoning_effort <l> low | medium | high
-      --max_tokens <n>       Maximum output tokens
+      --reasoning-effort <l> low | medium | high
+      --max-tokens <n>       Maximum output tokens
       --stream <bool>        Stream the response
-      --api_key <key>        API key (prefer API_KEY)
-      --api_version <v>      API version
+      --api-key <key>        API key (prefer API_KEY)
+      --api-version <v>      Version header for providers that need one (Anthropic)
   -v, --version              Print version
   -h, --help                 Print help
 ```
+
+`--reasoning-effort` is forwarded to the provider as `ChatOptions.Reasoning`, so it
+changes the request that is sent rather than being accepted and ignored.
 
 ### Providers and defaults
 
@@ -189,24 +201,33 @@ files are excluded from the project context.
 
 | Project | Responsibility |
 | --- | --- |
-| `src/Codai.Core` | Models, abstractions, prompt builder, chat history, token tracker, diff applier, requested-context resolver. No third-party dependencies beyond DI abstractions. |
-| `src/Codai.Configuration` | `codai-config.yml\|yaml\|json` loading, environment variables, CLI flag parsing and provider defaults. |
+| `src/Codai.Core` | Domain types, abstractions and first-party services: `Chat`, `Diffs`, `Tokens`, `Projects`, `Prompting`, `IO`, plus an `Abstractions` folder. No dependencies beyond DI abstractions. |
+| `src/Codai.Configuration` | `codai-config.yml\|yaml\|json` loading, environment variables, CLI flag parsing, the provider catalog and its defaults. |
 | `src/Codai.Tokens` | Embedded `model_pricing.json` catalog and cost calculation. |
 | `src/Codai.Providers` | `IChatCompletionService` implementations for all providers, built on `Microsoft.Extensions.AI`. |
 | `src/Codai.Analysis` | Project scanner, Roslyn C# signature extractor, regex extractors for Go/Python/Java/JS/TS, ignore rules. |
-| `src/Codai.Session` | The interactive `CodeSession` orchestrator and slash-command handling. |
+| `src/Codai.Session` | Session orchestration: `CodeSession`, `ProjectContextLoader`, `ChatExchangeService`, `ChangeApplicator`, `SessionCommandHandler`. |
 | `src/Codai.Cli` | `codai` executable: argument handling, Spectre.Console user interface, DI composition. |
 | `tests/*` | xUnit + FluentAssertions test projects, one per component. |
 
 ### Design notes
 
-- **Abstractions first.** Every collaborator is an interface in `Codai.Core.Abstractions`
-  (`IProjectScanner`, `IPromptBuilder`, `IChatCompletionService`, `IDiffApplier`,
-  `IUserInterface`, …) so the whole session can be tested without a network or a disk.
+- **Abstractions first.** Every collaborator is an interface in an `Abstractions`
+  folder (`IProjectScanner`, `IPromptBuilder`, `IChatCompletionService`,
+  `IDiffApplier`, `IUserInterface`, `IChatClientFactory`, `IPricingCatalog`, …) so the
+  whole session can be tested without a network or a disk.
+- **One provider catalog.** `ProviderCatalog` is the single source of truth for base
+  URLs, default models, wire format and whether a credential is required. Both the
+  configuration layer and the client factory read it, so they cannot drift apart.
 - **Source-generated JSON.** All serialization uses `JsonSerializerContext`, keeping the
   binary trim/AOT friendly.
+- **Locale independent.** Number and date formatting in prompts uses
+  `CultureInfo.InvariantCulture`, so output does not change with the host locale.
 - **Central package management.** Versions live in `Directory.Packages.props`; projects
   reference packages without versions.
+- **Reproducible packages.** Deterministic builds, SourceLink, symbol packages and XML
+  documentation are configured once in `Directory.Build.props` and
+  `Directory.Build.targets`; the analyzer and style rules live in `.editorconfig`.
 
 ### How the session works
 
@@ -240,8 +261,8 @@ sequenceDiagram
 dotnet test
 ```
 
-**252 tests** covering the core, configuration, pricing, providers, analysis, session
-and CLI.
+**277 tests** covering the core, configuration, pricing, providers, analysis, session
+and CLI. The suite is warning-clean, and CI builds with `-warnaserror`.
 
 ### Live integration tests
 
@@ -272,11 +293,26 @@ missing, so prompt and pricing drift can never go unnoticed.
 
 ## 📦 Packaging
 
-The CLI publishes as a single framework-dependent binary, and is trim/AOT compatible:
+Every library packs as a standalone NuGet package with a symbol package alongside it,
+and the CLI packs as a .NET tool:
+
+```bash
+dotnet pack Codai.slnx -c Release
+dotnet tool install --global Codai.Tool    # once published to nuget.org
+```
+
+The CLI also publishes as a single framework-dependent binary, and is trim/AOT
+compatible:
 
 ```bash
 dotnet publish src/Codai.Cli -c Release -o ./out
 ```
+
+## 🤝 Contributing
+
+See [CONTRIBUTION.md](./CONTRIBUTION.md) for build and test instructions, and
+[SECURITY.md](./SECURITY.md) for how to report a vulnerability. Changes are recorded in
+[CHANGELOG.md](./CHANGELOG.md).
 
 ## 🗺️ Plan
 

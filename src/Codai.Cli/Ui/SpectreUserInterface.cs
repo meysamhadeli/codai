@@ -1,8 +1,8 @@
+using System.Globalization;
 using System.Text;
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.Tokens;
 using Spectre.Console;
-using Spectre.Console.Rendering;
 
 namespace Codai.Cli.Ui;
 
@@ -18,12 +18,17 @@ namespace Codai.Cli.Ui;
 public sealed class SpectreUserInterface : IUserInterface
 {
     private readonly IAnsiConsole _console;
+    private readonly IConsoleInput _input;
     private readonly StringBuilder _pendingLine = new();
     private bool _inCodeBlock;
 
-    public SpectreUserInterface(IAnsiConsole? console = null)
+    /// <summary>Creates the user interface.</summary>
+    /// <param name="console">Console to render to. Defaults to <see cref="AnsiConsole.Console"/>.</param>
+    /// <param name="input">Input source. Defaults to standard input.</param>
+    public SpectreUserInterface(IAnsiConsole? console = null, IConsoleInput? input = null)
     {
         _console = console ?? AnsiConsole.Console;
+        _input = input ?? SystemConsoleInput.Instance;
     }
 
     /// <inheritdoc />
@@ -33,9 +38,8 @@ public sealed class SpectreUserInterface : IUserInterface
         FlushPending();
 
         _console.Markup("[deepskyblue1]> [/]");
-        var line = Console.ReadLine();
 
-        return Task.FromResult(line);
+        return Task.FromResult(_input.ReadLine());
     }
 
     /// <inheritdoc />
@@ -132,13 +136,13 @@ public sealed class SpectreUserInterface : IUserInterface
     }
 
     /// <inheritdoc />
-    public void ShowTokens(string provider, string model, TokenUsage session, TokenUsage last, decimal cost)
+    public void ShowTokens(string model, TokenUsage session, TokenUsage last, decimal cost)
     {
         FlushPending();
 
         var text = new StringBuilder()
             .Append("Token Used: ").Append(session.TotalTokens)
-            .Append(" - Cost: ").Append(cost.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)).Append(" $")
+            .Append(" - Cost: ").Append(cost.ToString("F6", CultureInfo.InvariantCulture)).Append(" $")
             .Append(" - Chat Model: ").Append(model)
             .ToString();
 

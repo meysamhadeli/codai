@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Providers.Internal;
 using Microsoft.Extensions.AI;
@@ -31,7 +32,7 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
         ResolvedProviderOptions options,
         HttpClient? httpClient = null)
         : base(
-            ProviderNames.Anthropic,
+            ProviderCatalog.Anthropic,
             options.Model,
             Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var uri) ? uri : null)
     {
@@ -54,7 +55,7 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
         var (system, user) = Split(messages);
 
         TextContent? text = null;
-        var usage = Codai.Core.Models.TokenUsage.Empty;
+        var usage = Codai.Core.Tokens.TokenUsage.Empty;
 
         await foreach (var update in StreamCoreAsync(system, user, options, cancellationToken))
         {
@@ -111,7 +112,7 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
         }
     }
 
-    private async IAsyncEnumerable<Codai.Core.Models.ChatStreamUpdate> StreamCoreAsync(
+    private async IAsyncEnumerable<Codai.Core.Chat.ChatStreamUpdate> StreamCoreAsync(
         string? system,
         string user,
         ChatOptions? options,
@@ -189,7 +190,7 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
                         deltaElement.TryGetProperty("text", out var textElement) &&
                         textElement.GetString() is { Length: > 0 } text)
                     {
-                        yield return Codai.Core.Models.ChatStreamUpdate.Content(text);
+                        yield return Codai.Core.Chat.ChatStreamUpdate.Content(text);
                     }
 
                     break;
@@ -199,14 +200,14 @@ internal sealed class AnthropicChatClient : HttpChatClientBase
                     break;
 
                 case "message_stop":
-                    yield return Codai.Core.Models.ChatStreamUpdate.Completed(
-                        new Codai.Core.Models.TokenUsage(inputTokens, outputTokens));
+                    yield return Codai.Core.Chat.ChatStreamUpdate.Completed(
+                        new Codai.Core.Tokens.TokenUsage(inputTokens, outputTokens));
                     yield break;
             }
         }
 
-        yield return Codai.Core.Models.ChatStreamUpdate.Completed(
-            new Codai.Core.Models.TokenUsage(inputTokens, outputTokens));
+        yield return Codai.Core.Chat.ChatStreamUpdate.Completed(
+            new Codai.Core.Tokens.TokenUsage(inputTokens, outputTokens));
     }
 
     private static int ReadNested(JsonElement root, IReadOnlyList<string> path, int fallback)

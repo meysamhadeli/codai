@@ -1,7 +1,6 @@
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
 
-namespace Codai.Tokens;
+namespace Codai.Tokens.Abstractions;
 
 /// <summary>
 /// Looks up model pricing and converts token usage into a monetary cost.

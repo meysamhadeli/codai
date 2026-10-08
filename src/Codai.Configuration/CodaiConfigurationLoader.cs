@@ -19,7 +19,6 @@ public static class CodaiConfigurationLoader
         ("MODEL", ConfigKeys.Model),
         ("TEMPERATURE", ConfigKeys.Temperature),
         ("REASONING_EFFORT", ConfigKeys.ReasoningEffort),
-        ("ENCODING_FORMAT", ConfigKeys.EncodingFormat),
         ("MAX_TOKENS", ConfigKeys.MaxTokens),
         ("API_KEY", ConfigKeys.ApiKey),
         ("API_VERSION", ConfigKeys.ApiVersion),
@@ -186,11 +185,6 @@ public static class CodaiConfigurationLoader
         if (string.IsNullOrWhiteSpace(options.Theme))
         {
             options.Theme = CodaiDefaults.Theme;
-        }
-
-        if (string.IsNullOrWhiteSpace(options.AiProviderConfig.EncodingFormat))
-        {
-            options.AiProviderConfig.EncodingFormat = "float";
         }
     }
 }

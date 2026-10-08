@@ -1,6 +1,6 @@
-using Codai.Analysis.Extractors;
+using Codai.Analysis.Abstractions;
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.Projects;
 
 namespace Codai.Analysis;
 
@@ -9,11 +9,12 @@ namespace Codai.Analysis;
 /// </summary>
 /// <remarks>
 /// File discovery is delegated to <see cref="IFileSystem"/> so it can be tested
-/// without a real disk. Files over <see cref="MaxFileSizeBytes"/> are skipped, and
+/// without a real disk. Files over the configured maximum size are skipped, and
 /// built-in plus <c>.codai-gitignore</c> rules are applied.
 /// </remarks>
 public sealed class FileSystemProjectScanner : IProjectScanner
 {
+    /// <summary>The size limit applied when the caller does not supply one.</summary>
     public const long DefaultMaxFileSizeBytes = 100 * 1024;
 
     private readonly IFileSystem _fileSystem;

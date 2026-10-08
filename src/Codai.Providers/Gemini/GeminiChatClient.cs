@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Providers.Internal;
 using Microsoft.Extensions.AI;
@@ -28,7 +29,7 @@ internal sealed class GeminiChatClient : HttpChatClientBase
         ResolvedProviderOptions options,
         HttpClient? httpClient = null)
         : base(
-            ProviderNames.Gemini,
+            ProviderCatalog.Gemini,
             options.Model,
             Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var uri) ? uri : null)
     {
@@ -86,7 +87,7 @@ internal sealed class GeminiChatClient : HttpChatClientBase
             })]);
     }
 
-    private async Task<(string Text, Codai.Core.Models.TokenUsage Usage)> GenerateAsync(
+    private async Task<(string Text, Codai.Core.Tokens.TokenUsage Usage)> GenerateAsync(
         string? system,
         string user,
         ChatOptions? options,
@@ -154,7 +155,7 @@ internal sealed class GeminiChatClient : HttpChatClientBase
         return ParseGenerateContent(payload);
     }
 
-    internal static (string Text, Codai.Core.Models.TokenUsage Usage) ParseGenerateContent(string payload)
+    internal static (string Text, Codai.Core.Tokens.TokenUsage Usage) ParseGenerateContent(string payload)
     {
         using var document = JsonDocument.Parse(payload);
         var root = document.RootElement;
@@ -184,10 +185,10 @@ internal sealed class GeminiChatClient : HttpChatClientBase
             }
         }
 
-        var usage = Codai.Core.Models.TokenUsage.Empty;
+        var usage = Codai.Core.Tokens.TokenUsage.Empty;
         if (root.TryGetProperty("usageMetadata", out var usageMetadata))
         {
-            usage = new Codai.Core.Models.TokenUsage(
+            usage = new Codai.Core.Tokens.TokenUsage(
                 ReadInt(usageMetadata, "promptTokenCount"),
                 ReadInt(usageMetadata, "candidatesTokenCount"));
         }

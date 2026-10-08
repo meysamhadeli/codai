@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Codai.Session</RootNamespace>
+    <Description>Orchestration layer: the interactive session loop, prompt/response exchange, requested-context retries and confirmed application of model-proposed edits.</Description>
   </PropertyGroup>
 
   <ItemGroup>

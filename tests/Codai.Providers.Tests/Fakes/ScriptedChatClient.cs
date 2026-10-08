@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using Codai.Core.Models;
+using Codai.Core.Tokens;
 using Microsoft.Extensions.AI;
 
 namespace Codai.Providers.Tests.Fakes;

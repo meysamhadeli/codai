@@ -1,5 +1,8 @@
 <Project>
 
+  <!-- =====================================================================
+       Language and runtime.
+       ===================================================================== -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -7,19 +10,73 @@
     <Nullable>enable</Nullable>
     <InvariantGlobalization>true</InvariantGlobalization>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <!-- Product metadata shared by all projects -->
+  <!-- =====================================================================
+       Reproducible builds. SourceLink publishes the commit SHA and embeds
+       untracked sources so a shipped PDB always points back at real code.
+       ===================================================================== -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <!-- =====================================================================
+       Analyzers and code style. The .editorconfig at the repository root is
+       the single source of truth for which rules are errors, warnings or
+       suggestions.
+       ===================================================================== -->
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591 is suppressed: the XML docs are for humans reading the public
+         surface, not a gate that must cover every generated member. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!-- =====================================================================
+       Product and packaging metadata shared by every project.
+       ===================================================================== -->
   <PropertyGroup>
     <Product>Codai</Product>
+    <Description>AI coding agent that works from the full context of your project, straight from the terminal.</Description>
     <Authors>Codai contributors</Authors>
+    <Company>Codai contributors</Company>
     <Version>2.0.0</Version>
+
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/meysamhadeli/codai</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/meysamhadeli/codai</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageTags>ai;llm;cli;code-assistant;agent;developer-tools;openai;anthropic;deepseek;ollama</PackageTags>
+
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
     <AssemblyName>$(MSBuildProjectName)</AssemblyName>
   </PropertyGroup>
+
+  <!-- =====================================================================
+       A symbol package alongside every nupkg, so consumers can step into
+       Codai while debugging.
+       ===================================================================== -->
+  <PropertyGroup>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- =====================================================================
+       NuGet readme. The repository README is packed into every package so
+       nuget.org renders it on the package page.
+       ===================================================================== -->
+  <PropertyGroup>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
 
 </Project>

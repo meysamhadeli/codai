@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text;
 using Codai.Core.Assets;
-using Codai.Core.Models;
+using Codai.Core.Chat;
+using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using FluentAssertions;
 
@@ -21,7 +23,7 @@ public class PromptParityTests
 {
     /// <summary>Verbatim port of <c>chat_history.AddToHistory</c>'s entry format.</summary>
     private static string GoHistoryEntry(DateTimeOffset timestamp, string userRequest, string aiResponse) =>
-        $"### History time:\n\n{timestamp}\n---------\n\n" +
+        $"### History time:\n\n{timestamp.ToString(CultureInfo.InvariantCulture)}\n---------\n\n" +
         $"### Here is user request:\n\n{userRequest}\n---------\n\n" +
         $"### Here is the the response from using AI:\n\n{aiResponse}";
 

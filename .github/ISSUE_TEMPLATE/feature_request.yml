@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest a capability Codai does not have yet.
+title: "[Feature]: "
+labels: ["feature", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are most useful when they describe the problem rather than
+        only the solution. Tell us what you are trying to do.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I searched the existing issues and did not find a duplicate.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: |
+        When my project has more than a few hundred files the first request takes
+        a long time, and I cannot tell whether that is the scan or the model.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Codai to do?
+      description: Describe the behaviour you want, not necessarily the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Any workaround you are using today, or another approach you rejected.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of Codai does this touch?
+      options:
+        - Providers
+        - Configuration
+        - Project scanning and context
+        - Session and CLI
+        - Token accounting and pricing
+        - Packaging and distribution
+        - Not sure
+    validations:
+      required: true

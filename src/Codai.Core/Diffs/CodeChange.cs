@@ -1,4 +1,4 @@
-namespace Codai.Core.Models;
+namespace Codai.Core.Diffs;
 
 /// <summary>
 /// A code change proposed by the model for a single file.

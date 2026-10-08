@@ -1,5 +1,5 @@
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.IO;
 
 namespace Codai.Core.Diffs;
 
@@ -11,6 +11,7 @@ namespace Codai.Core.Diffs;
 /// characters: a diff marker is only recognised as the first non-whitespace
 /// character of a line, and only a single marker character is removed. Lines such
 /// as <c>i++</c> are therefore preserved. Text files are written verbatim.
+/// Paths that resolve outside the project root are rejected rather than written.
 /// </remarks>
 public sealed class DiffApplier : IDiffApplier
 {
@@ -30,7 +31,11 @@ public sealed class DiffApplier : IDiffApplier
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentNullException.ThrowIfNull(change);
 
-        var fullPath = Path.GetFullPath(Path.Combine(rootDirectory, change.RelativePath));
+        // The path comes from the model, so it is untrusted: refuse anything that
+        // would land outside the project the user asked us to edit.
+        var fullPath = ProjectPaths.ResolveInside(rootDirectory, change.RelativePath)
+            ?? throw new CodeChangeRejectedException(change.RelativePath, rootDirectory);
+
         var directory = Path.GetDirectoryName(fullPath);
 
         var content = change.IsTextFile
@@ -120,8 +125,8 @@ public sealed class DiffApplier : IDiffApplier
             return;
         }
 
-        // Never delete the scan root itself.
-        if (PathsEqual(directory, rootDirectory))
+        // Never delete the project root itself.
+        if (ProjectPaths.AreSame(directory, rootDirectory))
         {
             return;
         }
@@ -138,10 +143,4 @@ public sealed class DiffApplier : IDiffApplier
 
         _fileSystem.DeleteDirectory(directory, recursive: false);
     }
-
-    private static bool PathsEqual(string left, string right) =>
-        string.Equals(
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
-            StringComparison.OrdinalIgnoreCase);
 }

@@ -1,4 +1,3 @@
-using Codai.Analysis;
 using FluentAssertions;
 
 namespace Codai.Analysis.Tests;

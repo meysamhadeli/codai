@@ -1,3 +1,6 @@
+using Codai.Configuration;
+using Codai.Core.Abstractions;
+using Codai.Providers.Abstractions;
 using Codai.Providers.Anthropic;
 using Codai.Providers.Azure;
 using Codai.Providers.Gemini;
@@ -7,45 +10,37 @@ using Microsoft.Extensions.AI;
 namespace Codai.Providers;
 
 /// <summary>
-/// Default provider factory. Dispatches on the provider name to the appropriate
-/// <see cref="IChatClient"/> implementation.
+/// Default provider factory. Dispatches on the provider's wire format, which comes
+/// from the single provider catalog rather than a hand-maintained list.
 /// </summary>
 public sealed class ChatClientFactory : IChatClientFactory
 {
+    /// <inheritdoc />
     public IChatClient CreateClient(ResolvedProviderOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.EnsureUsable();
 
-        if (string.Equals(options.Provider, ProviderNames.AzureOpenAi, StringComparison.OrdinalIgnoreCase))
-        {
-            return AzureOpenAiClientFactory.Create(options);
-        }
+        var descriptor = ProviderCatalog.Get(options.Provider);
 
-        if (string.Equals(options.Provider, ProviderNames.Anthropic, StringComparison.OrdinalIgnoreCase))
+        return descriptor.WireFormat switch
         {
-            return new AnthropicChatClient(options);
-        }
-
-        if (string.Equals(options.Provider, ProviderNames.Gemini, StringComparison.OrdinalIgnoreCase))
-        {
-            return new GeminiChatClient(options);
-        }
-
-        if (ProviderNames.OpenAiCompatible.Contains(options.Provider))
-        {
-            return OpenAiCompatibleClientFactory.Create(options);
-        }
-
-        throw new ProviderConfigurationException(
-            $"Unsupported provider '{options.Provider}'. " +
-            $"Supported providers: {string.Join(", ", ProviderNames.OpenAiCompatible.Concat([ProviderNames.AzureOpenAi, ProviderNames.Anthropic, ProviderNames.Gemini]).Order())}.");
+            ProviderWireFormat.AzureOpenAi => AzureOpenAiClientFactory.Create(options),
+            ProviderWireFormat.Anthropic => new AnthropicChatClient(options),
+            ProviderWireFormat.Gemini => new GeminiChatClient(options),
+            ProviderWireFormat.OpenAiCompatible => OpenAiCompatibleClientFactory.Create(options),
+            _ => throw new ProviderConfigurationException(
+                $"Provider '{options.Provider}' uses an unsupported wire format " +
+                $"'{descriptor.WireFormat}'. Supported providers: " +
+                $"{string.Join(", ", ProviderCatalog.SupportedNames)}."),
+        };
     }
 
-    public Core.Abstractions.IChatCompletionService CreateService(ResolvedProviderOptions options)
+    /// <inheritdoc />
+    public IChatCompletionService CreateService(ResolvedProviderOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var client = CreateClient(options);
-        return new ChatCompletionService(client, options);
+
+        return new ChatCompletionService(CreateClient(options), options);
     }
 }

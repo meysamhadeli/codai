@@ -1,5 +1,5 @@
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.Tokens;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
 
@@ -21,7 +21,6 @@ public class CodeSessionTests
         harness.Ui.TokenDisplays.Should().ContainSingle();
 
         var display = harness.Ui.TokenDisplays[0];
-        display.Provider.Should().Be("deepseek");
         display.Model.Should().Be("deepseek-flash");
         display.Session.Should().Be(new TokenUsage(120, 30));
         display.Last.Should().Be(new TokenUsage(120, 30));

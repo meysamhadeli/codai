@@ -1,7 +1,7 @@
 using Codai.Core.Abstractions;
+using Codai.Core.Chat;
 using Codai.Core.Diffs;
-using Codai.Core.History;
-using Codai.Core.Models;
+using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
 using Codai.Session.Tests.Fakes;
@@ -23,7 +23,6 @@ internal sealed class SessionHarness
         Options = new SessionOptions
         {
             ProjectRoot = Root,
-            WorkingDirectory = Root,
             Provider = provider,
             Model = model,
         };
@@ -55,17 +54,18 @@ internal sealed class SessionHarness
     public ICostCalculator? CostCalculator { get; set; }
 
     public CodeSession Build() => new(
-        Options,
-        Scanner,
-        new PromptBuilder(Template),
-        Chat,
-        History,
-        Tokens,
-        new CodeChangeExtractor(),
-        new DiffApplier(FileSystem),
-        new RequestedContextResolver(FileSystem),
         Ui,
-        CostCalculator);
+        new ProjectContextLoader(Options, Scanner, Ui),
+        new ChatExchangeService(
+            Options,
+            new PromptBuilder(Template),
+            Chat,
+            History,
+            Tokens,
+            new RequestedContextResolver(FileSystem),
+            Ui),
+        new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Ui),
+        new SessionCommandHandler(Options, History, Tokens, CostCalculator ?? NullCostCalculator.Instance, Ui));
 
     /// <summary>Queues the given lines followed by end-of-input.</summary>
     public void QueueInputs(params string[] lines)

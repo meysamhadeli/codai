@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Codai.Configuration</RootNamespace>
+    <Description>Configuration loading for Codai: YAML/JSON/command-line/environment layering, the provider catalog, and the typed option model that every provider and the CLI agree on.</Description>
   </PropertyGroup>
 
   <ItemGroup>

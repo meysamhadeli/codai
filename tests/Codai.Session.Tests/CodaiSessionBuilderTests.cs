@@ -1,6 +1,6 @@
 using Codai.Configuration;
 using Codai.Core.Abstractions;
-using Codai.Tokens;
+using Codai.Tokens.Abstractions;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 

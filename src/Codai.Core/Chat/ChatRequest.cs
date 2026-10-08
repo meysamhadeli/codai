@@ -1,4 +1,4 @@
-namespace Codai.Core.Models;
+namespace Codai.Core.Chat;
 
 /// <summary>
 /// A fully rendered request ready to be sent to a chat provider.

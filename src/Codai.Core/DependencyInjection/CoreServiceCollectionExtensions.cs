@@ -1,11 +1,10 @@
 using Codai.Core.Abstractions;
 using Codai.Core.Assets;
+using Codai.Core.Chat;
 using Codai.Core.Diffs;
-using Codai.Core.History;
 using Codai.Core.IO;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -21,6 +20,7 @@ public static class CoreServiceCollectionExtensions
 
         services.AddSingleton<IChatHistory, ChatHistory>();
         services.AddSingleton<ITokenTracker, TokenTracker>();
+        services.AddSingleton<ICostCalculator>(NullCostCalculator.Instance);
         services.AddSingleton<IFileSystem>(PhysicalFileSystem.Instance);
         services.AddSingleton<IPromptBuilder>(_ => new PromptBuilder(EmbeddedResources.FullContextTemplate));
         services.AddSingleton<IRequestedContextResolver>(_ => new RequestedContextResolver(PhysicalFileSystem.Instance));

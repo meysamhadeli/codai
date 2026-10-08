@@ -1,7 +1,7 @@
 using Codai.Analysis;
+using Codai.Analysis.Abstractions;
 using Codai.Analysis.Extractors;
 using Codai.Core.Abstractions;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.Extensions.DependencyInjection;
 

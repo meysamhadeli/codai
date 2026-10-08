@@ -1,5 +1,6 @@
 using System.Text;
 using Codai.Core.Abstractions;
+using Codai.Core.IO;
 
 namespace Codai.Core.Prompting;
 
@@ -43,11 +44,11 @@ public sealed class RequestedContextResolver : IRequestedContextResolver
                 continue;
             }
 
-            var normalized = relativePath.Trim().Replace('\\', '/');
-            var fullPath = Path.GetFullPath(Path.Combine(rootDirectory, normalized));
+            var normalized = ProjectPaths.Normalize(relativePath);
 
             // Never escape the project root, even if the model asks for it.
-            if (!IsInsideRoot(rootDirectory, fullPath) || !_fileSystem.FileExists(fullPath))
+            var fullPath = ProjectPaths.ResolveInside(rootDirectory, normalized);
+            if (fullPath is null || !_fileSystem.FileExists(fullPath))
             {
                 continue;
             }
@@ -74,17 +75,5 @@ public sealed class RequestedContextResolver : IRequestedContextResolver
         }
 
         return blocks.Count == 0 ? null : string.Join(FileSeparator, blocks);
-    }
-
-    private static bool IsInsideRoot(string rootDirectory, string fullPath)
-    {
-        var root = Path.GetFullPath(rootDirectory);
-        if (!root.EndsWith(Path.DirectorySeparatorChar))
-        {
-            root += Path.DirectorySeparatorChar;
-        }
-
-        return fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(fullPath, root.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -46,7 +46,7 @@ public class ConfigurationLoaderTests
         options.Version.Should().Be(CodaiDefaults.Version);
         options.Theme.Should().Be(CodaiDefaults.Theme);
         options.AiProviderConfig.Provider.Should().Be(CodaiDefaults.Provider);
-        options.AiProviderConfig.Model.Should().Be(CodaiDefaults.Model);
+        options.AiProviderConfig.Model.Should().Be(ProviderDefaults.GetDefaultModel(CodaiDefaults.Provider));
         options.AiProviderConfig.Stream.Should().BeTrue();
         options.LoadedFrom.Should().BeNull();
     }
@@ -64,7 +64,7 @@ public class ConfigurationLoaderTests
         options.AiProviderConfig.Model.Should().Be("gpt-4o");
         options.AiProviderConfig.ApiVersion.Should().Be("2024-04-01-preview");
         options.AiProviderConfig.Temperature.Should().Be(0.2f);
-        options.AiProviderConfig.ReasoningEffort.Should().Be("low");
+        options.AiProviderConfig.ReasoningEffort.Should().Be(ReasoningEffortLevel.Low);
         options.Theme.Should().Be("dracula");
         options.LoadedFrom.Should().EndWith("codai-config.yml");
     }

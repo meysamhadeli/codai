@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # NuGet packages are declared without versions in the projects; the versions
+  # live in Directory.Packages.props, which Dependabot understands.
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    # Microsoft.Extensions.* and the AI packages ship together and are expected to
+    # stay on the same band, so they are grouped into a single pull request.
+    groups:
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+      microsoft-ai:
+        patterns:
+          - "Microsoft.Extensions.AI*"
+          - "OpenAI"
+          - "Azure.AI.OpenAI"
+      test-tooling:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+          - "FluentAssertions"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns:
+          - "*"

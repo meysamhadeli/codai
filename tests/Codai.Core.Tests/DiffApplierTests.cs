@@ -1,6 +1,5 @@
 using Codai.Core.Diffs;
 using Codai.Core.IO;
-using Codai.Core.Models;
 using Codai.Core.Tests.Fakes;
 using FluentAssertions;
 
@@ -186,5 +185,66 @@ public class DiffApplierTests
         await applier.ApplyAsync(temp.Path, new CodeChange("only.go", "-package main"));
 
         Directory.Exists(temp.Path).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("../escaped.go")]
+    [InlineData("../../escaped.go")]
+    [InlineData("nested/../../escaped.go")]
+    [InlineData("..\\escaped.go")]
+    public async Task Rejects_relative_paths_that_escape_the_root(string relativePath)
+    {
+        using var temp = new TempDirectory();
+        var applier = CreateApplier();
+
+        var act = () => applier.ApplyAsync(temp.Path, new CodeChange(relativePath, "package escaped"));
+
+        await act.Should().ThrowAsync<CodeChangeRejectedException>();
+
+        var sibling = Path.GetFullPath(Path.Combine(temp.Path, "..", "escaped.go"));
+        File.Exists(sibling).Should().BeFalse("the change must not be written outside the project root");
+    }
+
+    [Fact]
+    public async Task Rejects_absolute_paths()
+    {
+        using var temp = new TempDirectory();
+        var applier = CreateApplier();
+        var outside = Path.Combine(Path.GetTempPath(), $"codai-escape-{Guid.NewGuid():N}.go");
+
+        var act = () => applier.ApplyAsync(temp.Path, new CodeChange(outside, "package escaped"));
+
+        await act.Should().ThrowAsync<CodeChangeRejectedException>();
+
+        File.Exists(outside).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Rejects_a_deletion_that_escapes_the_root()
+    {
+        using var temp = new TempDirectory();
+        temp.WriteFile("keep.go", "package main");
+        var applier = CreateApplier();
+
+        // An empty body deletes the target, so the guard must apply to that path too.
+        var act = () => applier.ApplyAsync(temp.Path, new CodeChange("../keep.go", string.Empty));
+
+        await act.Should().ThrowAsync<CodeChangeRejectedException>();
+
+        File.Exists(temp.Combine("keep.go")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Allows_paths_that_stay_inside_the_root()
+    {
+        using var temp = new TempDirectory();
+        var applier = CreateApplier();
+
+        var result = await applier.ApplyAsync(
+            temp.Path,
+            new CodeChange("src/nested/../inside.go", "package main"));
+
+        result.Written.Should().BeTrue();
+        File.Exists(temp.Combine("src/inside.go")).Should().BeTrue();
     }
 }

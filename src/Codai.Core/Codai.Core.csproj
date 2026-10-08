@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Codai.Core</RootNamespace>
+    <Description>Domain types, abstractions and first-party services that every other Codai package builds on: chat history, diff application, prompt construction, project scanning contracts and token accounting.</Description>
   </PropertyGroup>
 
   <ItemGroup>

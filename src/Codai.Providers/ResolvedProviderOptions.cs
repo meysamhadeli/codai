@@ -19,7 +19,8 @@ public sealed record ResolvedProviderOptions
 
     public float? Temperature { get; init; }
 
-    public string? ReasoningEffort { get; init; }
+    /// <summary>Reasoning effort for reasoning-capable models, when configured.</summary>
+    public ReasoningEffortLevel? ReasoningEffort { get; init; }
 
     public int MaxTokens { get; init; }
 
@@ -48,14 +49,15 @@ public sealed record ResolvedProviderOptions
             ApiKey = string.IsNullOrWhiteSpace(options.ApiKey) ? null : options.ApiKey,
             ApiVersion = string.IsNullOrWhiteSpace(options.ApiVersion) ? null : options.ApiVersion,
             Temperature = options.Temperature,
-            ReasoningEffort = string.IsNullOrWhiteSpace(options.ReasoningEffort) ? null : options.ReasoningEffort,
+            ReasoningEffort = options.ReasoningEffort,
             MaxTokens = options.MaxTokens,
             Stream = options.Stream,
         };
     }
 
     /// <summary>Provider requires an API key to authenticate.</summary>
-    public bool RequiresApiKey => !string.Equals(Provider, ProviderNames.Ollama, StringComparison.OrdinalIgnoreCase);
+    public bool RequiresApiKey =>
+        !ProviderCatalog.TryGet(Provider, out var descriptor) || descriptor.RequiresApiKey;
 
     public void EnsureUsable()
     {

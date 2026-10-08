@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 
-namespace Codai.Providers;
+namespace Codai.Providers.Abstractions;
 
 /// <summary>
 /// Builds the chat client (and the Codai-facing service adapter) for a provider.

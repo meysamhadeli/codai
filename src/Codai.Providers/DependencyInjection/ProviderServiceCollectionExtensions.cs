@@ -1,5 +1,5 @@
 using Codai.Providers;
-using Microsoft.Extensions.DependencyInjection;
+using Codai.Providers.Abstractions;
 
 namespace Microsoft.Extensions.DependencyInjection;
 

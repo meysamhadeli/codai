@@ -1,6 +1,6 @@
 using System.Text;
 using Codai.Core.Abstractions;
-using Codai.Core.Models;
+using Codai.Core.Tokens;
 
 namespace Codai.Session.Tests.Fakes;
 
@@ -27,7 +27,7 @@ public sealed class FakeUserInterface : IUserInterface
 
     public List<string> Prompts { get; } = [];
 
-    public List<(string Provider, string Model, TokenUsage Session, TokenUsage Last, decimal Cost)> TokenDisplays { get; } = [];
+    public List<(string Model, TokenUsage Session, TokenUsage Last, decimal Cost)> TokenDisplays { get; } = [];
 
     public int ClearCount { get; private set; }
 
@@ -68,8 +68,8 @@ public sealed class FakeUserInterface : IUserInterface
         return work(cancellationToken);
     }
 
-    public void ShowTokens(string provider, string model, TokenUsage session, TokenUsage last, decimal cost) =>
-        TokenDisplays.Add((provider, model, session, last, cost));
+    public void ShowTokens(string model, TokenUsage session, TokenUsage last, decimal cost) =>
+        TokenDisplays.Add((model, session, last, cost));
 
     public void Clear() => ClearCount++;
 }

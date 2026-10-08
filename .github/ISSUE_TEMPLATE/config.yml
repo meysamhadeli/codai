@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/meysamhadeli/codai/security/advisories/new
+    about: Report a vulnerability privately. Please do not open a public issue.
+  - name: Question or usage help
+    url: https://github.com/meysamhadeli/codai/discussions
+    about: Ask how to configure or use Codai.
+  - name: Contributing guide
+    url: https://github.com/meysamhadeli/codai/blob/main/CONTRIBUTION.md
+    about: Build, test and coding conventions for contributors.
