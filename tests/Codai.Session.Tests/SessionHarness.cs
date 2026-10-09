@@ -38,6 +38,17 @@ internal sealed class SessionHarness
         History = new ChatHistory();
         Tokens = new TokenTracker();
         SessionStore = new FileSessionStore(FileSystem);
+
+        // The same wiring the composition root uses: one governor and one access policy
+        // shared by the request that records them and the executor that enforces them.
+        Executor = new ToolRunner(
+            new ToolRegistry(Tools),
+            DenyAllToolApprover.Instance,
+            NullToolObserver.Instance,
+            FileSystem,
+            Root,
+            governor: Governor,
+            access: Access);
     }
 
     public string Root { get; }
@@ -70,12 +81,35 @@ internal sealed class SessionHarness
     /// <summary>The per-request tool budget the session shares with its executor.</summary>
     public ToolCallGovernor Governor { get; } = new();
 
+    /// <summary>
+    /// The tools the request in flight may call, shared with the executor the way the
+    /// composition root shares it, so a test exercises the same wiring the CLI does.
+    /// </summary>
+    public ToolAccessPolicy Access { get; } = new();
+
+    /// <summary>
+    /// The tools the session offers. A read-only one and a mutating one, because the
+    /// difference between them is what a mode decides.
+    /// </summary>
+    public IReadOnlyList<ITool> Tools { get; } =
+    [
+        new StubTool("read_file"),
+        new StubTool("write_file", isReadOnly: false),
+    ];
+
+    /// <summary>
+    /// The executor the session's tools run through. Always refuses a write, because it
+    /// is built with the deny-all approver: these tests are about which tools a mode
+    /// offers, not about the approval prompt.
+    /// </summary>
+    public IToolExecutor Executor { get; }
+
     public CodeSession Build()
     {
         var instructionsProvider = new FakeProjectInstructionsProvider(Instructions);
         var skills = new SkillCatalog(FileSystem);
         var commands = new CommandCatalog(FileSystem);
-        var compactor = new HistoryCompactor(Chat, History, Tokens, Ui);
+        var compactor = new HistoryCompactor(Chat, History, Tokens, Access, Ui);
 
         return new CodeSession(
             Options,
@@ -84,7 +118,7 @@ internal sealed class SessionHarness
             new ProjectGuidanceLoader(Options, instructionsProvider, skills, Ui),
             new ChatExchangeService(
                 Options,
-                new PromptBuilder(Template),
+                new PromptBuilder(Template, Tools),
                 Chat,
                 History,
                 Tokens,
@@ -92,6 +126,7 @@ internal sealed class SessionHarness
                 new MentionResolver(FileSystem),
                 Mode,
                 Governor,
+                Access,
                 new AutoCompactor(Options, History, compactor, new CompactionPolicy(), Ui),
                 Ui),
             new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Mode, Ui),

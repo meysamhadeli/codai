@@ -3,6 +3,7 @@ using Codai.Core.Abstractions;
 using Codai.Core.Assets;
 using Codai.Core.Chat;
 using Codai.Core.Tokens;
+using Codai.Core.Tools;
 
 namespace Codai.Session;
 
@@ -29,6 +30,7 @@ public sealed class HistoryCompactor
     private readonly IChatCompletionService _chatCompletion;
     private readonly IChatHistory _history;
     private readonly ITokenTracker _tokenTracker;
+    private readonly ToolAccessPolicy _access;
     private readonly IUserInterface _ui;
 
     /// <summary>Creates the compactor.</summary>
@@ -36,16 +38,19 @@ public sealed class HistoryCompactor
         IChatCompletionService chatCompletion,
         IChatHistory history,
         ITokenTracker tokenTracker,
+        ToolAccessPolicy access,
         IUserInterface ui)
     {
         ArgumentNullException.ThrowIfNull(chatCompletion);
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(tokenTracker);
+        ArgumentNullException.ThrowIfNull(access);
         ArgumentNullException.ThrowIfNull(ui);
 
         _chatCompletion = chatCompletion;
         _history = history;
         _tokenTracker = tokenTracker;
+        _access = access;
         _ui = ui;
     }
 
@@ -71,9 +76,15 @@ public sealed class HistoryCompactor
             return false;
         }
 
+        // No tools: summarising is not a task the model should start work for, and a
+        // tool call it made here would be spent on a conversation that is about to be
+        // replaced. Publishing the empty set is what the executor enforces.
         var request = new ChatRequest(
             EmbeddedResources.CompactHistoryPrompt,
-            CompactionRequest(turns, instructions));
+            CompactionRequest(turns, instructions),
+            AllowedTools: []);
+
+        _access.BeginRequest(request.AllowedTools);
 
         var summary = new StringBuilder();
         var usage = TokenUsage.Empty;

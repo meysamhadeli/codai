@@ -76,7 +76,7 @@ public sealed class ChatCompletionService : IChatCompletionService
             Temperature = _temperature,
             Reasoning = _reasoning,
             MaxOutputTokens = _maxTokens > 0 ? _maxTokens : null,
-            Tools = _tools,
+            Tools = SelectTools(request.AllowedTools),
         };
 
         if (_stream)
@@ -99,6 +99,31 @@ public sealed class ChatCompletionService : IChatCompletionService
         }
 
         yield return ChatStreamUpdate.Completed(usage);
+    }
+
+    /// <summary>
+    /// The tools this request may call.
+    /// </summary>
+    /// <remarks>
+    /// A request that names a subset gets only that subset, so a tool the session does
+    /// not offer for this request is never advertised to the model in the first place.
+    /// That matters more than politeness: a tool that is absent from the list cannot be
+    /// called, so the restriction holds even for a provider that would otherwise accept a
+    /// call for a function it was never given.
+    /// </remarks>
+    private IList<AITool>? SelectTools(IReadOnlyCollection<string>? allowedTools)
+    {
+        if (_tools is null || allowedTools is null)
+        {
+            return _tools;
+        }
+
+        var selected = _tools
+            .Where(tool => allowedTools.Contains(tool.Name, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        // An empty selection means "no tools", which is different from "no restriction".
+        return selected.Count == 0 ? null : selected;
     }
 
     /// <summary>Streams the response as ordered <see cref="ChatStreamUpdate"/> chunks.</summary>

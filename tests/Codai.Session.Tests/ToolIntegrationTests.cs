@@ -209,6 +209,50 @@ public class ToolIntegrationTests
         runner.Tools.Should().HaveCount(7);
     }
 
+    [Fact]
+    public async Task A_tool_the_request_does_not_offer_is_refused_without_asking()
+    {
+        var ui = new FakeUserInterface();
+        var services = new ServiceCollection();
+        services.AddSingleton<IUserInterface>(ui);
+        services.AddCodaiSession(OptionsFor(), Directory.GetCurrentDirectory());
+
+        using var provider = services.BuildServiceProvider();
+
+        // Resolved separately on purpose: this doubles as the wiring assertion. The
+        // executor and whoever begins the request have to be looking at one policy, or
+        // the restriction is recorded where nothing reads it.
+        provider.GetRequiredService<ToolAccessPolicy>().BeginRequest(["read_file"]);
+
+        var result = await provider.GetRequiredService<IToolExecutor>().ExecuteAsync(
+            "write_file",
+            ToolTestArgs.Parse("""{"path":"a.txt","content":"hi"}"""));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("not available for this request");
+
+        // Refused before approval, so the user is not asked about a call that could
+        // never have run.
+        ui.Prompts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Without_a_restriction_a_write_tool_still_asks_for_approval()
+    {
+        var ui = new FakeUserInterface();
+        var services = new ServiceCollection();
+        services.AddSingleton<IUserInterface>(ui);
+        services.AddCodaiSession(OptionsFor(), Directory.GetCurrentDirectory());
+
+        using var provider = services.BuildServiceProvider();
+
+        await provider.GetRequiredService<IToolExecutor>().ExecuteAsync(
+            "write_file",
+            ToolTestArgs.Parse("""{"path":"a.txt","content":"hi"}"""));
+
+        ui.Prompts.Should().ContainSingle().Which.Should().Contain("write_file");
+    }
+
     /// <summary>Argument parsing helper shared by the tool tests here.</summary>
     private static class ToolTestArgs
     {

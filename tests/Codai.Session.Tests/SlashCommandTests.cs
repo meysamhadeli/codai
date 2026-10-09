@@ -227,6 +227,36 @@ public class SlashCommandTests
     }
 
     [Fact]
+    public async Task The_mode_of_the_request_reaches_the_executor()
+    {
+        // The whole chain in one test: the mode narrows the tools the prompt builder
+        // produces, the request carries that list, the exchange service publishes it, and
+        // the executor refuses anything outside it. Without the last link a read-only mode
+        // would be a sentence in the prompt and nothing more.
+        var harness = new SessionHarness();
+        harness.Mode.Mode = AgentMode.Ask;
+        harness.Chat.Enqueue("answer");
+        harness.QueueInputs("question", ":exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests[0].AllowedTools.Should().Equal("read_file");
+
+        var refused = await harness.Executor.ExecuteAsync(
+            "write_file",
+            System.Text.Json.JsonDocument.Parse("""{"path":"a.txt"}""").RootElement.Clone());
+
+        refused.IsSuccess.Should().BeFalse();
+        refused.Content.Should().Contain("not available for this request");
+
+        var allowed = await harness.Executor.ExecuteAsync(
+            "read_file",
+            System.Text.Json.JsonDocument.Parse("""{"path":"a.txt"}""").RootElement.Clone());
+
+        allowed.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task A_response_that_proposes_a_change_is_not_applied_in_a_read_only_mode()
     {
         var harness = new SessionHarness();

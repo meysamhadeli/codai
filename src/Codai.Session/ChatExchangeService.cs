@@ -30,6 +30,7 @@ public sealed class ChatExchangeService
     private readonly IMentionResolver _mentionResolver;
     private readonly AgentModeState _mode;
     private readonly ToolCallGovernor _governor;
+    private readonly ToolAccessPolicy _access;
     private readonly AutoCompactor _autoCompactor;
     private readonly IUserInterface _ui;
 
@@ -44,6 +45,7 @@ public sealed class ChatExchangeService
         IMentionResolver mentionResolver,
         AgentModeState mode,
         ToolCallGovernor governor,
+        ToolAccessPolicy access,
         AutoCompactor autoCompactor,
         IUserInterface ui)
     {
@@ -56,6 +58,7 @@ public sealed class ChatExchangeService
         ArgumentNullException.ThrowIfNull(mentionResolver);
         ArgumentNullException.ThrowIfNull(mode);
         ArgumentNullException.ThrowIfNull(governor);
+        ArgumentNullException.ThrowIfNull(access);
         ArgumentNullException.ThrowIfNull(autoCompactor);
         ArgumentNullException.ThrowIfNull(ui);
 
@@ -68,6 +71,7 @@ public sealed class ChatExchangeService
         _mentionResolver = mentionResolver;
         _mode = mode;
         _governor = governor;
+        _access = access;
         _autoCompactor = autoCompactor;
         _ui = ui;
     }
@@ -204,6 +208,11 @@ public sealed class ChatExchangeService
         CancellationToken cancellationToken)
     {
         var request = _promptBuilder.Build(context, _history.Turns, userInput, extras);
+
+        // The request carries the tools the mode allows. Publishing them here is what
+        // turns that list into a restriction the executor can enforce, rather than a
+        // sentence in the prompt the model is trusted to respect.
+        _access.BeginRequest(request.AllowedTools);
 
         var response = new StringBuilder();
         var usage = TokenUsage.Empty;

@@ -1,3 +1,4 @@
+using Codai.Core.Agents;
 using Codai.Core.Assets;
 using Codai.Core.Chat;
 using Codai.Core.Projects;
@@ -215,15 +216,60 @@ public class PromptBuilderTests
         prompt.Should().NotContain("## Here are the project instructions you must follow");
     }
 
+    [Fact]
+    public void A_read_only_mode_is_not_offered_a_mutating_tool()
+    {
+        var builder = new PromptBuilder(
+            EmbeddedResources.FullContextTemplate,
+            [
+                new StubReadTool("read_file", "Reads a file."),
+                new StubReadTool("write_file", "Writes a file.", isReadOnly: false),
+            ]);
+
+        var request = builder.Build(
+            Context("code"),
+            [],
+            "x",
+            new PromptExtras { Mode = AgentMode.Ask });
+
+        request.SystemPrompt.Should().Contain("- read_file:");
+        request.SystemPrompt.Should().NotContain("- write_file:");
+
+        // The same list is what the request carries, which is what the provider filters
+        // by and what the executor enforces. If the two ever disagreed, the prompt would
+        // promise one thing and the request allow another.
+        request.AllowedTools.Should().Equal("read_file");
+    }
+
+    [Fact]
+    public void Agent_mode_is_offered_every_tool_and_says_so_in_the_request()
+    {
+        var builder = new PromptBuilder(
+            EmbeddedResources.FullContextTemplate,
+            [
+                new StubReadTool("read_file", "Reads a file."),
+                new StubReadTool("write_file", "Writes a file.", isReadOnly: false),
+            ]);
+
+        var request = builder.Build(
+            Context("code"),
+            [],
+            "x",
+            new PromptExtras { Mode = AgentMode.Agent });
+
+        request.AllowedTools.Should().Equal("read_file", "write_file");
+    }
+
     /// <summary>A tool declared only to render the prompt section.</summary>
     private sealed class StubReadTool : ITool
     {
         private readonly string _schema;
 
-        public StubReadTool(string name, string description, string[]? required = null)
+        public StubReadTool(string name, string description, string[]? required = null, bool isReadOnly = true)
         {
             Name = name;
             Description = description;
+            IsReadOnly = isReadOnly;
             _schema = required is null
                 ? """{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"]}"""
                 : $$"""{"type":"object","properties":{},"required":[{{string.Join(',', required.Select(r => $"\"{r}\""))}}]}""";
@@ -233,7 +279,7 @@ public class PromptBuilderTests
 
         public string Description { get; }
 
-        public bool IsReadOnly => true;
+        public bool IsReadOnly { get; }
 
         public string ParametersSchema => _schema;
 

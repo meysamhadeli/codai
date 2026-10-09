@@ -88,14 +88,16 @@ public static class CodaiSessionBuilder
         // The runner is the one seam through which the model reaches the file system,
         // so the provider layer never learns how approval or progress reporting works.
         // It shares the request governor with the exchange service, which resets it at
-        // the start of every user request.
+        // the start of every user request, and the access policy, which the exchange
+        // service fills in from the mode the request was built for.
         services.AddSingleton(sp => new ToolRunner(
             sp.GetRequiredService<IToolRegistry>(),
             sp.GetRequiredService<IToolApprover>(),
             sp.GetRequiredService<IToolObserver>(),
             sp.GetRequiredService<IFileSystem>(),
             root,
-            governor: sp.GetRequiredService<ToolCallGovernor>()));
+            governor: sp.GetRequiredService<ToolCallGovernor>(),
+            access: sp.GetRequiredService<ToolAccessPolicy>()));
 
         services.AddSingleton<IToolExecutor>(sp => sp.GetRequiredService<ToolRunner>());
 

@@ -1,5 +1,6 @@
 using Codai.Core.Chat;
 using Codai.Core.Tokens;
+using Codai.Core.Tools;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
 
@@ -15,7 +16,7 @@ public class HistoryCompactorTests
         var ui = new FakeUserInterface();
         var tokens = new TokenTracker();
 
-        return (new HistoryCompactor(chat, history, tokens, ui), chat, history, ui);
+        return (new HistoryCompactor(chat, history, tokens, new ToolAccessPolicy(), ui), chat, history, ui);
     }
 
     private static void Seed(ChatHistory history, int turns)
@@ -130,7 +131,7 @@ public class HistoryCompactorTests
         Seed(history, 2);
         chat.Enqueue("summary", new TokenUsage(90, 10));
 
-        await new HistoryCompactor(chat, history, tokens, ui).CompactAsync();
+        await new HistoryCompactor(chat, history, tokens, new ToolAccessPolicy(), ui).CompactAsync();
 
         tokens.SessionUsage.Should().Be(new TokenUsage(90, 10));
         ui.ProgressLabels.Should().Contain("Compacting history...");

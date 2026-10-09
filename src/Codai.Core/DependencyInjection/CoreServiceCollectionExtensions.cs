@@ -54,6 +54,10 @@ public static class CoreServiceCollectionExtensions
         // has to be the same instance the executor uses.
         services.AddSingleton<ToolCallGovernor>();
 
+        // Same reasoning for the tool set: the request records what it may call here and
+        // the executor reads it, so the two have to be looking at one object.
+        services.AddSingleton<ToolAccessPolicy>();
+
         // The mode a session is running in. A mutable holder rather than a constructor
         // argument because the user can change it mid-session with :mode.
         services.AddSingleton<AgentModeState>();

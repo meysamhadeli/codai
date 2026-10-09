@@ -21,6 +21,7 @@ public sealed class ToolRunner : IToolExecutor
     private readonly IToolApprover _approver;
     private readonly IToolObserver _observer;
     private readonly ToolCallGovernor _governor;
+    private readonly ToolAccessPolicy _access;
     private readonly IFileSystem _fileSystem;
     private readonly string _projectRoot;
     private readonly int _maxResultChars;
@@ -38,6 +39,11 @@ public sealed class ToolRunner : IToolExecutor
     /// Per-request call limits. Defaults to a fresh governor, so a host that does not
     /// care about tool budgets still gets a bounded loop instead of an unbounded one.
     /// </param>
+    /// <param name="access">
+    /// The tools the request in flight may call. Defaults to a fresh unrestricted policy,
+    /// and must be the same instance the caller uses to begin each request, or the
+    /// restriction would be recorded somewhere this runner never reads.
+    /// </param>
     public ToolRunner(
         IToolRegistry registry,
         IToolApprover approver,
@@ -45,7 +51,8 @@ public sealed class ToolRunner : IToolExecutor
         IFileSystem fileSystem,
         string projectRoot,
         int maxResultChars = DefaultMaxResultChars,
-        ToolCallGovernor? governor = null)
+        ToolCallGovernor? governor = null,
+        ToolAccessPolicy? access = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(approver);
@@ -58,6 +65,7 @@ public sealed class ToolRunner : IToolExecutor
         _approver = approver;
         _observer = observer;
         _governor = governor ?? new ToolCallGovernor();
+        _access = access ?? new ToolAccessPolicy();
         _fileSystem = fileSystem;
         _projectRoot = projectRoot;
         _maxResultChars = maxResultChars;
@@ -80,6 +88,17 @@ public sealed class ToolRunner : IToolExecutor
         }
 
         var summary = Summarize(toolName, arguments);
+
+        // A tool the request does not offer is refused before anything else, including
+        // before the budget: "this mode cannot write" is a better answer than "you have
+        // used your calls", and it does not depend on the provider having honoured the
+        // shorter tool list it was given.
+        if (!_access.IsAllowed(toolName))
+        {
+            var denial = _access.DescribeDenial(toolName);
+            _observer.OnToolDenied(toolName, denial);
+            return ToolResult.Failure(denial);
+        }
 
         // Limits come before approval: a call that may not run at all should not cost the
         // user a prompt, and a model that has hit the limit needs to be told to answer.

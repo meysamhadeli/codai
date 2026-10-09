@@ -27,15 +27,57 @@ public class ChatCompletionServiceTests
             ReasoningEffort = reasoningEffort,
         });
 
-    private static async Task<List<ChatStreamUpdate>> DrainAsync(ChatCompletionService service)
+    private static async Task<List<ChatStreamUpdate>> DrainAsync(
+        ChatCompletionService service,
+        ChatRequest? request = null)
     {
         var updates = new List<ChatStreamUpdate>();
-        await foreach (var update in service.StreamAsync(new ChatRequest("system", "user")))
+        await foreach (var update in service.StreamAsync(request ?? new ChatRequest("system", "user")))
         {
             updates.Add(update);
         }
 
         return updates;
+    }
+
+    private static RecordingToolExecutor TwoTools() => new(
+        new StubTool("read_file"),
+        new StubTool("write_file", isReadOnly: false));
+
+    [Fact]
+    public async Task Advertises_only_the_tools_the_request_allows()
+    {
+        var client = ScriptedChatClient.Content("done");
+        var service = new ChatCompletionService(client, Options(), TwoTools());
+
+        await DrainAsync(service, new ChatRequest("system", "user", ["read_file"]));
+
+        client.CapturedOptions!.Tools!.Select(tool => tool.Name).Should().Equal("read_file");
+    }
+
+    [Fact]
+    public async Task A_request_that_names_no_tools_is_offered_every_tool()
+    {
+        var client = ScriptedChatClient.Content("done");
+        var service = new ChatCompletionService(client, Options(), TwoTools());
+
+        await DrainAsync(service, new ChatRequest("system", "user"));
+
+        client.CapturedOptions!.Tools!.Select(tool => tool.Name)
+            .Should().Equal("read_file", "write_file");
+    }
+
+    [Fact]
+    public async Task A_request_that_allows_nothing_is_offered_no_tools_at_all()
+    {
+        var client = ScriptedChatClient.Content("done");
+        var service = new ChatCompletionService(client, Options(), TwoTools());
+
+        // This is how compaction asks: a summariser that can call read_file would spend
+        // the turn reading instead of summarising.
+        await DrainAsync(service, new ChatRequest("system", "user", []));
+
+        client.CapturedOptions!.Tools.Should().BeNullOrEmpty();
     }
 
     [Fact]

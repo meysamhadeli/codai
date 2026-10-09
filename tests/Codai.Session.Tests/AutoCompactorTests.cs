@@ -1,6 +1,7 @@
 using Codai.Core.Chat;
 using Codai.Core.Context;
 using Codai.Core.Tokens;
+using Codai.Core.Tools;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
 
@@ -33,7 +34,7 @@ public class AutoCompactorTests
         var tokens = new TokenTracker();
         var ui = new FakeUserInterface();
         var policy = new CompactionPolicy();
-        var compactor = new HistoryCompactor(chat, history, tokens, ui);
+        var compactor = new HistoryCompactor(chat, history, tokens, new ToolAccessPolicy(), ui);
 
         return (new AutoCompactor(options, history, compactor, policy, ui), chat, history, ui, policy);
     }
@@ -96,7 +97,7 @@ public class AutoCompactorTests
         var compactor = new AutoCompactor(
             options,
             history,
-            new HistoryCompactor(chat, history, new TokenTracker(), ui),
+            new HistoryCompactor(chat, history, new TokenTracker(), new ToolAccessPolicy(), ui),
             new CompactionPolicy(),
             ui);
 
