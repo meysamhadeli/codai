@@ -54,6 +54,7 @@ public class CliApplicationTests
         output.Lines.Should().Contain(line => line.Contains("--mode", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains("--no-shell", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains("--no-auto-compact", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("--no-sub-agents", StringComparison.Ordinal));
     }
 
     [Fact]

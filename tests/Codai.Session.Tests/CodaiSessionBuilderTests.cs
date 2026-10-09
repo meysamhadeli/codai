@@ -135,6 +135,31 @@ public class CodaiSessionBuilderTests
     }
 
     [Fact]
+    public void The_sub_agent_is_absent_unless_the_host_opts_in()
+    {
+        var without = new ServiceCollection();
+        without.AddCodaiSession(OptionsFor("ollama"), @"C:\project");
+
+        using (var provider = without.BuildServiceProvider())
+        {
+            Name(provider).Should().NotContain(SubAgent.ToolName);
+            provider.GetService<ISubAgent>().Should().BeNull();
+        }
+
+        var with = new ServiceCollection();
+        with.AddCodaiSession(OptionsFor("ollama"), @"C:\project", allowSubAgents: true);
+
+        using (var provider = with.BuildServiceProvider())
+        {
+            Name(provider).Should().Contain(SubAgent.ToolName);
+            provider.GetRequiredService<ISubAgent>().Should().NotBeNull();
+        }
+
+        static IEnumerable<string> Name(IServiceProvider provider) =>
+            provider.GetRequiredService<IToolRegistry>().Tools.Select(tool => tool.Name);
+    }
+
+    [Fact]
     public void Defaults_the_project_root_to_the_current_directory()
     {
         var services = new ServiceCollection();

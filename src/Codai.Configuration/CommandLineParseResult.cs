@@ -18,6 +18,11 @@ namespace Codai.Configuration;
 /// True unless <c>--no-auto-compact</c> was supplied. A conversation that would not fit
 /// the model's context window is summarised instead of being sent.
 /// </param>
+/// <param name="AllowSubAgents">
+/// True unless <c>--no-sub-agents</c> was supplied. <c>task</c> lets the model hand an
+/// investigation to a nested agent that explores with read-only tools and reports back,
+/// which keeps a long search out of this conversation's context window.
+/// </param>
 /// <param name="Overrides">Flag values keyed by configuration key.</param>
 /// <param name="Errors">Problems detected while parsing.</param>
 public sealed record CommandLineParseResult(
@@ -27,6 +32,7 @@ public sealed record CommandLineParseResult(
     AgentMode Mode,
     bool AllowShell,
     bool AutoCompact,
+    bool AllowSubAgents,
     IReadOnlyDictionary<string, string?> Overrides,
     IReadOnlyList<string> Errors)
 {
@@ -36,6 +42,7 @@ public sealed record CommandLineParseResult(
             false,
             false,
             AgentModeParser.Default,
+            true,
             true,
             true,
             new Dictionary<string, string?>(),

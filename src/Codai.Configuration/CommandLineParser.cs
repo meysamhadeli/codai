@@ -50,6 +50,7 @@ public static class CommandLineParser
         var mode = AgentModeParser.Default;
         var allowShell = true;
         var autoCompact = true;
+        var allowSubAgents = true;
         var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<string>();
 
@@ -111,6 +112,14 @@ public static class CommandLineParser
                     autoCompact = true;
                     continue;
 
+                case "no-sub-agents":
+                    allowSubAgents = false;
+                    continue;
+
+                case "sub-agents":
+                    allowSubAgents = true;
+                    continue;
+
                 case "mode":
                     // Not a configuration key: the mode belongs to the session, not to
                     // the provider settings, so it never reaches the config loader.
@@ -155,6 +164,7 @@ public static class CommandLineParser
             mode,
             allowShell,
             autoCompact,
+            allowSubAgents,
             overrides,
             errors);
     }

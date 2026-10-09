@@ -128,6 +128,7 @@ public class CommandLineParserTests
 
         result.AllowShell.Should().BeTrue();
         result.AutoCompact.Should().BeTrue();
+        result.AllowSubAgents.Should().BeTrue();
         result.Errors.Should().BeEmpty();
     }
 
@@ -151,14 +152,31 @@ public class CommandLineParserTests
         result.Errors.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("--no-sub-agents")]
+    [InlineData("--no_sub_agents")]
+    public void The_delegation_switch_turns_sub_agents_off(string flag)
+    {
+        var result = CommandLineParser.Parse(["code", flag]);
+
+        result.AllowSubAgents.Should().BeFalse();
+        result.Errors.Should().BeEmpty();
+    }
+
     [Fact]
     public void Every_switch_can_be_given_back_explicitly()
     {
         var result = CommandLineParser.Parse(
-            ["code", "--no-shell", "--allow-shell", "--no-auto-compact", "--auto-compact"]);
+        [
+            "code",
+            "--no-shell", "--allow-shell",
+            "--no-auto-compact", "--auto-compact",
+            "--no-sub-agents", "--sub-agents",
+        ]);
 
         result.AllowShell.Should().BeTrue();
         result.AutoCompact.Should().BeTrue();
+        result.AllowSubAgents.Should().BeTrue();
         result.Errors.Should().BeEmpty();
     }
 
@@ -166,7 +184,7 @@ public class CommandLineParserTests
     public void The_switches_are_not_configuration_overrides()
     {
         CommandLineParser
-            .Parse(["code", "--no-shell", "--no-auto-compact"])
+            .Parse(["code", "--no-shell", "--no-auto-compact", "--no-sub-agents"])
             .Overrides
             .Should()
             .BeEmpty();

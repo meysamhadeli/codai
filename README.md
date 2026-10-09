@@ -172,6 +172,7 @@ codai code [options]
       --mode <name>          ask | plan | agent (default: agent)
       --no-shell             Do not offer the model a way to run commands
       --no-auto-compact      Never summarise a conversation that grows too long
+      --no-sub-agents        Do not let the model delegate a search to a sub-agent
       --continue             Resume the conversation stored for this project
   -v, --version              Print version
   -h, --help                 Print help
@@ -183,7 +184,8 @@ changes the request that is sent rather than being accepted and ignored.
 `--mode` sets the mode the session starts in; `:mode` changes it at any point. The session
 starts in `agent` mode — being asked before every write is what makes that safe — and
 `--mode ask` or `--mode plan` starts it read-only instead. `--no-shell` keeps the file
-tools but never offers the model a command to run.
+tools but never offers the model a command to run. `--no-sub-agents` withdraws the `task`
+tool, which is the only way to stop the model spending model calls of its own.
 
 ### Providers and defaults
 
@@ -334,6 +336,7 @@ tools, and every call is reported as it happens.
 | `glob` | any | `pattern`, `path` | Finds files by path pattern, e.g. `**/*.cs`. |
 | `grep` | any | `pattern`, `path`, `include`, `case_sensitive` | Searches file contents with a regular expression. |
 | `read_skill` | any | `name` | Returns a project skill's instructions. |
+| `task` | any | `description`, `prompt` | Hands an investigation to a sub-agent with a context window of its own. |
 | `write_file` | `agent` | `path`, `content` | Creates a file, or replaces its whole contents. |
 | `edit_file` | `agent` | `path`, `old_string`, `new_string`, `replace_all` | Replaces an exact piece of a file. |
 | `run_command` | `agent` | `command`, `timeout_seconds` | Runs a command line from the project root. |
@@ -363,6 +366,39 @@ answering. Two limits are enforced per request: at most 60 calls, and at most tw
 identical calls. Repeated *different* calls — reading twenty files in a row — are not
 restricted. When a limit is hit the model is told to answer with what it has, saying what
 is still unverified.
+
+### Sub-agents
+
+Finding something out can cost more context than the answer is worth. "Where is the auth
+token validated?" may mean reading forty files, and those forty file bodies would then sit
+in the conversation for the rest of the session, re-sent on every request.
+
+`task` is how the model avoids paying that. It hands the question to a sub-agent with a
+**context window of its own**: the sub-agent searches, reads and greps, then reports back
+in a few hundred words. Its reading never enters this conversation — only the report does.
+
+```
+> why does the retry test fail?
+  • task(description=Why does the retry test fail?, prompt=Start at RetryPolicyTests.cs)
+⏳ Sub-agent: Why does the retry test fail?
+```
+
+Four properties make it safe to allow in every mode:
+
+- **Read-only.** A sub-agent is only given the tools that report `IsReadOnly`. Delegating
+  can never be a way round the session's mode, and the executor it runs through is built
+  with the deny-all approver as well, so a mistake in that filter fails closed.
+- **No nesting.** The sub-agent is never offered `task` itself, so a run cannot branch.
+- **Its own budget.** At most 30 tool calls per run, against 60 for a user request.
+- **Counted.** What the run spends is added to the session totals, so `:token` stays
+  honest — whether or not the run produced a report.
+
+A run that fails, or that returns nothing, comes back as a failed tool call the parent can
+read and work around rather than an exception that ends the turn. Reports are cut at
+4,000 characters and say so.
+
+Off with `--no-sub-agents`, or `AddCodaiSession(..., allowSubAgents: false)` in a host that
+would rather not spend model calls it did not ask for.
 
 Tool calling works on every provider. The OpenAI-compatible ones (OpenAI, Azure OpenAI,
 DeepSeek, Mistral, Grok, Qwen, OpenRouter, Ollama) go through `Microsoft.Extensions.AI`;
@@ -457,8 +493,8 @@ are re-sent on every request, so they survive a compaction.
 | `src/Codai.Tokens` | Embedded `model_pricing.json` catalog and cost calculation. |
 | `src/Codai.Providers` | `IChatCompletionService` implementations for all providers, built on `Microsoft.Extensions.AI`. |
 | `src/Codai.Analysis` | Project scanner, Roslyn C# signature extractor, regex extractors for Go/Python/Java/JS/TS, ignore rules. |
-| `src/Codai.Tools` | The agent tools (`read_file`, `list_files`, `glob`, `grep`, `read_skill`, `write_file`, `edit_file`, `run_command`) and the glob matcher and project index they share. |
-| `src/Codai.Session` | Session orchestration: `CodeSession`, `ProjectContextLoader`, `ProjectGuidanceLoader`, `ChatExchangeService`, `UserCommandResolver`, `AutoCompactor`, `ChangeApplicator`, `SessionCommandHandler`. |
+| `src/Codai.Tools` | The agent tools (`read_file`, `list_files`, `glob`, `grep`, `read_skill`, `task`, `write_file`, `edit_file`, `run_command`) and the glob matcher and project index they share. |
+| `src/Codai.Session` | Session orchestration: `CodeSession`, `ProjectContextLoader`, `ProjectGuidanceLoader`, `ChatExchangeService`, `UserCommandResolver`, `AutoCompactor`, `ChangeApplicator`, `SessionCommandHandler`, `SubAgentRunner`. |
 | `src/Codai.Cli` | `codai` executable: argument handling, Spectre.Console user interface, DI composition. |
 | `tests/*` | xUnit + FluentAssertions test projects, one per component. |
 

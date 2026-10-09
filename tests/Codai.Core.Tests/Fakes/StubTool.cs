@@ -9,11 +9,16 @@ namespace Codai.Core.Tests.Fakes;
 /// </summary>
 internal sealed class StubTool : ITool
 {
-    public StubTool(string name, bool isReadOnly = true, string description = "A stub tool.")
+    public StubTool(
+        string name,
+        bool isReadOnly = true,
+        string description = "A stub tool.",
+        string parametersSchema = """{"type":"object","properties":{}}""")
     {
         Name = name;
         IsReadOnly = isReadOnly;
         Description = description;
+        ParametersSchema = parametersSchema;
     }
 
     public string Name { get; }
@@ -22,7 +27,7 @@ internal sealed class StubTool : ITool
 
     public bool IsReadOnly { get; }
 
-    public string ParametersSchema => """{"type":"object","properties":{}}""";
+    public string ParametersSchema { get; }
 
     public JsonElement Schema => JsonSchema.Parse(ParametersSchema);
 

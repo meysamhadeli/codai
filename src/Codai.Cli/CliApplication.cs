@@ -101,7 +101,8 @@ public sealed class CliApplication
             parsed.ContinueSession,
             mode: parsed.Mode,
             allowShell: parsed.AllowShell,
-            autoCompact: parsed.AutoCompact);
+            autoCompact: parsed.AutoCompact,
+            allowSubAgents: parsed.AllowSubAgents);
 
         await using var provider = services.BuildServiceProvider();
 
@@ -148,6 +149,7 @@ public sealed class CliApplication
                   --mode <name>           How much the assistant may do: {AgentModeParser.Names} (default: {AgentModeParser.ToName(AgentModeParser.Default)}).
                   --no-shell              Do not offer the model a way to run commands.
                   --no-auto-compact       Never summarise a conversation that grows too long.
+                  --no-sub-agents         Do not let the model delegate a search to a sub-agent.
                   --continue              Resume the conversation stored for this project.
               -v, --version               Print the version and exit.
               -h, --help                  Print this help and exit.

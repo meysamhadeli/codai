@@ -69,6 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that survives a long session keeps what the next request needs.
 - **`--no-shell`** and **`--no-auto-compact`** turn the command tool and automatic
   compaction off for a session, without giving up the rest of the agent.
+- **Sub-agents.** The `task` tool hands an investigation to a nested agent loop with a
+  context window of its own: it explores with read-only tools and reports back in a few
+  hundred words, so the files it read never accumulate in the parent conversation. It is
+  never offered the tool that starts one, so a run cannot nest; it gets its own reduced
+  tool budget; and what it spends is added to the session totals whether or not it
+  produced a report. `--no-sub-agents` withdraws it.
+- **`--no-sub-agents`** withdraws the `task` tool, the only way to stop the model
+  spending model calls of its own.
 
 ### Changed
 
@@ -89,9 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ChatExchangeService.SendAsync` takes a `ProjectGuidance` (instructions plus skills)
   instead of an `IProjectInstructionsProvider`-shaped instructions argument, and reads
   the current `AgentModeState` per request.
-- `AddCodaiSession` accepts `mode`, `allowShell` and `autoCompact`, and the CLI passes the
-  parsed `--mode`, `--no-shell` and `--no-auto-compact` because it can ask before every
-  call.
+- `AddCodaiSession` accepts `mode`, `allowShell`, `autoCompact` and `allowSubAgents`, and
+  the CLI passes the parsed `--mode`, `--no-shell`, `--no-auto-compact` and
+  `--no-sub-agents` because it can ask before every call.
 - `PromptExtras.Mode` is nullable: a request with no mode gets no mode guidance and every
   tool the builder holds, which is what keeps the prompt parity tests meaningful.
 - `SkillCatalog.FindAsync` normalises the requested name before validating it, so a
@@ -102,6 +110,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A mode restricted nothing.** `ChatRequest.AllowedTools` was computed from the mode and
+  then read by nobody, so a read-only session only *told* the model not to write. It is
+  now enforced twice: the provider is given only that mode's tools, so a compliant model
+  never sees the others, and the executor refuses a tool that was not offered, so a
+  provider that accepts a call for a function it was never given is still stopped.
 - **`$ARGUMENTS` was never substituted.** `CommandExpander` compared the placeholder
   against the text after the `$`, where it could not match, so a command that used the
   placeholder lost the user's arguments. Covered now by tests.

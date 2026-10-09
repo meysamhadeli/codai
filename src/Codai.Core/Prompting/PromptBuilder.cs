@@ -146,7 +146,7 @@ public sealed class PromptBuilder : IPromptBuilder
             .Append("assuming what a file contains, and base your answer on what a tool ")
             .AppendLine("actually returned rather than on the summary above.")
             .AppendLine()
-            .AppendJoin('\n', tools.Select(RenderTool))
+            .Append(ToolCatalogText.Lines(tools))
             .AppendLine()
             .AppendLine("A call that reports a failure did not run: correct the arguments or ")
             .AppendLine("use another tool instead of repeating it unchanged.")
@@ -168,24 +168,6 @@ public sealed class PromptBuilder : IPromptBuilder
                 skills.Select(skill => $"- {skill.Name}: {skill.Description}"))
             .Append('\n')
             .ToString();
-
-    private static string RenderTool(ITool tool)
-    {
-        var required = tool.Schema.ValueKind == System.Text.Json.JsonValueKind.Object &&
-            tool.Schema.TryGetProperty("required", out var requiredElements) &&
-            requiredElements.ValueKind == System.Text.Json.JsonValueKind.Array
-                ? requiredElements.EnumerateArray()
-                    .Select(element => element.GetString())
-                    .Where(name => name is not null)
-                    .ToArray()
-                : [];
-
-        var arguments = required.Length > 0
-            ? $" (required: {string.Join(", ", required)})"
-            : string.Empty;
-
-        return $"- {tool.Name}: {tool.Description}{arguments}";
-    }
 
     /// <summary>
     /// Renders one history entry. The timestamp is formatted with the invariant culture

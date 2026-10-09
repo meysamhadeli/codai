@@ -38,6 +38,12 @@ public static class CodaiSessionBuilder
     /// True when a conversation that outgrows the model's context window should be
     /// summarised automatically.
     /// </param>
+    /// <param name="allowSubAgents">
+    /// True when <c>task</c> may be offered to the model, which lets it hand an
+    /// investigation to a nested agent with a context window of its own. Every use spends
+    /// a model call, and no approval prompt stands in the way, so a host opts in
+    /// deliberately.
+    /// </param>
     /// <remarks>
     /// The host is responsible for registering an <see cref="IUserInterface" />
     /// implementation (the CLI registers the Spectre.Console one).
@@ -49,7 +55,8 @@ public static class CodaiSessionBuilder
         bool resumePreviousSession = false,
         AgentMode mode = AgentModeParser.Default,
         bool allowShell = false,
-        bool autoCompact = true)
+        bool autoCompact = true,
+        bool allowSubAgents = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
@@ -59,7 +66,7 @@ public static class CodaiSessionBuilder
 
         services.AddCodaiCore();
         services.AddCodaiAnalysis();
-        services.AddCodaiTools(allowShell);
+        services.AddCodaiTools(allowShell, allowSubAgents);
         services.AddCodaiProviders();
 
         // The mode the session was started in replaces the safe default the core
@@ -100,6 +107,22 @@ public static class CodaiSessionBuilder
             access: sp.GetRequiredService<ToolAccessPolicy>()));
 
         services.AddSingleton<IToolExecutor>(sp => sp.GetRequiredService<ToolRunner>());
+
+        // The nested agent loop. It builds its own client over the read-only tools, so it
+        // needs the same registry the session uses, and it is registered only when the
+        // host asked for the tool that reaches it: composing a loop nobody can start would
+        // be a provider client built for nothing.
+        if (allowSubAgents)
+        {
+            services.AddSingleton<ISubAgent>(sp => new SubAgentRunner(
+                sp.GetRequiredService<IChatClientFactory>(),
+                providerOptions,
+                sp.GetRequiredService<IToolRegistry>(),
+                sp.GetRequiredService<IFileSystem>(),
+                sp.GetRequiredService<ITokenTracker>(),
+                sp.GetService<IUserInterface>(),
+                root));
+        }
 
         services.AddSingleton<IMentionResolver>(sp => new MentionResolver(sp.GetRequiredService<IFileSystem>()));
 

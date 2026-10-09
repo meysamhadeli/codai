@@ -68,6 +68,9 @@ public static class AgentModePolicy
         "## How to work in this session\n\n" +
         "You are investigating this project and producing a plan.\n\n" +
         "- You must not change any file. Read whatever you need with the tools first.\n" +
+        "- If the tool list below offers `task`, use it for any search that would need a\n" +
+        "  dozen files read to answer one question: the sub-agent explores on its own and\n" +
+        "  reports back a summary.\n" +
         "- Answer with a numbered plan. Each step names the files it touches and what it\n" +
         "  changes, in the order the changes must be made.\n" +
         "- Base every step on something you actually read, not on what a project of this\n" +
@@ -79,6 +82,10 @@ public static class AgentModePolicy
         "You are working on this project and you are expected to finish the task.\n\n" +
         "- Read the files involved before you change them, and change the smallest thing\n" +
         "  that solves the problem.\n" +
+        "- If the tool list below offers `task`, use it when finding something out would\n" +
+        "  mean reading far more of the project than the answer is worth holding onto: the\n" +
+        "  sub-agent looks around, reports back, and its reading never enters this\n" +
+        "  conversation.\n" +
         "- Keep going until the task is done. A tool call that failed is information, not a\n" +
         "  reason to stop: correct it or take another route.\n" +
         "- After you change something, read it back to confirm the change is what you meant.\n" +
