@@ -47,4 +47,11 @@ internal static class ToolPaths
         fullPath = resolved;
         return true;
     }
+
+    /// <summary>
+    /// The project-relative form of a resolved path, with forward slashes, for reporting
+    /// a change back to the user and the model.
+    /// </summary>
+    public static string Relative(ToolContext context, string fullPath) =>
+        Path.GetRelativePath(context.ProjectRoot, fullPath).Replace('\\', '/');
 }

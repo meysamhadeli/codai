@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Codai.Core.Abstractions;
 using Codai.Core.Tools;
 
 namespace Codai.Tools.Tests;
@@ -77,5 +78,33 @@ internal sealed class StubApprover : IToolApprover
         return _throw
             ? throw new InvalidOperationException("no way to ask")
             : Task.FromResult(_approve);
+    }
+}
+
+/// <summary>
+/// A process runner that records the command line it was asked to run and returns a
+/// scripted result. Real process tests live with the runner itself.
+/// </summary>
+internal sealed class StubProcessRunner : IProcessRunner
+{
+    public string? CommandLine { get; private set; }
+
+    public string? WorkingDirectory { get; private set; }
+
+    public TimeSpan Timeout { get; private set; }
+
+    public ProcessResult Result { get; set; } = new(0, "ok", string.Empty, false);
+
+    public Task<ProcessResult> RunAsync(
+        string commandLine,
+        string workingDirectory,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        CommandLine = commandLine;
+        WorkingDirectory = workingDirectory;
+        Timeout = timeout;
+
+        return Task.FromResult(Result);
     }
 }

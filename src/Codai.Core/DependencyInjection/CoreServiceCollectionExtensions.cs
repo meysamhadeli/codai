@@ -1,6 +1,9 @@
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
 using Codai.Core.Assets;
 using Codai.Core.Chat;
+using Codai.Core.Context;
+using Codai.Core.Customization;
 using Codai.Core.Diffs;
 using Codai.Core.IO;
 using Codai.Core.Prompting;
@@ -36,6 +39,27 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<ISessionStore>(_ => new FileSessionStore(PhysicalFileSystem.Instance));
         services.AddSingleton<ICodeChangeExtractor, CodeChangeExtractor>();
         services.AddSingleton<IDiffApplier>(_ => new DiffApplier(PhysicalFileSystem.Instance));
+
+        // Project customization: the commands and skills a project ships in .codai, and
+        // the folders they live in. Registered here rather than in the tool package
+        // because the prompt, the session loop and the tools all read them.
+        services.AddSingleton<ICommandCatalog, CommandCatalog>();
+        services.AddSingleton<ISkillCatalog, SkillCatalog>();
+
+        // Long-running work is behind an interface so tools can start a process without
+        // knowing how one is started, which is also what makes the behaviour testable.
+        services.AddSingleton<IProcessRunner>(_ => new ProcessRunner());
+
+        // One governor per session: it counts the calls of the request in flight, so it
+        // has to be the same instance the executor uses.
+        services.AddSingleton<ToolCallGovernor>();
+
+        // The mode a session is running in. A mutable holder rather than a constructor
+        // argument because the user can change it mid-session with :mode.
+        services.AddSingleton<AgentModeState>();
+
+        // Holds the compaction circuit-breaker state, so it too must be a single instance.
+        services.AddSingleton<CompactionPolicy>();
 
         // Safe defaults: nothing may change state until a host registers a real
         // approver, and progress messages are dropped until one registers an observer.

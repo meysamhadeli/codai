@@ -20,18 +20,32 @@ public sealed class ToolRunner : IToolExecutor
     private readonly IToolRegistry _registry;
     private readonly IToolApprover _approver;
     private readonly IToolObserver _observer;
+    private readonly ToolCallGovernor _governor;
     private readonly IFileSystem _fileSystem;
     private readonly string _projectRoot;
     private readonly int _maxResultChars;
 
     /// <summary>Creates a runner.</summary>
+    /// <param name="registry">The tools the model may call.</param>
+    /// <param name="approver">Asked before any tool that can change something.</param>
+    /// <param name="observer">Told when a call starts, finishes or is refused.</param>
+    /// <param name="fileSystem">File system the tools operate on.</param>
+    /// <param name="projectRoot">
+    /// Boundary every path is resolved inside, so no tool can reach outside the project.
+    /// </param>
+    /// <param name="maxResultChars">Upper bound on a single tool result.</param>
+    /// <param name="governor">
+    /// Per-request call limits. Defaults to a fresh governor, so a host that does not
+    /// care about tool budgets still gets a bounded loop instead of an unbounded one.
+    /// </param>
     public ToolRunner(
         IToolRegistry registry,
         IToolApprover approver,
         IToolObserver observer,
         IFileSystem fileSystem,
         string projectRoot,
-        int maxResultChars = DefaultMaxResultChars)
+        int maxResultChars = DefaultMaxResultChars,
+        ToolCallGovernor? governor = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(approver);
@@ -43,6 +57,7 @@ public sealed class ToolRunner : IToolExecutor
         _registry = registry;
         _approver = approver;
         _observer = observer;
+        _governor = governor ?? new ToolCallGovernor();
         _fileSystem = fileSystem;
         _projectRoot = projectRoot;
         _maxResultChars = maxResultChars;
@@ -65,6 +80,16 @@ public sealed class ToolRunner : IToolExecutor
         }
 
         var summary = Summarize(toolName, arguments);
+
+        // Limits come before approval: a call that may not run at all should not cost the
+        // user a prompt, and a model that has hit the limit needs to be told to answer.
+        var decision = _governor.Review(toolName, arguments);
+
+        if (!decision.Allowed)
+        {
+            _observer.OnToolDenied(toolName, decision.Reason);
+            return ToolResult.Failure(decision.Reason);
+        }
 
         if (!tool.IsReadOnly && !await IsApprovedAsync(tool, summary, cancellationToken).ConfigureAwait(false))
         {
