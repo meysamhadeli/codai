@@ -52,8 +52,15 @@ public sealed class HistoryCompactor
     /// <summary>
     /// Summarises the history and replaces it with the summary.
     /// </summary>
+    /// <param name="instructions">
+    /// What the user asked the summary to focus on, as typed after <c>:compact</c>, or
+    /// null to summarise on the summariser's own judgement.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the summarisation.</param>
     /// <returns>True when the history was replaced.</returns>
-    public async Task<bool> CompactAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> CompactAsync(
+        string? instructions = null,
+        CancellationToken cancellationToken = default)
     {
         // Snapshot: the live collection is cleared once the summary comes back.
         var turns = _history.Turns.ToArray();
@@ -66,7 +73,7 @@ public sealed class HistoryCompactor
 
         var request = new ChatRequest(
             EmbeddedResources.CompactHistoryPrompt,
-            $"## Here is the conversation to compact\n\n{Render(turns)}");
+            CompactionRequest(turns, instructions));
 
         var summary = new StringBuilder();
         var usage = TokenUsage.Empty;
@@ -111,6 +118,28 @@ public sealed class HistoryCompactor
         _ui.WriteSuccess($"✔️ Compacted {turns.Length} turn(s) into one summary.");
 
         return true;
+    }
+
+    /// <summary>
+    /// Builds the user message: the conversation, plus the user's focus when they gave
+    /// one. The focus is phrased as something to weight, not as a replacement, because a
+    /// summary that drops what the user did not think to mention is worse than a long one.
+    /// </summary>
+    private static string CompactionRequest(ChatTurn[] turns, string? instructions)
+    {
+        var builder = new StringBuilder()
+            .Append("## Here is the conversation to compact\n\n")
+            .Append(Render(turns));
+
+        if (!string.IsNullOrWhiteSpace(instructions))
+        {
+            builder
+                .Append("\n## The user asked for the summary to focus on\n\n")
+                .AppendLine(instructions.Trim())
+                .Append("\nWeight the summary towards that, without dropping anything that would then be lost.");
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>

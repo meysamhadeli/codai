@@ -109,7 +109,7 @@ public class ToolIntegrationTests
     }
 
     [Fact]
-    public void The_session_exposes_the_read_only_tool_set()
+    public void The_session_offers_the_read_only_tools_and_the_editing_tools()
     {
         var services = new ServiceCollection();
         services.AddCodaiSession(OptionsFor(), Directory.GetCurrentDirectory());
@@ -117,10 +117,27 @@ public class ToolIntegrationTests
         using var provider = services.BuildServiceProvider();
         var executor = provider.GetRequiredService<IToolExecutor>();
 
-        executor.Tools.Select(tool => tool.Name)
-            .Should().Equal("read_file", "list_files", "glob", "grep");
+        executor.Tools.Select(tool => tool.Name).Should().Equal(
+            "read_file", "list_files", "glob", "grep", "read_skill", "write_file", "edit_file");
 
-        executor.Tools.Should().OnlyContain(tool => tool.IsReadOnly);
+        // The shell tool is the one capability a host has to ask for, so it must not be
+        // here by default.
+        executor.Tools.Should().NotContain(tool => tool.Name == "run_command");
+    }
+
+    [Fact]
+    public void The_session_offers_the_shell_tool_only_when_the_host_allows_it()
+    {
+        var services = new ServiceCollection();
+        services.AddCodaiSession(
+            OptionsFor(),
+            Directory.GetCurrentDirectory(),
+            allowShell: true);
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IToolExecutor>().Tools
+            .Should().Contain(tool => tool.Name == "run_command" && !tool.IsReadOnly);
     }
 
     [Fact]
@@ -189,7 +206,7 @@ public class ToolIntegrationTests
         using var provider = services.BuildServiceProvider();
         var runner = provider.GetRequiredService<ToolRunner>();
 
-        runner.Tools.Should().HaveCount(4);
+        runner.Tools.Should().HaveCount(7);
     }
 
     /// <summary>Argument parsing helper shared by the tool tests here.</summary>

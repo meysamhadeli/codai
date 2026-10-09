@@ -1,9 +1,13 @@
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
 using Codai.Core.Chat;
+using Codai.Core.Context;
+using Codai.Core.Customization;
 using Codai.Core.Diffs;
 using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
+using Codai.Core.Tools;
 using Codai.Session.Tests.Fakes;
 
 namespace Codai.Session.Tests;
@@ -60,14 +64,24 @@ internal sealed class SessionHarness
     /// <summary>The store the session persists into. Backed by the in-memory file system.</summary>
     public ISessionStore SessionStore { get; }
 
+    /// <summary>The mode the session is running in. Tests change it the way the user does.</summary>
+    public AgentModeState Mode { get; } = new();
+
+    /// <summary>The per-request tool budget the session shares with its executor.</summary>
+    public ToolCallGovernor Governor { get; } = new();
+
     public CodeSession Build()
     {
         var instructionsProvider = new FakeProjectInstructionsProvider(Instructions);
+        var skills = new SkillCatalog(FileSystem);
+        var commands = new CommandCatalog(FileSystem);
+        var compactor = new HistoryCompactor(Chat, History, Tokens, Ui);
 
         return new CodeSession(
             Options,
             Ui,
             new ProjectContextLoader(Options, Scanner, Ui),
+            new ProjectGuidanceLoader(Options, instructionsProvider, skills, Ui),
             new ChatExchangeService(
                 Options,
                 new PromptBuilder(Template),
@@ -76,17 +90,21 @@ internal sealed class SessionHarness
                 Tokens,
                 new RequestedContextResolver(FileSystem),
                 new MentionResolver(FileSystem),
+                Mode,
+                Governor,
+                new AutoCompactor(Options, History, compactor, new CompactionPolicy(), Ui),
                 Ui),
-            new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Ui),
+            new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Mode, Ui),
             new SessionCommandHandler(
                 Options,
                 History,
                 Tokens,
                 CostCalculator ?? NullCostCalculator.Instance,
-                new HistoryCompactor(Chat, History, Tokens, Ui),
+                compactor,
+                Mode,
                 Ui),
+            new UserCommandResolver(commands, Options),
             History,
-            instructionsProvider,
             SessionStore);
     }
 

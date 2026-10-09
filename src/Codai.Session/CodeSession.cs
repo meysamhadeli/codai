@@ -1,6 +1,5 @@
 using Codai.Core.Abstractions;
 using Codai.Core.Projects;
-using Codai.Core.Prompting;
 
 namespace Codai.Session;
 
@@ -12,8 +11,10 @@ namespace Codai.Session;
 /// This type only owns the loop and the session's lifecycle. The work of each step is
 /// delegated to a dedicated collaborator:
 /// <see cref="ProjectContextLoader"/> (scanning),
+/// <see cref="ProjectGuidanceLoader"/> (instructions and skills),
 /// <see cref="ChatExchangeService"/> (prompting, streaming, history),
-/// <see cref="ChangeApplicator"/> (proposed file edits) and
+/// <see cref="ChangeApplicator"/> (proposed file edits),
+/// <see cref="UserCommandResolver"/> (project-defined <c>:commands</c>) and
 /// <see cref="SessionCommandHandler"/> (slash commands and token reporting).
 /// </remarks>
 public sealed class CodeSession
@@ -21,11 +22,12 @@ public sealed class CodeSession
     private readonly SessionOptions _options;
     private readonly IUserInterface _ui;
     private readonly ProjectContextLoader _contextLoader;
+    private readonly ProjectGuidanceLoader _guidanceLoader;
     private readonly ChatExchangeService _chatExchange;
     private readonly ChangeApplicator _changeApplicator;
     private readonly SessionCommandHandler _commands;
+    private readonly UserCommandResolver _userCommands;
     private readonly IChatHistory _history;
-    private readonly IProjectInstructionsProvider _instructionsProvider;
     private readonly ISessionStore _sessionStore;
 
     /// <summary>Creates the session from its collaborators.</summary>
@@ -33,31 +35,34 @@ public sealed class CodeSession
         SessionOptions options,
         IUserInterface ui,
         ProjectContextLoader contextLoader,
+        ProjectGuidanceLoader guidanceLoader,
         ChatExchangeService chatExchange,
         ChangeApplicator changeApplicator,
         SessionCommandHandler commands,
+        UserCommandResolver userCommands,
         IChatHistory history,
-        IProjectInstructionsProvider instructionsProvider,
         ISessionStore sessionStore)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(ui);
         ArgumentNullException.ThrowIfNull(contextLoader);
+        ArgumentNullException.ThrowIfNull(guidanceLoader);
         ArgumentNullException.ThrowIfNull(chatExchange);
         ArgumentNullException.ThrowIfNull(changeApplicator);
         ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(userCommands);
         ArgumentNullException.ThrowIfNull(history);
-        ArgumentNullException.ThrowIfNull(instructionsProvider);
         ArgumentNullException.ThrowIfNull(sessionStore);
 
         _options = options;
         _ui = ui;
         _contextLoader = contextLoader;
+        _guidanceLoader = guidanceLoader;
         _chatExchange = chatExchange;
         _changeApplicator = changeApplicator;
         _commands = commands;
+        _userCommands = userCommands;
         _history = history;
-        _instructionsProvider = instructionsProvider;
         _sessionStore = sessionStore;
     }
 
@@ -70,7 +75,7 @@ public sealed class CodeSession
         _ui.WriteLine(":help  Help for code subcommand");
 
         var context = await _contextLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var instructions = await LoadInstructionsAsync(cancellationToken).ConfigureAwait(false);
+        var guidance = await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
 
         if (_options.ResumePreviousSession)
         {
@@ -92,19 +97,38 @@ public sealed class CodeSession
                 continue;
             }
 
-            var command = SlashCommandParser.Parse(userInput);
-            if (command != SlashCommand.None)
+            var request = userInput;
+
+            if (userInput.TrimStart().StartsWith(':'))
             {
-                if (await _commands.HandleAsync(command, cancellationToken).ConfigureAwait(false))
+                var command = SlashCommandParser.Parse(userInput);
+
+                if (command != SlashCommand.None)
                 {
-                    break;
+                    var arguments = SlashCommandParser.Arguments(userInput);
+
+                    if (await _commands.HandleAsync(command, arguments, cancellationToken).ConfigureAwait(false))
+                    {
+                        break;
+                    }
+
+                    await PersistAsync(cancellationToken).ConfigureAwait(false);
+                    continue;
                 }
 
-                await PersistAsync(cancellationToken).ConfigureAwait(false);
-                continue;
+                var expansion = await _userCommands.ExpandAsync(userInput, cancellationToken).ConfigureAwait(false);
+
+                if (expansion is null)
+                {
+                    await ReportUnknownCommandAsync(userInput, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                _ui.WriteInfo($"📜 Running a project command from {expansion.SourcePath}");
+                request = expansion.Request;
             }
 
-            if (!await HandleRequestAsync(context, userInput, instructions, cancellationToken).ConfigureAwait(false))
+            if (!await HandleRequestAsync(context, request, guidance, cancellationToken).ConfigureAwait(false))
             {
                 break;
             }
@@ -116,21 +140,19 @@ public sealed class CodeSession
     }
 
     /// <summary>
-    /// Reads the project instructions, or returns null when the project has none.
-    /// The file is read once per session: it steers the whole conversation.
+    /// Reports a colon-prefixed line that matched neither a session command nor a project
+    /// command. It is never sent to the model: a typo silently answered as if it were a
+    /// question is the worst possible outcome, because the answer looks plausible.
     /// </summary>
-    private async Task<ProjectInstructions?> LoadInstructionsAsync(CancellationToken cancellationToken)
+    private async Task ReportUnknownCommandAsync(string userInput, CancellationToken cancellationToken)
     {
-        var instructions = await _instructionsProvider
-            .LoadAsync(_options.ProjectRoot, cancellationToken)
-            .ConfigureAwait(false);
+        var names = await _userCommands.NamesAsync(cancellationToken).ConfigureAwait(false);
 
-        if (instructions is not null)
-        {
-            _ui.WriteInfo($"📄 Following project instructions from {instructions.SourcePath}");
-        }
+        var hint = names.Count > 0
+            ? $" Type :help for the session commands, or use one of the project commands: {string.Join(", ", names)}."
+            : " Type :help for the session commands.";
 
-        return instructions;
+        _ui.WriteError($"Unknown command '{userInput}'.{hint}");
     }
 
     /// <summary>Restores the conversation saved by an earlier run.</summary>
@@ -197,12 +219,12 @@ public sealed class CodeSession
     private async Task<bool> HandleRequestAsync(
         ProjectContext context,
         string userInput,
-        ProjectInstructions? instructions,
+        ProjectGuidance guidance,
         CancellationToken cancellationToken)
     {
         try
         {
-            var response = await _chatExchange.SendAsync(context, userInput, instructions, cancellationToken)
+            var response = await _chatExchange.SendAsync(context, userInput, guidance, cancellationToken)
                 .ConfigureAwait(false);
 
             await _changeApplicator.ApplyAsync(response, cancellationToken).ConfigureAwait(false);

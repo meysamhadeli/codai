@@ -57,6 +57,42 @@ public class HistoryCompactorTests
     }
 
     [Fact]
+    public async Task A_focus_is_passed_on_as_something_to_weight()
+    {
+        var (compactor, chat, history, _) = Create();
+        Seed(history, 2);
+        chat.Enqueue("summary");
+
+        await compactor.CompactAsync("  the migration file names  ");
+
+        chat.Requests.Should().ContainSingle();
+
+        // The focus steers the summary; it must not be allowed to replace the request, or
+        // the conversation itself would never be sent. The trailing spaces are trimmed.
+        chat.Requests[0].UserMessage
+            .Should()
+            .Contain("focus on")
+            .And.Contain("the migration file names")
+            .And.Contain("question 0")
+            .And.NotContain("  the migration file names  ");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Without_a_focus_the_request_is_the_conversation_alone(string? instructions)
+    {
+        var (compactor, chat, history, _) = Create();
+        Seed(history, 2);
+        chat.Enqueue("summary");
+
+        await compactor.CompactAsync(instructions);
+
+        chat.Requests[0].UserMessage.Should().NotContain("focus on");
+    }
+
+    [Fact]
     public async Task Refuses_to_compact_an_almost_empty_history()
     {
         var (compactor, chat, history, ui) = Create();

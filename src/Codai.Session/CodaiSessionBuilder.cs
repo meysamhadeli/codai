@@ -1,5 +1,6 @@
 using Codai.Configuration;
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
 using Codai.Core.Tools;
 using Codai.Providers;
 using Codai.Providers.Abstractions;
@@ -28,6 +29,15 @@ public static class CodaiSessionBuilder
     /// True when the caller asked to continue the stored conversation instead of
     /// starting a fresh one.
     /// </param>
+    /// <param name="mode">The mode the session starts in; the user can change it with <c>:mode</c>.</param>
+    /// <param name="allowShell">
+    /// True when <c>run_command</c> may be offered to the model. Every call to it still
+    /// asks the registered <see cref="IToolApprover"/> first.
+    /// </param>
+    /// <param name="autoCompact">
+    /// True when a conversation that outgrows the model's context window should be
+    /// summarised automatically.
+    /// </param>
     /// <remarks>
     /// The host is responsible for registering an <see cref="IUserInterface" />
     /// implementation (the CLI registers the Spectre.Console one).
@@ -36,7 +46,10 @@ public static class CodaiSessionBuilder
         this IServiceCollection services,
         CodaiOptions options,
         string? projectRoot = null,
-        bool resumePreviousSession = false)
+        bool resumePreviousSession = false,
+        AgentMode mode = AgentModeParser.Default,
+        bool allowShell = false,
+        bool autoCompact = true)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
@@ -46,8 +59,12 @@ public static class CodaiSessionBuilder
 
         services.AddCodaiCore();
         services.AddCodaiAnalysis();
-        services.AddCodaiTools();
+        services.AddCodaiTools(allowShell);
         services.AddCodaiProviders();
+
+        // The mode the session was started in replaces the safe default the core
+        // registered. The holder is a singleton because :mode changes it in place.
+        services.Replace(ServiceDescriptor.Singleton(new AgentModeState(mode)));
 
         // The pricing catalog implements both contracts; register one instance under
         // each so there is a single source of prices.
@@ -70,12 +87,15 @@ public static class CodaiSessionBuilder
 
         // The runner is the one seam through which the model reaches the file system,
         // so the provider layer never learns how approval or progress reporting works.
+        // It shares the request governor with the exchange service, which resets it at
+        // the start of every user request.
         services.AddSingleton(sp => new ToolRunner(
             sp.GetRequiredService<IToolRegistry>(),
             sp.GetRequiredService<IToolApprover>(),
             sp.GetRequiredService<IToolObserver>(),
             sp.GetRequiredService<IFileSystem>(),
-            root));
+            root,
+            governor: sp.GetRequiredService<ToolCallGovernor>()));
 
         services.AddSingleton<IToolExecutor>(sp => sp.GetRequiredService<ToolRunner>());
 
@@ -88,6 +108,7 @@ public static class CodaiSessionBuilder
         });
 
         services.AddSingleton<HistoryCompactor>();
+        services.AddSingleton<AutoCompactor>();
 
         services.AddSingleton(new SessionOptions
         {
@@ -96,9 +117,13 @@ public static class CodaiSessionBuilder
             Model = providerOptions.Model,
             Theme = options.Theme,
             ResumePreviousSession = resumePreviousSession,
+            Mode = mode,
+            AutoCompact = autoCompact,
         });
 
         services.AddSingleton<ProjectContextLoader>();
+        services.AddSingleton<ProjectGuidanceLoader>();
+        services.AddSingleton<UserCommandResolver>();
         services.AddSingleton<ChatExchangeService>();
         services.AddSingleton<ChangeApplicator>();
         services.AddSingleton<SessionCommandHandler>();

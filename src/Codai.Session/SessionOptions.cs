@@ -1,3 +1,5 @@
+using Codai.Core.Agents;
+
 namespace Codai.Session;
 
 /// <summary>
@@ -32,4 +34,18 @@ public sealed class SessionOptions
     /// <c>codai code --continue</c> picks up where the previous run stopped.
     /// </summary>
     public bool ResumePreviousSession { get; init; }
+
+    /// <summary>
+    /// The mode the session starts in. It is the <em>starting</em> mode: the user can
+    /// change it at any point with <c>:mode</c>, which is why the running value lives in
+    /// <see cref="AgentModeState"/> rather than here.
+    /// </summary>
+    public AgentMode Mode { get; init; } = AgentModeParser.Default;
+
+    /// <summary>
+    /// When true, a conversation that has grown close to the model's context window is
+    /// summarised before the next request instead of being sent in full. The manual
+    /// <c>:compact</c> command works either way.
+    /// </summary>
+    public bool AutoCompact { get; init; } = true;
 }

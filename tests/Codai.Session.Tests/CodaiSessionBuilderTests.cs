@@ -1,5 +1,7 @@
 using Codai.Configuration;
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
+using Codai.Core.Tools;
 using Codai.Tokens.Abstractions;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -77,6 +79,59 @@ public class CodaiSessionBuilderTests
         options.Provider.Should().Be("deepseek");
         options.Model.Should().Be("deepseek-flash");
         options.ProjectRoot.Should().Be(@"C:\project");
+    }
+
+    [Fact]
+    public void The_session_starts_in_agent_mode_and_summarises_by_default()
+    {
+        var services = new ServiceCollection();
+        services.AddCodaiSession(OptionsFor("ollama"), @"C:\project");
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<SessionOptions>().Mode.Should().Be(AgentMode.Agent);
+        provider.GetRequiredService<SessionOptions>().AutoCompact.Should().BeTrue();
+        provider.GetRequiredService<AgentModeState>().Mode.Should().Be(AgentMode.Agent);
+    }
+
+    [Fact]
+    public void The_host_can_start_the_session_read_only_and_without_compaction()
+    {
+        var services = new ServiceCollection();
+        services.AddCodaiSession(
+            OptionsFor("ollama"),
+            @"C:\project",
+            mode: AgentMode.Plan,
+            autoCompact: false);
+
+        using var provider = services.BuildServiceProvider();
+
+        // The mode is the running one too, not only the recorded starting point.
+        provider.GetRequiredService<AgentModeState>().Mode.Should().Be(AgentMode.Plan);
+        provider.GetRequiredService<SessionOptions>().AutoCompact.Should().BeFalse();
+    }
+
+    [Fact]
+    public void The_command_runner_is_absent_unless_the_host_opts_in()
+    {
+        var withoutShell = new ServiceCollection();
+        withoutShell.AddCodaiSession(OptionsFor("ollama"), @"C:\project");
+
+        using (var provider = withoutShell.BuildServiceProvider())
+        {
+            Name(provider).Should().NotContain("run_command");
+        }
+
+        var withShell = new ServiceCollection();
+        withShell.AddCodaiSession(OptionsFor("ollama"), @"C:\project", allowShell: true);
+
+        using (var provider = withShell.BuildServiceProvider())
+        {
+            Name(provider).Should().Contain("run_command");
+        }
+
+        static IEnumerable<string> Name(IServiceProvider provider) =>
+            provider.GetRequiredService<IToolRegistry>().Tools.Select(tool => tool.Name);
     }
 
     [Fact]

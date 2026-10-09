@@ -1,9 +1,11 @@
 using System.Text;
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
 using Codai.Core.Chat;
 using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
+using Codai.Core.Tools;
 
 namespace Codai.Session;
 
@@ -26,6 +28,9 @@ public sealed class ChatExchangeService
     private readonly ITokenTracker _tokenTracker;
     private readonly IRequestedContextResolver _requestedContextResolver;
     private readonly IMentionResolver _mentionResolver;
+    private readonly AgentModeState _mode;
+    private readonly ToolCallGovernor _governor;
+    private readonly AutoCompactor _autoCompactor;
     private readonly IUserInterface _ui;
 
     /// <summary>Creates the service.</summary>
@@ -37,6 +42,9 @@ public sealed class ChatExchangeService
         ITokenTracker tokenTracker,
         IRequestedContextResolver requestedContextResolver,
         IMentionResolver mentionResolver,
+        AgentModeState mode,
+        ToolCallGovernor governor,
+        AutoCompactor autoCompactor,
         IUserInterface ui)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -46,6 +54,9 @@ public sealed class ChatExchangeService
         ArgumentNullException.ThrowIfNull(tokenTracker);
         ArgumentNullException.ThrowIfNull(requestedContextResolver);
         ArgumentNullException.ThrowIfNull(mentionResolver);
+        ArgumentNullException.ThrowIfNull(mode);
+        ArgumentNullException.ThrowIfNull(governor);
+        ArgumentNullException.ThrowIfNull(autoCompactor);
         ArgumentNullException.ThrowIfNull(ui);
 
         _options = options;
@@ -55,6 +66,9 @@ public sealed class ChatExchangeService
         _tokenTracker = tokenTracker;
         _requestedContextResolver = requestedContextResolver;
         _mentionResolver = mentionResolver;
+        _mode = mode;
+        _governor = governor;
+        _autoCompactor = autoCompactor;
         _ui = ui;
     }
 
@@ -64,22 +78,37 @@ public sealed class ChatExchangeService
     /// </summary>
     /// <param name="context">The project summary the prompt is built from.</param>
     /// <param name="userInput">The request as the user typed it, mentions included.</param>
-    /// <param name="instructions">
-    /// Project instructions for this session, when the project ships any.
+    /// <param name="guidance">
+    /// The project's instructions and skills, loaded once for the session.
     /// </param>
     /// <param name="cancellationToken">Cancels the request.</param>
     public async Task<string> SendAsync(
         ProjectContext context,
         string userInput,
-        ProjectInstructions? instructions = null,
+        ProjectGuidance? guidance = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(userInput);
 
+        guidance ??= ProjectGuidance.Empty;
+
+        // A new request is a new tool budget: the limits exist to stop one request running
+        // away, not to ration the session.
+        _governor.BeginRequest();
+
+        // Compaction happens before the prompt is built, because the history it replaces
+        // is the history the prompt would otherwise contain.
+        await _autoCompactor
+            .CompactIfNeededAsync(userInput, cancellationToken)
+            .ConfigureAwait(false);
+
         var extras = new PromptExtras
         {
-            Instructions = instructions?.Content,
+            // Read per request: the user may have changed it with :mode since the last one.
+            Mode = _mode.Mode,
+            Instructions = guidance.Instructions?.Content,
+            Skills = guidance.Skills,
             AttachedContext = await ResolveMentionsAsync(userInput, cancellationToken)
                 .ConfigureAwait(false),
         };
