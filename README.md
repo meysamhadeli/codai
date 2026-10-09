@@ -15,15 +15,20 @@ applies the ones you accept — all from the terminal.
 🧠 Context-aware assistance built from a summary of your whole project.
 
 �️ Agent tools — `read_file`, `list_files`, `glob` and `grep` let the assistant read the
-files it actually needs instead of only reasoning over the summary.
+files it actually needs instead of only reasoning over the summary. Write tools let it
+make the change, and every write or command asks you first.
 📄 Project instructions — an `AGENTS.md`, `CLAUDE.md` or `.codai/instructions.md` file in
 the repository steers every request of the session.
+
+🧩 Project skills and commands — a `SKILL.md` the model fetches when it applies, and
+`:commands` that expand a reviewed prompt into a request.
 
 📎 `@` references — `@src/Foo.cs`, `@src/` or `@**/*.cs` in a request attaches those files
 to that request, without waiting for the model to ask for them.
 
-🧹 Long sessions stay affordable — `:compact` replaces the conversation with a summary,
-and `--continue` picks that conversation up again next time.
+🧹 Long sessions stay affordable — the conversation is summarised automatically before it
+outgrows the model's context window, `:compact` does it on demand, and `--continue` picks
+that conversation up again next time.
 �📊 Maintains conversational and code context per session.
 
 🌳 Summarises full project context by extracting code signatures.
@@ -147,8 +152,9 @@ Nested keys can also be supplied with the `__` separator, e.g.
 
 ### CLI flags
 
-Flags use kebab-case. The older snake_case spellings (`--base_url`, `--api_key`,
-`--api_version`, `--max_tokens`, `--reasoning_effort`) are still accepted as aliases.
+Flags use kebab-case. Underscores are accepted wherever a dash is, so the older snake_case
+spellings (`--base_url`, `--api_key`, `--api_version`, `--max_tokens`, `--reasoning_effort`,
+`--no_shell`) keep working.
 
 ```
 codai code [options]
@@ -163,6 +169,9 @@ codai code [options]
       --stream <bool>        Stream the response
       --api-key <key>        API key (prefer API_KEY)
       --api-version <v>      Version header for providers that need one (Anthropic)
+      --mode <name>          ask | plan | agent (default: agent)
+      --no-shell             Do not offer the model a way to run commands
+      --no-auto-compact      Never summarise a conversation that grows too long
       --continue             Resume the conversation stored for this project
   -v, --version              Print version
   -h, --help                 Print help
@@ -170,6 +179,11 @@ codai code [options]
 
 `--reasoning-effort` is forwarded to the provider as `ChatOptions.Reasoning`, so it
 changes the request that is sent rather than being accepted and ignored.
+
+`--mode` sets the mode the session starts in; `:mode` changes it at any point. The session
+starts in `agent` mode — being asked before every write is what makes that safe — and
+`--mode ask` or `--mode plan` starts it read-only instead. `--no-shell` keeps the file
+tools but never offers the model a command to run.
 
 ### Providers and defaults
 
@@ -249,24 +263,106 @@ codai code --continue
 | `:token` | Show token usage and estimated cost |
 | `:clear-token` | Reset the token counters |
 | `:clear-history` | Forget the conversation so far |
-| `:compact` | Replace the conversation so far with a summary of it |
+| `:mode [name]` | Show or change what the assistant is allowed to do |
+| `:compact [focus]` | Replace the conversation so far with a summary of it, weighted towards `focus` |
+
+A colon-prefixed line that is not one of these is looked up in `.codai/commands`. A name
+that matches nothing is reported; it is never sent to the model as if it were a question.
+
+### Project commands
+
+A markdown file in `.codai/commands` becomes a `:command`. The file name is the command
+name, the body becomes the request, and `$ARGUMENTS`, `$1`–`$9` are substituted:
+
+```markdown
+<!-- .codai/commands/review.md -->
+---
+description: Reviews the working tree against the project's conventions
+argument-hint: <path> [<path> ...]
+---
+Review the changes under $ARGUMENTS against the conventions of this project. Read the
+files first, then list what should change and why.
+```
+
+```
+> :review src/Api
+```
+
+Commands are re-read on every line, so a command added or edited mid-session works
+immediately. A command's description reaches the prompt, its body does not.
+
+## 🎚️ Agent modes
+
+A mode decides how much freedom a request has. It is read per request, so `:mode` takes
+effect on the next thing you type.
+
+| Mode | Tools offered | Behaviour |
+| --- | --- | --- |
+| `agent` (default) | all | Reads, edits files and runs commands, and asks before each one. |
+| `ask` | read-only | Answers questions. Read anything, change nothing. |
+| `plan` | read-only | Investigates and answers with a numbered plan, then stops. |
+
+```
+> :mode ask
+✔️ Mode is now ask. I can read anything in the project, but I won't change it.
+> :mode
+Mode: ask — I can read anything in the project, but I won't change it. Change it with :mode ask | plan | agent.
+```
+
+Tools are selected by their `IsReadOnly` flag, not by a list of names, and the guidance
+in the prompt is generated from the same mode. So a new mutating tool cannot accidentally
+be offered to `ask`, and the assistant is never told it may edit while being given no tool
+that can.
+
+A model that has no editing tool can still write a diff into its answer, which is why the
+read-only modes are enforced twice: the tool is not offered, and a diff in the answer is
+reported instead of applied.
+
+```
+🔒 1 change(s) proposed (src/Api/OrderService.cs) were not applied: the session is in ask mode. Use :mode agent to apply them.
+```
 
 ## 🛠️ Agent tools
 
 Codai does not stop at the project summary: the model can read the real files through
 tools, and every call is reported as it happens.
 
-| Tool | Arguments | What it does |
-| --- | --- | --- |
-| `read_file` | `path`, `offset`, `limit` | Returns a numbered slice of a text file. |
-| `list_files` | `path`, `recursive` | Lists a directory, or every file below it. |
-| `glob` | `pattern`, `path` | Finds files by path pattern, e.g. `**/*.cs`. |
-| `grep` | `pattern`, `path`, `include`, `case_sensitive` | Searches file contents with a regular expression. |
+| Tool | Mode | Arguments | What it does |
+| --- | --- | --- | --- |
+| `read_file` | any | `path`, `offset`, `limit` | Returns a numbered slice of a text file. |
+| `list_files` | any | `path`, `recursive` | Lists a directory, or every file below it. |
+| `glob` | any | `pattern`, `path` | Finds files by path pattern, e.g. `**/*.cs`. |
+| `grep` | any | `pattern`, `path`, `include`, `case_sensitive` | Searches file contents with a regular expression. |
+| `read_skill` | any | `name` | Returns a project skill's instructions. |
+| `write_file` | `agent` | `path`, `content` | Creates a file, or replaces its whole contents. |
+| `edit_file` | `agent` | `path`, `old_string`, `new_string`, `replace_all` | Replaces an exact piece of a file. |
+| `run_command` | `agent` | `command`, `timeout_seconds` | Runs a command line from the project root. |
 
-All four are **read-only**, so none of them asks for confirmation. What they can see is
-filtered by the same ignore rules as the project scan (`.codai-gitignore`, `bin/`,
-`obj/`, `node_modules/`, ...), and every path is resolved inside the project root, so a
-tool cannot read or search outside it.
+The read-only tools never prompt. `write_file`, `edit_file` and `run_command` are
+gated by an approval prompt showing exactly what they are about to do:
+
+```
+  • write_file(path=src/Api/Handler.cs)
+Allow write_file: write_file(path=src/Api/Handler.cs) ? (y/n):
+```
+
+What every tool can see is filtered by the same ignore rules as the project scan
+(`.codai-gitignore`, `bin/`, `obj/`, `node_modules/`, ...), and every path is resolved
+inside the project root, so a tool cannot read, write or search outside it.
+
+> [!WARNING]
+> `run_command` executes arbitrary command lines with **your** privileges. There is no
+> sandbox. It is only registered when a host opts in (`AddCodaiTools(allowShell: true)`,
+> which the CLI does unless you pass `--no-shell`), it always asks for approval, and it
+> runs from the project root. Review the command line in the prompt before answering `y`.
+
+### Tool budgets
+
+An agent that calls tools in a loop can spend a whole context window without ever
+answering. Two limits are enforced per request: at most 60 calls, and at most two
+identical calls. Repeated *different* calls — reading twenty files in a row — are not
+restricted. When a limit is hit the model is told to answer with what it has, saying what
+is still unverified.
 
 Tool calling works on every provider. The OpenAI-compatible ones (OpenAI, Azure OpenAI,
 DeepSeek, Mistral, Grok, Qwen, OpenRouter, Ollama) go through `Microsoft.Extensions.AI`;
@@ -289,22 +385,80 @@ sequenceDiagram
     S-->>U: streamed answer
 ```
 
-> [!NOTE]
-> A tool that writes to disk or runs a command would declare `ITool.IsReadOnly` as
-> `false` and would then be gated by an approval prompt. No such tool ships yet, and the
-> default approver refuses them until one is wired to a prompt.
+## 🧩 Project customization
+
+Everything a project contributes to the prompt lives in `.codai/`:
+
+| Path | What it is |
+| --- | --- |
+| `.codai/commands/<name>.md` | A `:command` the user can type. |
+| `.codai/skills/<name>/SKILL.md` | Instructions the model fetches with `read_skill` when they apply. |
+| `.codai/sessions/latest.json` | The stored conversation, resumed by `--continue`. |
+| `.codai/instructions.md` | Fallback project instructions. |
+
+A skill reaches the prompt as one line — its name and description — and its body is
+fetched only when the model decides the skill applies. A project with thirty skills
+therefore costs thirty lines instead of thirty documents:
+
+```
+## Here are the skills available in this project
+
+These skills are available. Read one with the read_skill tool when its description matches
+what you are about to do, and follow it.
+
+- ef-migrations: How this project writes and reviews EF Core migrations.
+```
+
+## 🗜️ Long conversations
+
+A conversation that outgrows the model's context window is summarised before it is sent,
+so a long session keeps working instead of failing on the request it cannot fit.
+
+The decision is made from an estimate of the request that is about to be sent, compared
+against the model's window minus a reserve for the response, the tool definitions and the
+next turn. Estimating errs high and the reserve is large, so compaction happens slightly
+early rather than too late.
+
+```
+> summarize the auth flow
+📉 This conversation needs about 118,400 of the 128,000 tokens claude-3-5-sonnet-latest
+can hold. Summarising it first.
+✔️ Compacted 14 turn(s) into one summary.
+```
+
+| Knob | Where | Default |
+| --- | --- | --- |
+| Automatic compaction | `SessionOptions.AutoCompact`, `--no-auto-compact` | on |
+| Reserve kept free | `CompactionPolicy.ReserveTokens` | 13,000 tokens |
+| Failures before giving up | `CompactionPolicy.MaxFailures` | 3 |
+
+Summarising is itself a model call, so it can fail. After three consecutive failures the
+session stops trying and carries the long history instead: a long conversation that still
+works beats one stuck trying to shorten itself. `:compact` always works on demand, and
+`:clear-history` starts the conversation over.
+
+`:compact` also takes the thing you want the summary to keep, which is the difference
+between a summary that is merely correct and one that is useful for the next request:
+
+```
+> :compact the file paths and the failing test names
+✔️ Compacted 22 turn(s) into one summary.
+```
+
+The same machinery keeps the prompt small in the other direction: project instructions
+are re-sent on every request, so they survive a compaction.
 
 ## 🏗️ Project layout
 
 | Project | Responsibility |
 | --- | --- |
-| `src/Codai.Core` | Domain types, abstractions and first-party services: `Chat`, `Diffs`, `Tokens`, `Projects`, `Prompting`, `IO`, plus an `Abstractions` folder. No dependencies beyond DI abstractions. |
+| `src/Codai.Core` | Domain types, abstractions and first-party services: `Agents` (modes and their policy), `Context` (windows, token estimate, compaction policy), `Customization` (commands and skills), `Chat`, `Diffs`, `Tokens`, `Projects`, `Prompting`, `IO`, plus an `Abstractions` folder. No dependencies beyond DI abstractions. |
 | `src/Codai.Configuration` | `codai-config.yml\|yaml\|json` loading, environment variables, CLI flag parsing, the provider catalog and its defaults. |
 | `src/Codai.Tokens` | Embedded `model_pricing.json` catalog and cost calculation. |
 | `src/Codai.Providers` | `IChatCompletionService` implementations for all providers, built on `Microsoft.Extensions.AI`. |
 | `src/Codai.Analysis` | Project scanner, Roslyn C# signature extractor, regex extractors for Go/Python/Java/JS/TS, ignore rules. |
-| `src/Codai.Tools` | The agent tools (`read_file`, `list_files`, `glob`, `grep`) and the glob matcher and project index they share. |
-| `src/Codai.Session` | Session orchestration: `CodeSession`, `ProjectContextLoader`, `ChatExchangeService`, `ChangeApplicator`, `SessionCommandHandler`. |
+| `src/Codai.Tools` | The agent tools (`read_file`, `list_files`, `glob`, `grep`, `read_skill`, `write_file`, `edit_file`, `run_command`) and the glob matcher and project index they share. |
+| `src/Codai.Session` | Session orchestration: `CodeSession`, `ProjectContextLoader`, `ProjectGuidanceLoader`, `ChatExchangeService`, `UserCommandResolver`, `AutoCompactor`, `ChangeApplicator`, `SessionCommandHandler`. |
 | `src/Codai.Cli` | `codai` executable: argument handling, Spectre.Console user interface, DI composition. |
 | `tests/*` | xUnit + FluentAssertions test projects, one per component. |
 
@@ -320,6 +474,15 @@ sequenceDiagram
 - **One way out.** The model reaches the file system through `IToolExecutor` and
   nothing else, so the provider layer never learns how approval, progress reporting or
   path containment work.
+- **Capability decides access.** A mode's tool set is derived from `ITool.IsReadOnly`, and
+  the prompt guidance is derived from the same mode, so the two cannot contradict each
+  other or drift when a tool is added.
+- **Measured, then decided.** `ContextBudget` measures a request against a window and
+  `CompactionPolicy` decides what to do about it. Keeping them apart makes the threshold
+  testable without running a session or calling a model.
+- **Modes are state, not configuration.** `AgentModeState` holds the running mode so a
+  request always reads the mode the user last asked for, instead of a copy captured when a
+  service was built.
 - **Source-generated JSON.** All serialization uses `JsonSerializerContext`, keeping the
   binary trim/AOT friendly.
 - **Locale independent.** Number and date formatting in prompts uses
@@ -344,6 +507,7 @@ sequenceDiagram
     S->>SC: Scan(projectRoot)
     SC-->>S: ProjectContext (signatures)
     U->>S: "add a feature"
+    S->>S: compact first if the conversation would not fit
     S->>AI: stream(system prompt + user request)
     AI-->>S: response chunks
     opt Response asks for full files
@@ -352,7 +516,7 @@ sequenceDiagram
         AI-->>S: response chunks
     end
     opt The model asks for a tool
-        S->>AI2: run read_file / list_files / glob / grep
+        S->>AI2: run a read-only or, in agent mode, a writing tool
         AI2-->>S: tool result
         S->>AI: stream(again, with the result)
         AI-->>S: response chunks
@@ -369,7 +533,7 @@ sequenceDiagram
 dotnet test
 ```
 
-**478 tests** covering the core, configuration, pricing, providers, analysis, session,
+**666 tests** covering the core, configuration, pricing, providers, analysis, session,
 tools and CLI — of which three are the opt-in live DeepSeek tests. The suite is
 warning-clean, and CI builds with `-warnaserror`.
 

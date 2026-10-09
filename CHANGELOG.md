@@ -36,14 +36,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session persistence.** Every turn is written to `.codai/sessions/latest.json`, and
   `codai code --continue` resumes that conversation. Losing or corrupting the file is
   treated as "nothing to resume" rather than a failure to start.
+- **Agent modes.** `ask`, `plan` and `agent` decide how much freedom a request has, set
+  with `--mode` or changed mid-session with `:mode`. The tool set for a mode is derived
+  from `ITool.IsReadOnly` and the prompt guidance from the same mode, so the two cannot
+  drift when a tool is added.
+- **Writing tools.** `write_file` and `edit_file` are offered in `agent` mode and ask
+  before every call. `edit_file` refuses an edit whose search text is not unique, which
+  turns an ambiguous change into a message the model can act on rather than a silent
+  mis-edit. Both adopt the line endings the file already uses.
+- **`run_command`**, opt-in through `AddCodaiTools(allowShell: true)`, which runs a
+  command line from the project root through the new `IProcessRunner`. It is never
+  registered by default, always asks for approval, never inherits the terminal's standard
+  input, and bounds and truncates the captured output. There is no sandbox; the approval
+  prompt is the boundary.
+- **Automatic compaction.** A conversation that would outgrow the model's context window
+  is summarised before the request is sent, using a `ContextWindow` table and a
+  `TokenEstimator` that errs high, against a threshold that keeps a reserve for the
+  response and the tool definitions. A circuit breaker gives up after three consecutive
+  failures rather than spending the session's whole budget retrying.
+- **Tool budgets.** `ToolCallGovernor` limits a single request to 60 tool calls and to two
+  identical calls, and tells the model to answer with what it has when either is reached.
+  Repeat detection compares arguments by sorted property name, so re-emitting the same
+  arguments in a different order is still the same call.
+- **Project skills.** `.codai/skills/<name>/SKILL.md` files reach the prompt as a name and
+  a description; the body is fetched by the new `read_skill` tool when the model decides
+  the skill applies.
+- **Project commands.** `.codai/commands/<name>.md` files become `:commands` in the
+  session. `$ARGUMENTS` and `$1`–`$9` are substituted, and a colon-prefixed line that
+  matches neither a session command nor a project command is reported instead of being
+  sent to the model as if it were a question.
+- **`:compact <focus>`** weights the summary towards what the user names, so the summary
+  that survives a long session keeps what the next request needs.
+- **`--no-shell`** and **`--no-auto-compact`** turn the command tool and automatic
+  compaction off for a session, without giving up the rest of the agent.
 
 ### Changed
+
+- **The session starts in `agent` mode.** Being asked before every write is what makes
+  that safe, and writing is the point of the tool. `--mode ask` or `--mode plan` starts a
+  read-only session instead.
+- **The read-only modes are enforced twice.** A model with no editing tool can still write
+  a diff into its answer, so `ChangeApplicator` now checks the mode too and reports the
+  changes it refused to apply instead of applying them.
 
 - `Microsoft.Extensions.*` packages moved to 10.0.12, which `Microsoft.Extensions.AI`
   10.10.0 requires.
 - `.codai/` is now a built-in ignore pattern, so the stored session is never read back as
   if it were project context.
 - `SessionCommandHandler.Handle` became `HandleAsync`, since `:compact` calls the model.
+- `SessionCommandHandler.HandleAsync` now takes the command's arguments, so `:mode agent`
+  and a bare `:mode` are both handled by one command.
+- `ChatExchangeService.SendAsync` takes a `ProjectGuidance` (instructions plus skills)
+  instead of an `IProjectInstructionsProvider`-shaped instructions argument, and reads
+  the current `AgentModeState` per request.
+- `AddCodaiSession` accepts `mode`, `allowShell` and `autoCompact`, and the CLI passes the
+  parsed `--mode`, `--no-shell` and `--no-auto-compact` because it can ask before every
+  call.
+- `PromptExtras.Mode` is nullable: a request with no mode gets no mode guidance and every
+  tool the builder holds, which is what keeps the prompt parity tests meaningful.
+- `SkillCatalog.FindAsync` normalises the requested name before validating it, so a
+  capitalised name resolves instead of being rejected as unusable.
+- Flag names are normalised once in `CommandLineParser.SplitFlag` instead of being
+  registered twice, so underscores are accepted wherever a dash is on every flag,
+  including the ones added since the snake_case spellings were deprecated.
+
+### Fixed
+
+- **`$ARGUMENTS` was never substituted.** `CommandExpander` compared the placeholder
+  against the text after the `$`, where it could not match, so a command that used the
+  placeholder lost the user's arguments. Covered now by tests.
 
 ## [2.0.0] - 2026-10-09
 
