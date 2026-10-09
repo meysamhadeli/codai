@@ -1,4 +1,5 @@
 using Codai.Configuration;
+using Codai.Core.Agents;
 using FluentAssertions;
 
 namespace Codai.Core.Tests;
@@ -73,6 +74,102 @@ public class CommandLineParserTests
 
         result.ContinueSession.Should().BeTrue();
         result.Overrides[ConfigKeys.Model].Should().Be("gpt-4o");
+    }
+
+    [Theory]
+    [InlineData("ask", AgentMode.Ask)]
+    [InlineData("plan", AgentMode.Plan)]
+    [InlineData("agent", AgentMode.Agent)]
+    [InlineData("edit", AgentMode.Agent)]
+    public void Parses_the_mode_flag_in_both_spellings(string value, AgentMode expected)
+    {
+        CommandLineParser.Parse(["code", "--mode", value]).Mode.Should().Be(expected);
+        CommandLineParser.Parse(["code", $"--mode={value}"]).Mode.Should().Be(expected);
+    }
+
+    [Fact]
+    public void The_mode_defaults_to_the_one_that_can_change_files()
+    {
+        var result = CommandLineParser.Parse(["code"]);
+
+        result.Mode.Should().Be(AgentModeParser.Default);
+        result.Mode.Should().Be(AgentMode.Agent);
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_mode_is_not_a_configuration_override()
+    {
+        // It belongs to the session, not to the provider settings, so it must not reach
+        // the configuration loader where an unknown key would be ignored silently.
+        CommandLineParser.Parse(["code", "--mode", "agent"]).Overrides.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void An_unknown_mode_is_an_error_that_names_the_accepted_ones()
+    {
+        var result = CommandLineParser.Parse(["code", "--mode", "yolo"]);
+
+        result.Errors.Should().ContainSingle()
+            .Which.Should().Contain("yolo").And.Contain("ask | plan | agent");
+    }
+
+    [Fact]
+    public void A_missing_mode_value_is_an_error()
+    {
+        CommandLineParser.Parse(["code", "--mode"]).Errors.Should().ContainSingle()
+            .Which.Should().Contain("requires a value");
+    }
+
+    [Fact]
+    public void The_shell_and_compaction_switches_start_on()
+    {
+        var result = CommandLineParser.Parse(["code"]);
+
+        result.AllowShell.Should().BeTrue();
+        result.AutoCompact.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("--no-shell")]
+    [InlineData("--no_shell")]
+    public void The_shell_switch_turns_command_running_off(string flag)
+    {
+        var result = CommandLineParser.Parse(["code", flag]);
+
+        result.AllowShell.Should().BeFalse();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_compaction_switch_turns_the_automatic_summary_off()
+    {
+        var result = CommandLineParser.Parse(["code", "--no-auto-compact"]);
+
+        result.AutoCompact.Should().BeFalse();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Every_switch_can_be_given_back_explicitly()
+    {
+        var result = CommandLineParser.Parse(
+            ["code", "--no-shell", "--allow-shell", "--no-auto-compact", "--auto-compact"]);
+
+        result.AllowShell.Should().BeTrue();
+        result.AutoCompact.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_switches_are_not_configuration_overrides()
+    {
+        CommandLineParser
+            .Parse(["code", "--no-shell", "--no-auto-compact"])
+            .Overrides
+            .Should()
+            .BeEmpty();
     }
 
     [Fact]

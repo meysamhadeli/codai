@@ -1,6 +1,7 @@
 using Codai.Cli.Ui;
 using Codai.Configuration;
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
 using Codai.Providers;
 using Codai.Session;
 using Microsoft.Extensions.DependencyInjection;
@@ -90,7 +91,17 @@ public sealed class CliApplication
 
         var services = new ServiceCollection();
         services.AddSingleton<IUserInterface>(_uiOverride ?? new SpectreUserInterface());
-        services.AddCodaiSession(options, workingDirectory, parsed.ContinueSession);
+
+        // The CLI can ask before every change and every command, so it is one of the
+        // hosts that may offer run_command; --no-shell is how a user takes that back
+        // without losing the rest of the agent, and the library default stays off.
+        services.AddCodaiSession(
+            options,
+            workingDirectory,
+            parsed.ContinueSession,
+            mode: parsed.Mode,
+            allowShell: parsed.AllowShell,
+            autoCompact: parsed.AutoCompact);
 
         await using var provider = services.BuildServiceProvider();
 
@@ -134,6 +145,9 @@ public sealed class CliApplication
                   --stream <bool>         Stream the response (default: true).
                   --api-key <key>         API key (prefer the API_KEY environment variable).
                   --api-version <v>       Version header for providers that need one (Anthropic).
+                  --mode <name>           How much the assistant may do: {AgentModeParser.Names} (default: {AgentModeParser.ToName(AgentModeParser.Default)}).
+                  --no-shell              Do not offer the model a way to run commands.
+                  --no-auto-compact       Never summarise a conversation that grows too long.
                   --continue              Resume the conversation stored for this project.
               -v, --version               Print the version and exit.
               -h, --help                  Print this help and exit.

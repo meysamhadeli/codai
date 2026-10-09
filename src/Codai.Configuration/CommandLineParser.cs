@@ -1,3 +1,5 @@
+using Codai.Core.Agents;
+
 namespace Codai.Configuration;
 
 /// <summary>
@@ -28,9 +30,8 @@ public static class CommandLineParser
     ];
 
     /// <summary>
-    /// Flag name to configuration key. The kebab-case spelling is the documented one;
-    /// the snake_case spelling is accepted as an alias so command lines written against
-    /// the original Go CLI keep working.
+    /// Flag name to configuration key. The names are the kebab-case ones;
+    /// <see cref="SplitFlag"/> normalises every other accepted spelling into them.
     /// </summary>
     private static readonly Dictionary<string, string> FlagToConfigKey = BuildFlagMap();
 
@@ -46,6 +47,9 @@ public static class CommandLineParser
         string? configPath = null;
         var showVersion = false;
         var continueSession = false;
+        var mode = AgentModeParser.Default;
+        var allowShell = true;
+        var autoCompact = true;
         var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<string>();
 
@@ -88,6 +92,44 @@ public static class CommandLineParser
                 case "continue":
                     continueSession = true;
                     continue;
+
+                // Switches with an off form rather than a value: there is one sensible
+                // default, so the flag only ever has to turn the feature off.
+                case "no-shell":
+                    allowShell = false;
+                    continue;
+
+                case "allow-shell":
+                    allowShell = true;
+                    continue;
+
+                case "no-auto-compact":
+                    autoCompact = false;
+                    continue;
+
+                case "auto-compact":
+                    autoCompact = true;
+                    continue;
+
+                case "mode":
+                    // Not a configuration key: the mode belongs to the session, not to
+                    // the provider settings, so it never reaches the config loader.
+                    var modeName = hasInlineValue ? inlineValue : TakeValue(args, ref i);
+
+                    if (string.IsNullOrWhiteSpace(modeName))
+                    {
+                        errors.Add("Option '--mode' requires a value.");
+                        continue;
+                    }
+
+                    if (!AgentModeParser.TryParse(modeName, out var parsedMode))
+                    {
+                        errors.Add($"Unknown mode '{modeName}'. Use one of: {AgentModeParser.Names}.");
+                        continue;
+                    }
+
+                    mode = parsedMode;
+                    continue;
             }
 
             if (!FlagToConfigKey.TryGetValue(name, out var configKey))
@@ -106,7 +148,15 @@ public static class CommandLineParser
             overrides[configKey] = value;
         }
 
-        return new CommandLineParseResult(configPath, showVersion, continueSession, overrides, errors);
+        return new CommandLineParseResult(
+            configPath,
+            showVersion,
+            continueSession,
+            mode,
+            allowShell,
+            autoCompact,
+            overrides,
+            errors);
     }
 
     private static Dictionary<string, string> BuildFlagMap()
@@ -116,12 +166,21 @@ public static class CommandLineParser
         foreach (var (canonical, configKey) in KnownFlags)
         {
             map[canonical] = configKey;
-            map[canonical.Replace('-', '_')] = configKey;
         }
 
         return map;
     }
 
+    /// <summary>
+    /// Splits <c>--name=value</c> or <c>-name</c> into a name and an optional value,
+    /// with underscores written as dashes.
+    /// </summary>
+    /// <remarks>
+    /// Normalising here rather than registering every spelling twice means one rule
+    /// covers every flag, including the ones added after the original Go CLI: the
+    /// snake_case spellings it used keep working, and a new switch only has to be
+    /// written once.
+    /// </remarks>
     private static (string Name, string? Value) SplitFlag(string token)
     {
         var stripped = token.StartsWith("--", StringComparison.Ordinal)
@@ -129,9 +188,10 @@ public static class CommandLineParser
             : token[1..];
 
         var separatorIndex = stripped.IndexOf('=');
-        return separatorIndex >= 0
-            ? (stripped[..separatorIndex], stripped[(separatorIndex + 1)..])
-            : (stripped, null);
+        var name = (separatorIndex >= 0 ? stripped[..separatorIndex] : stripped).Replace('_', '-');
+        var value = separatorIndex >= 0 ? stripped[(separatorIndex + 1)..] : null;
+
+        return (name, value);
     }
 
     private static string? TakeValue(IReadOnlyList<string> args, ref int index)

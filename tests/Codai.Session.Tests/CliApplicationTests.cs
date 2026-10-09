@@ -49,7 +49,29 @@ public class CliApplicationTests
         exitCode.Should().Be(0);
         output.Lines.Should().Contain(line => line.Contains(":clear-token", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains(":compact", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains(":mode", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains("--continue", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("--mode", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("--no-shell", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("--no-auto-compact", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Every_option_in_the_help_text_is_on_its_own_line()
+    {
+        var output = new RecordingConsole();
+
+        await new CliApplication(output, () => @"C:\project").RunAsync(["--help"]);
+
+        // An option that shares a line with the previous one is invisible to a reader
+        // scanning the column, and it is how a missing newline in the raw string shows up.
+        var options = string.Join("\n", output.Lines)
+            .Split('\n')
+            .Where(line => line.TrimStart().StartsWith("--", StringComparison.Ordinal))
+            .ToArray();
+
+        options.Should().NotBeEmpty();
+        options.Should().OnlyContain(line => line.Split("--").Length == 2);
     }
 
     [Fact]
