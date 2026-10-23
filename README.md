@@ -96,17 +96,15 @@ Model availability and coding-tool support depend on the selected provider and m
 
 ## Documentation
 
-Documentation now uses **Mintlify**, with Codai's default blue, light/dark themes,
-search, native cards, and guided setup.
-
-> **Hosting transition:** Links below still point to the legacy GitHub Pages site.
-> The new Mintlify overview and Quickstart are available in local preview; publication
-> is pending a Mintlify connection. See [documentation development](CONTRIBUTION.md#documentation)
-> for preview and publishing instructions.
+Documentation uses **Nextra**, with Codai's default blue, light/dark themes, local
+full-text search, and guided setup. GitHub Actions builds and publishes the static site
+to **GitHub Pages** when documentation changes reach `main`; no hosted docs account is
+required. See [documentation development](CONTRIBUTION.md#documentation) for local preview.
 
 | Guide | Covers |
 | --- | --- |
 | [Overview](https://meysamhadeli.github.io/codai) | Introduction to Codai |
+| [Quickstart](https://meysamhadeli.github.io/codai/getting-started/quickstart) | Installation, model connection, and your first session |
 | [Agent mode](https://meysamhadeli.github.io/codai/agent-mode) | Modes, approval policy, terminal controls, and session recovery |
 | [Skills](https://meysamhadeli.github.io/codai/skills) | Project and global skills |
 | [Plugins](https://meysamhadeli.github.io/codai/plugins) | Custom tools and lifecycle hooks |

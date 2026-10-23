@@ -1,0 +1,15 @@
+export default {
+  start: { type: "separator", title: "Getting started" },
+  index: "Overview",
+  "getting-started": { title: "Getting started", display: "children" },
+  agent: { type: "separator", title: "Agent mode" },
+  "agent-mode": "Agent mode",
+  customization: { type: "separator", title: "Customization" },
+  skills: "Skills",
+  plugins: "Plugins",
+  integrations: { type: "separator", title: "Integrations" },
+  mcp: "MCP integrations",
+  "acp-compatibility": "ACP compatibility",
+  resources: { type: "separator", title: "Resources" },
+  "agent-mode-roadmap": "Roadmap",
+};

@@ -1,7 +1,6 @@
 name: Docs
 
-# Mintlify publishes from the connected repository's docs/ directory.
-# This workflow validates sources only; it does not deploy to GitHub Pages.
+# Nextra exports static HTML and Pagefind search to docs/out for GitHub Pages.
 
 on:
   push:
@@ -14,18 +13,26 @@ on:
     branches: ["main"]
     paths:
       - "docs/**"
+      - "README.md"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: docs-pages-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
-    name: Validate Mintlify documentation
+    name: Build Nextra documentation
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -44,6 +51,34 @@ jobs:
           npm test
           npm run check
 
-      - name: Validate Mintlify build
+      - name: Build static site and search index
         working-directory: docs
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload static site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/out
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

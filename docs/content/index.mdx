@@ -1,69 +1,79 @@
 ---
 title: "Build with Codai"
-sidebarTitle: "Overview"
 description: "Your terminal. Your models. A coding agent that works with your project and keeps you in control."
-icon: "terminal"
 ---
+
+import { Cards, Callout, Steps } from "nextra/components";
+
+# Build with Codai
+
+<div className="codai-lead">
+Your terminal. Your models. A coding agent that keeps you in control.
+</div>
 
 Codai is an open source coding agent for your terminal. Explore a codebase, plan a change,
 and work across files with explicit approval for writes and commands.
 
-<CardGroup cols={2}>
-  <Card title="Start your first session" icon="terminal" href="/getting-started/quickstart">
+<Cards num={2}>
+  <Cards.Card title="Start your first session" href="/getting-started/quickstart" arrow>
     Install Codai, connect a model, and open your project.
-  </Card>
-  <Card title="Plan before you act" icon="map" href="/agent-mode">
+  </Cards.Card>
+  <Cards.Card title="Plan before you act" href="/agent-mode" arrow>
     Explore read-only, then switch to Agent when you are ready to make changes.
-  </Card>
-</CardGroup>
+  </Cards.Card>
+</Cards>
 
 ## From idea to working code
 
 <Steps>
-  <Step title="Install">
-    Use the .NET SDK 10.0 or later to install the terminal tool.
 
-    ```bash
-    dotnet tool install --global Codai
-    ```
-  </Step>
-  <Step title="Connect">
-    Choose your provider and model through the guided setup.
+### Install
 
-    ```bash
-    codai auth
-    ```
-  </Step>
-  <Step title="Build">
-    Start a session from your project directory.
+Use the .NET SDK 10.0 or later to install the terminal tool.
 
-    ```bash
-    codai code
-    ```
-  </Step>
+```bash
+dotnet tool install --global Codai
+```
+
+### Connect
+
+Choose your provider and model through the guided setup.
+
+```bash
+codai auth
+```
+
+### Build
+
+Start a session from your project directory.
+
+```bash
+codai code
+```
+
 </Steps>
 
-<Tip>
+<Callout type="info">
   Start with `codai --mode plan "Explain this project"` to explore without changing files
   or running shell commands.
-</Tip>
+</Callout>
 
 ## Make it your own
 
-<CardGroup cols={2}>
-  <Card title="Skills" icon="wand-magic-sparkles" href="/skills">
+<Cards num={2}>
+  <Cards.Card title="Skills" href="/skills" arrow>
     Give Codai reusable instructions for your team's workflows.
-  </Card>
-  <Card title="MCP servers" icon="plug" href="/mcp">
+  </Cards.Card>
+  <Cards.Card title="MCP servers" href="/mcp" arrow>
     Connect external tools through the same approval policy.
-  </Card>
-  <Card title="Plugins" icon="puzzle-piece" href="/plugins">
+  </Cards.Card>
+  <Cards.Card title="Plugins" href="/plugins" arrow>
     Extend tools and lifecycle hooks with .NET plugins.
-  </Card>
-  <Card title="Editor integration" icon="code" href="/acp-compatibility">
+  </Cards.Card>
+  <Cards.Card title="Editor integration" href="/acp-compatibility" arrow>
     Check supported ACP behavior and current compatibility limits.
-  </Card>
-</CardGroup>
+  </Cards.Card>
+</Cards>
 
 ## Stay in control
 

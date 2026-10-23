@@ -1,0 +1,67 @@
+:root {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.codai-logo {
+  display: inline-flex;
+  align-items: center;
+}
+
+.codai-logo-dark,
+.dark .codai-logo-light {
+  display: none;
+}
+
+.dark .codai-logo-dark {
+  display: block;
+}
+
+.codai-start {
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--codai-blue);
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.codai-start:hover {
+  filter: brightness(1.08);
+}
+
+.codai-lead {
+  margin: 1rem 0 1.5rem;
+  font-size: 1.35rem;
+  line-height: 1.65;
+  color: #526070;
+}
+
+.dark .codai-lead {
+  color: #a3b1c2;
+}
+
+.nextra-card {
+  padding: 1.25rem;
+  gap: 0.65rem;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.nextra-card > span {
+  order: -1;
+  padding: 0;
+  font-size: 1rem;
+}
+
+@media (max-width: 480px) {
+  .codai-start {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .codai-logo img {
+    width: 118px;
+    height: auto;
+  }
+}
