@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Context;
@@ -32,7 +31,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private const int FrameIntervalMs = 60;
     private static readonly TimeSpan MinimumDrawInterval = TimeSpan.FromMilliseconds(45);
     private bool WideWelcome => _console.Profile.Width >= 64 && TerminalHeight() >= 16;
-    private int HeaderRows => WideWelcome ? 7 : 4;
+    private int HeaderRows => WideWelcome ? 6 : 3;
 
     private bool _welcomeShown;
     private bool _viewportInitialized;
@@ -914,7 +913,6 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             _console.WriteLine();
         }
-        CenteredLine($"Codai v{CodaiDefaults.Version}", "bold");
         if (!ConnectionSetup)
         {
             CenteredLine(hint, "italic grey");
@@ -1206,7 +1204,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private void RenderStatus(int width, int indent)
     {
         var mode = _modeState.Mode;
-        var modes = string.Join("  ", Enum.GetValues<AgentMode>().Select(value => value == mode ? $"[{value}]" : value.ToString()));
+        var modes = mode == AgentMode.Agent ? "[Agent]  Plan" : "Agent  [Plan]";
 
         void StatusLine(string value, string style = "grey", bool newline = true)
         {

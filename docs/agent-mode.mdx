@@ -20,6 +20,30 @@ are read as Plan tasks so resuming them stays read-only.
 SDK hosts constructing `ModeModelState` supply only Plan and Agent provider selections,
 in that order; the former Ask selection was removed.
 
+## Session startup and context
+
+New sessions do not walk the entire project or build a signature map before showing the
+input prompt. There is no automatic **Loading Context...** phase. Instead, the model uses
+the available search and file tools to discover relevant files as it works. This applies
+to both Plan and Agent modes, one-shot requests, and Plan-to-Act execution.
+
+Project instructions, rules, skill metadata, and memory still load before the first model
+request. Interactive sessions defer that loading until a task needs it and reuse the
+guidance for subsequent requests. Opening a session, viewing `:help`, changing modes, or
+exiting does not require loading prompt guidance. Commands that inspect configuration or
+customization may read their own catalogs.
+
+Explicit `@path` mentions still attach matching files. File-scoped rules still activate
+before relevant file tools execute. Write approval, shell policy, and checkpoint behavior
+are unchanged. Resuming saved history and restoring background task metadata remain
+separate startup operations; removing indexing does not remove their I/O or checkpoint I/O.
+
+SDK hosts can still explicitly call `IProjectScanner.ScanAsync` or
+`ProjectContextLoader.LoadAsync` when they need a signature-map snapshot. The existing
+`CodeSession` constructor keeps its context-loader parameter for compatibility, but
+session execution no longer calls it automatically. Direct `IPromptBuilder` callers may
+continue supplying their own `ProjectContext`.
+
 ## Terminal Input
 
 ### Connection Setup
@@ -75,16 +99,18 @@ their existing noninteractive behavior.
 
 The interactive composer keeps long requests wrapped within the terminal and preserves the
 unsent draft when browsing previous requests. Model, token usage, cost, mode, and approval
-state appear below the input. The active mode is blue; inactive modes and the shortcut
-hint are gray. Automatic approval is green when enabled, and Agent is the default mode
+state appear below the input. The mode selector places Agent on the left and Plan on
+the right. The active mode is blue; inactive modes and the shortcut hint are gray.
+Automatic approval is green when enabled, and Agent is the default mode
 unless a different mode is explicitly selected.
 The gray bar beside the model shows the latest reported request's input and output
 tokens against the built-in context estimate (128,000 tokens for unknown models).
 The parenthesized count and API cost are session totals; account-plan connections show
 the plan indicator instead of API cost. Usage updates after responses;
 narrow terminals shorten the model label and hide the bar when space is limited.
-Version and a compact command, file mention, and settings shortcut hint sit below the
-welcome wordmark. Interactive wide terminals show a one-time reveal, bounce, and
+A compact command, file mention, and settings shortcut hint sits below the welcome
+wordmark; the welcome header does not display a version. Use `codai --version` to check
+the installed version. Interactive wide terminals show a one-time reveal, bounce, and
 sparkle sweep lasting about one second. Typing skips the animation without discarding
 input. Resizes, settings redraws, and redirected input use a static header.
 

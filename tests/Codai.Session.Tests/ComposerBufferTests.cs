@@ -283,7 +283,8 @@ public class ComposerBufferTests
         using var ui = new SpectreUserInterface(console, new ChatInput());
         await ui.ReadInputAsync();
         await ui.ReadInputAsync();
-        writer.ToString().Split("Codai v", StringSplitOptions.None).Should().HaveCount(2);
+        writer.ToString().Split("Commands /  Files @  Menu Ctrl+P", StringSplitOptions.None).Should().HaveCount(2);
+        writer.ToString().Should().NotContain("Codai v");
     }
 
     [Theory]
@@ -308,19 +309,18 @@ public class ComposerBufferTests
         using var ui = new SpectreUserInterface(console, new ChatInput(), provider: "header-provider", model: new string('m', 160), projectRoot: "codai-workspace");
         await ui.ReadInputAsync();
         var output = writer.ToString();
-        output.Should().Contain("Codai v").And.Contain("Ctrl+P")
+        output.Should().NotContain("Codai v").And.Contain("Ctrl+P")
             .And.NotContain("codai-workspace").And.NotContain("header-provider").And.NotContain(new string('m', 20));
         output.Split('\n').Should().OnlyContain(line => line.TrimEnd('\r').GetCellWidth() <= width);
         if (width >= 64 && height >= 16)
         {
             output.Should().Contain("/ __|").And.Contain("|___|");
-            output.IndexOf("|___|", StringComparison.Ordinal).Should().BeLessThan(output.IndexOf("Codai v", StringComparison.Ordinal));
+            output.IndexOf("|___|", StringComparison.Ordinal).Should().BeLessThan(output.IndexOf("Ctrl+P", StringComparison.Ordinal));
         }
         else
         {
             output.Should().NotContain("/ __|");
         }
-        output.IndexOf("Codai v", StringComparison.Ordinal).Should().BeLessThan(output.IndexOf("Ctrl+P", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -346,13 +346,29 @@ public class ComposerBufferTests
             .And.Contain("\u001b[38;5;8m  (Shift+Tab)")
             .And.NotContain(": change");
         PlainOutput(writer).Should().NotContain("Ask");
-        var labels = string.Join("  ", Enum.GetValues<AgentMode>().Select(value => value == mode ? $"[{value}]" : value.ToString())) + " (Tab)";
+        var labels = mode == AgentMode.Agent ? "[Agent]  Plan (Tab)" : "Agent  [Plan] (Tab)";
+        PlainOutput(writer).Should().Contain(labels);
         var parts = labels.Split($"[{mode}]", StringSplitOptions.None);
         if (parts[0].Length > 0)
         {
             output.Should().Contain("\u001b[38;5;8m" + parts[0]);
         }
         output.Should().Contain("\u001b[38;5;8m" + parts[1]);
+    }
+
+    [Fact]
+    public void Footer_defaults_to_agent_on_the_left()
+    {
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.No });
+        console.Profile.Width = 100;
+        console.Profile.Height = 30;
+        var input = new SystemConsoleInput();
+        using var ui = new SpectreUserInterface(console, input);
+
+        input.ComposerRedrawHandler!(string.Empty, 0, [], 0);
+
+        PlainOutput(writer).Should().Contain("[Agent]  Plan (Tab)");
     }
 
     [Theory]

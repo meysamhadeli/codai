@@ -4,11 +4,12 @@ using Codai.Core.Projects;
 namespace Codai.Application;
 
 /// <summary>
-/// Scans the project once at the start of a session.
+/// Explicitly scans the project for hosts that need a signature-map snapshot.
 /// </summary>
 /// <remarks>
 /// A scan failure (missing directory, unreadable tree) is reported but does not abort
-/// the session: the model still answers, just without project context.
+/// the operation. Sessions do not invoke this loader automatically; they discover files
+/// on demand through tools.
 /// </remarks>
 public sealed class ProjectContextLoader
 {

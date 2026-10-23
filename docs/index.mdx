@@ -1,11 +1,78 @@
 ---
-title: Codai documentation
-description: Guides for the Codai coding agent, from the first session to custom rules and MCP servers.
+title: "Build with Codai"
+sidebarTitle: "Overview"
+description: "Your terminal. Your models. A coding agent that works with your project and keeps you in control."
+icon: "terminal"
 ---
 
-Codai is an open source coding agent for your terminal. It works from the full context of your
-project, reads and edits real files through tools, runs your commands, and asks before
-anything changes.
+Codai is an open source coding agent for your terminal. Explore a codebase, plan a change,
+and work across files with explicit approval for writes and commands.
 
-Start with [Agent mode](./agent-mode/) to see what each mode allows, then add
-[skills](./skills/) and [MCP servers](./mcp/) as you need them.
+<CardGroup cols={2}>
+  <Card title="Start your first session" icon="terminal" href="/getting-started/quickstart">
+    Install Codai, connect a model, and open your project.
+  </Card>
+  <Card title="Plan before you act" icon="map" href="/agent-mode">
+    Explore read-only, then switch to Agent when you are ready to make changes.
+  </Card>
+</CardGroup>
+
+## From idea to working code
+
+<Steps>
+  <Step title="Install">
+    Use the .NET SDK 10.0 or later to install the terminal tool.
+
+    ```bash
+    dotnet tool install --global Codai
+    ```
+  </Step>
+  <Step title="Connect">
+    Choose your provider and model through the guided setup.
+
+    ```bash
+    codai auth
+    ```
+  </Step>
+  <Step title="Build">
+    Start a session from your project directory.
+
+    ```bash
+    codai code
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Start with `codai --mode plan "Explain this project"` to explore without changing files
+  or running shell commands.
+</Tip>
+
+## Make it your own
+
+<CardGroup cols={2}>
+  <Card title="Skills" icon="wand-magic-sparkles" href="/skills">
+    Give Codai reusable instructions for your team's workflows.
+  </Card>
+  <Card title="MCP servers" icon="plug" href="/mcp">
+    Connect external tools through the same approval policy.
+  </Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/plugins">
+    Extend tools and lifecycle hooks with .NET plugins.
+  </Card>
+  <Card title="Editor integration" icon="code" href="/acp-compatibility">
+    Check supported ACP behavior and current compatibility limits.
+  </Card>
+</CardGroup>
+
+## Stay in control
+
+Plan mode reads and searches without writing files or running commands. Agent mode can
+edit files and, when shell access is enabled, run commands under your approval policy.
+Long sessions compact context; `codai code --continue` resumes a previous session.
+
+Sessions discover project files on demand instead of building a full-project index at
+startup. Project guidance still reaches the model before it starts work.
+
+Read the [Agent mode guide](/agent-mode) for permissions, terminal controls, recovery,
+and session commands. See the [roadmap](/agent-mode-roadmap) for work still in progress.

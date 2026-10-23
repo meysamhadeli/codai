@@ -15,7 +15,7 @@ namespace Codai.Application;
 /// prompt — a skill body is fetched by the <c>read_skill</c> tool on demand.
 /// </param>
 /// <remarks>
-/// Both are loaded once, at the start of the session, because both are stable for its
+/// Both are loaded once, before the first model request, because both are stable for its
 /// lifetime and both belong in the system prompt of every request. Grouping them keeps
 /// that single loading step in one place instead of threading two values through the
 /// session loop.
