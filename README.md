@@ -92,7 +92,8 @@ Everything beyond getting started lives in the [documentation](https://meysamhad
 ## Contributing
 
 Bug reports, feature requests and pull requests are welcome. Start with
-[CONTRIBUTION.md](CONTRIBUTION.md); security issues should go through [SECURITY.md](SECURITY.md)
+[CONTRIBUTION.md](CONTRIBUTION.md); report security issues through
+[GitHub private vulnerability reporting](https://github.com/meysamhadeli/codai/security/advisories/new)
 rather than a public issue.
 
 ## License

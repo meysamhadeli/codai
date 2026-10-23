@@ -332,6 +332,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ignored local probe workspaces and Python bytecode caches, and removed previously
+  tracked generated files from the repository without deleting local copies.
+
 - **Mouse scrolling in the full-screen terminal.** Added wheel scrolling and right-side
   scrollbar clicks/dragging, including while responses were running, without moving the
   footer. Windows console mouse events and VT mouse reports were consumed separately
@@ -359,6 +362,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   placeholder lost the user's arguments. Covered now by tests.
 
 ### Removed
+
+- Removed the standalone security policy file and linked the README directly to private
+  vulnerability reporting.
 
 - **Ask mode.** Removed Ask from the terminal footer, settings, CLI/session mode parsing,
   model selection, and ACP mode switching. Tab toggled between Plan and Agent; Agent
