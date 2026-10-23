@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Codai.Adapters/Codai.Adapters.csproj" />
+    <Project Path="src/Codai.Application/Codai.Application.csproj" />
+    <Project Path="src/Codai.Cli/Codai.Cli.csproj" />
+    <Project Path="src/Codai.Core/Codai.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Codai.Analysis.Tests/Codai.Analysis.Tests.csproj" />
+    <Project Path="tests/Codai.Core.Tests/Codai.Core.Tests.csproj" />
+    <Project Path="tests/Codai.Providers.Tests/Codai.Providers.Tests.csproj" />
+    <Project Path="tests/Codai.Session.Tests/Codai.Application.Tests.csproj" />
+    <Project Path="tests/Codai.Tools.Tests/Codai.Tools.Tests.csproj" />
+  </Folder>
+</Solution>

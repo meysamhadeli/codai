@@ -1,132 +1,100 @@
-[![CI](https://github.com/meysamhadeli/codai/actions/workflows/ci.yml/badge.svg?branch=main&style=flat-square)](https://github.com/meysamhadeli/codai/actions/workflows/ci.yml)
-![Go Version](https://img.shields.io/badge/go%20version-%3E=1.23-61CFDD.svg?style=flat-square)
-[![Apache License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](https://github.com/meysamhadeli/codai/blob/main/LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/meysamhadeli/codai.svg)](https://pkg.go.dev/github.com/meysamhadeli/codai)
+<h1 align="center">Codai</h1>
 
-# Codai
+<p align="center">
+The open source coding agent for your terminal.
+</p>
 
-> 🤖 **AI coding agent for your terminal.**
+<div align="center">
+<table>
+<tbody>
+<td align="center">
+<a href="https://meysamhadeli.github.io/codai" target="_blank"><strong>Docs</strong></a>
+</td>
+<td align="center">
+<a href="https://github.com/meysamhadeli/codai/discussions" target="_blank"><strong>Discussions</strong></a>
+</td>
+<td align="center">
+<a href="https://github.com/meysamhadeli/codai/issues" target="_blank"><strong>Issues</strong></a>
+</td>
+<td align="center">
+<a href="CONTRIBUTION.md" target="_blank"><strong>Contributing</strong></a>
+</td>
+</tbody>
+</table>
+</div>
 
-![](./assets/codai-demo.gif)
+<br>
 
+<p align="center">
+  <img src="assets/codai-demo.gif" alt="Codai working in a terminal" />
+</p>
 
-## ✨ Features
+---
 
-⚡ Support variety of LLMs like OpenAI, Anthropic, Gemini, Grok, DeepSeek, Qween and more.
-
-🧠 Context-aware code completions.
-
-📊 Maintains conversational and code context per session.
-
-🌳 Summarize Full Project Context using Tree-sitter.
-
-➕ Adding new features or test cases.
-
-🔄 Refactoring code structure and efficiency.
-
-🐛 Describe and suggest fixes for bugs.
-
-✅ Code Review Assistance and optimize code quality.
-
-✔️ Accept and apply AI-generated code changes.
-
-📚 Generate comprehensive documentation.
-
-🌐 Works with multiple programming languages such as (C#, Go, Python, Java, Javascript, Typescript).
-
-⚙️ Adjust settings via a config file.
-
-🗂️ Enable the AI to modify several files at the same time.
-
-💳 Track and represent the token consumption for each request.
-
-## 🚀 Get Started
-To install `codai` globally, you can use the following command:
+## Install
 
 ```bash
-go install github.com/meysamhadeli/codai@latest
-```
-
-### ⚙️ Zero Setup
-
-**Simply provide your API key, and it just works!**
-```bash
-export API_KEY="your_api_key"
-```
-
-
-> [!IMPORTANT]
-> Codai use **OpenApi** as a default model and with subcommand `--provider` you can choose your appropriate model and use subcommand `--model` for choosing appropriate model of each provider.
-> *   [OpenAI](https://platform.openai.com/docs/api-reference/introduction)
-> *   [Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md)
-> *   [Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference)
-> *   [Anthropic](https://docs.anthropic.com/en/api/getting-started)
-> *   [Gemini](https://ai.google.dev/docs)
-> *   [Mistral](https://docs.mistral.ai/)
-> *   [Grok](https://docs.x.ai/docs)
-> *   [Qwen](https://help.aliyun.com/zh/dashscope/developer-reference/overview)
-> *   [DeepSeek](https://platform.deepseek.com/docs)
-> *   [OpenRouter](https://openrouter.ai/docs/quick-start)
-
-### 🔧 Advance Configuration
-For more advance configuration add a `codai-config.yml` file in the `root of your working directory` or using `environment variables` to set below configs `globally` as a configuration.
-
-The `codai-config` file should be like following example base on your `AI provider`:
-
-**codai-config.yml**
-```yml
-ai_provider_config:
-  provider: "azure-openai"
-  base_url: "https://test.openai.azure.com"
-  model: "gpt-4o"
-  api_version: "2024-04-01-preview"     #(Optional, If your AI provider like 'AzureOpenai' or 'Anthropic' has chat api version.)
-  temperature: 0.2     #(Optional, If you want use 'Temperature'.)
-  reasoning_effort: "low"     #(Optional, If you want use 'Reasoning'.) 
-theme: "dracula"
-```
-
-If you wish to customize your configuration, you can create your own `codai-config.yml` file and place it in the `root directory` of `each project` you want to analyze with codai. If `no configuration` file is provided, codai will use the `default settings`.
-
-You can also specify a configuration file from any directory by using the following CLI command:
-```bash
-codai code --config ./codai-config.yml
-```
-Additionally, you can pass configuration options directly in the command line. For example:
-```bash
-codai code --provider openapi --temperature 0.8 --api_key test-key
-```
-This flexibility allows you to customize config of codai on the fly.
-
-
-**.codai-gitignore**
-
-Also, you can use `.codai-gitignore` in the `root of your working directory,` and codai will ignore the files that we specify in our `.codai-gitignore`.
-> [!NOTE]
-> We used [Chroma](https://github.com/alecthomas/chroma) for `style` of our `text` and `code block`, and you can find more theme here in [Chroma Style Gallery](https://xyproto.github.io/splash/docs/) and use it as a `theme` in `codai`.
-
-## ▶️ How to Run
-To use `codai` as your code assistant, navigate to the directory where you want to apply codai and run the following command:
-
-```bash
+dotnet tool install --global Codai
+codai auth
 codai code
 ```
-This command will initiate the codai assistant to help you with your coding tasks with understanding the context of your code.
 
-## 🗺️ Plan
-🌀 This project is a work in progress; new features will be added over time. 🌀
+Requires the [.NET SDK 10.0](https://dotnet.microsoft.com/download) or later. Builds from
+source and standalone binaries are covered in the [docs](https://meysamhadeli.github.io/codai).
 
-I will try to add new features in the [Issues](https://github.com/meysamhadeli/codai/issues) section of this app.
+## What it does
 
-# 🌟 Support
+| | |
+| --- | --- |
+| **Edits across your project** | A signature map plus read, search and write tools, so changes land in the right files instead of a guess. [Tools →](https://meysamhadeli.github.io/codai/agent-mode) |
+| **Runs your commands** | Build, test and lint from the session, with every write and command shown and approved first. [Agent mode →](https://meysamhadeli.github.io/codai/agent-mode) |
+| **Plan, then act** | Explore and plan read-only, then execute the plan after consent. [Modes →](https://meysamhadeli.github.io/codai/agent-mode) |
+| **Scrollable terminal** | Browse the conversation with the mouse wheel or scrollbar while the input and status footer stay pinned. [Terminal controls →](https://meysamhadeli.github.io/codai/agent-mode) |
+| **Compact action steps** | Click to open thinking status, command output, and file diffs; edit summaries show added and removed line counts. [Transcript steps →](https://meysamhadeli.github.io/codai/agent-mode) |
+| **Any provider, including local** | OpenAI, Azure OpenAI, Anthropic, Gemini, Mistral, Grok, DeepSeek, Qwen, OpenRouter and Ollama. [Providers →](https://meysamhadeli.github.io/codai) |
+| **Learns your conventions** | `AGENTS.md`, rules, skills, commands and memory documents steer every request. [Rules and skills →](https://meysamhadeli.github.io/codai/skills) |
+| **Long sessions stay affordable** | Conversations compact before they outgrow the window, and `--continue` resumes where you stopped. [Compaction →](https://meysamhadeli.github.io/codai/agent-mode) |
+| **Extensible** | Plugins, MCP servers and lifecycle hooks under the same approval rules. [MCP →](https://meysamhadeli.github.io/codai/mcp) · [Plugins →](https://meysamhadeli.github.io/codai/plugins) |
+| **Also a library** | Host the session runtime in your own .NET app. [Build on Codai →](https://meysamhadeli.github.io/codai) |
 
-If you like my work, feel free to:
+## Common tasks
 
-- ⭐ this repository. And we will be happy together :)
+```bash
+codai --mode plan "Review authentication and plan improvements" # read-only
+codai --mode plan "Plan pagination for orders"         # a numbered plan
+codai code --continue                                  # resume the session
+codai code --provider ollama --model llama3.1          # a local model
+codai --json --mode plan "Plan fixes for TODO comments" # JSON Lines for scripts
+```
 
-Thanks a bunch for supporting me!
+Inside a session, `:help` lists the commands and `@src/Foo.cs` attaches a file to one request.
+Every flag is documented in the [CLI reference](https://meysamhadeli.github.io/codai).
 
-## 🤝 Contribution
+## Extend with plugins or MCP servers
 
-Thanks to all [contributors](https://github.com/meysamhadeli/codai/graphs/contributors), you're awesome and this wouldn't be possible without you! The goal is to build a categorized, community-driven collection of very well-known resources.
+Plugins add tools and lifecycle hooks, MCP servers connect databases, APIs and cloud
+infrastructure, and hooks run commands around agent steps — all through the same approval
+rules as the built-in tools. Manage servers with `codai config mcp` and plugins with
+`codai config plugins`, or read the [plugins](https://meysamhadeli.github.io/codai/plugins) and
+[MCP](https://meysamhadeli.github.io/codai/mcp) guides.
 
-Please follow this [contribution guideline](./CONTRIBUTION.md) to submit a pull request or create the issue.
+## Documentation
+
+Everything beyond getting started lives in the [documentation](https://meysamhadeli.github.io/codai):
+
+- [Agent mode](https://meysamhadeli.github.io/codai/agent-mode) — Plan and Agent, plus Plan → Act
+- [Skills](https://meysamhadeli.github.io/codai/skills) — project and global skills
+- [Plugins](https://meysamhadeli.github.io/codai/plugins) — extend tools and hooks
+- [MCP](https://meysamhadeli.github.io/codai/mcp) — external tool servers
+- [ACP compatibility](https://meysamhadeli.github.io/codai/acp-compatibility) — editor integration
+- [Roadmap](https://meysamhadeli.github.io/codai/agent-mode-roadmap) — what comes next
+
+## Contributing
+
+Bug reports, feature requests and pull requests are welcome. Start with
+[CONTRIBUTION.md](CONTRIBUTION.md); security issues should go through [SECURITY.md](SECURITY.md)
+rather than a public issue.
+
+## License
+
+[Apache 2.0 © 2026 Codai contributors](./LICENSE)

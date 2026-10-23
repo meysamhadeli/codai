@@ -1,0 +1,191 @@
+---
+title: "Agent Mode Roadmap"
+description: "Two-phase roadmap for completing Codai's highest-value agent features."
+---
+
+This roadmap prioritizes reliable autonomous coding. Codai remains terminal-first and host-neutral.
+
+## Phase 1: Core Reliability
+
+Phase 1 makes Agent mode safe for long-running, multi-step development tasks.
+
+### 1. Shadow Git checkpoints
+
+Replace the current text snapshot implementation with a repository-local shadow Git store.
+
+Scope:
+
+- Create an isolated checkpoint repository under Codai state, never the user's `.git` directory.
+- Capture a checkpoint after every state-changing tool call.
+- Include tracked, untracked, ignored, created, deleted, and binary files.
+- Store checkpoint metadata: task ID, tool name, description, timestamp, and parent checkpoint.
+- Add compare and changed-file reporting.
+- Restore files without changing conversation history.
+- Support `files-only`, `task-only`, and `files-and-task` restore modes. Task metadata is
+	captured when available; older checkpoints remain files-only.
+- Keep checkpoint storage bounded with configurable retention.
+
+Acceptance criteria:
+
+- Restoring a checkpoint reproduces the complete workspace state, including deletions and binary files.
+- The user's actual Git history and index remain untouched.
+- A failed or cancelled task retains its last restorable checkpoint.
+- Restore operations require explicit confirmation and are covered by offline tests.
+
+### 2. Resume any saved task
+
+Extend task persistence beyond `--continue`, which currently targets the latest session.
+
+Scope:
+
+- Add task IDs to the CLI entry point, for example `codai code --task <id>`.
+- Add `:task list`, `:task show <id>`, and `:task resume <id>` behavior for interactive sessions.
+- Restore task conversation and mode interactively; proposal, token, and checkpoint metadata
+	remain stored but are not independently reconstructed by the command.
+- Reject stale, missing, consumed, or incompatible task state with a clear diagnostic.
+- Preserve the current workspace; restoration remains an explicit separate action.
+
+Acceptance criteria:
+
+- A task can be resumed after process restart by ID.
+- Resuming a Plan task preserves its proposal and allows a later explicit Act transition.
+- Resuming never silently changes files or grants write/shell consent.
+- JSON output exposes stable task status and IDs.
+
+### 3. Deep planning
+
+Add a structured planning workflow for complex tasks.
+
+Scope:
+
+- Add a `:deep-plan` command and matching CLI option.
+- Keep planning read-only: no write tools, shell tools, hooks, or prose diff application.
+- Produce a bounded plan containing goal, assumptions, affected files, steps, risks, and validation commands.
+- Persist the plan as task state and optionally as `implementation_plan.md` after explicit approval.
+- Let `:act` execute only the matching, non-stale plan.
+
+Acceptance criteria:
+
+- Planning cannot modify project files.
+- The resulting plan is inspectable, resumable, and linked to its source task.
+- Act rejects plans whose referenced task or workspace state is stale.
+
+### 4. Separate models for Plan and Agent modes
+
+Add optional provider/model configuration per mode.
+
+Scope:
+
+- Add `plan_provider`, `plan_model`, `agent_provider`, and `agent_model` configuration.
+- Keep current provider/model as fallback when mode-specific values are absent.
+- Report the active model in CLI and JSON progress output.
+- Do not allow a mode transition to silently change provider credentials.
+
+Acceptance criteria:
+
+- Plan and Agent requests use their configured model independently.
+- Existing configurations behave exactly as before when new settings are absent.
+- Mode/model selection is covered by parser, configuration, and composed session tests.
+
+## Phase 2: Workflow And Integration
+
+Phase 2 improves collaboration, extensibility, and external-host integration after Phase 1 is reliable.
+
+### 1. Checkpoint and task workflow polish
+
+- Add checkpoint compare output and changed-file summaries.
+- Add task history search and filtering. (Implemented: `:task history [query]`.)
+- Add task export/import with schema versioning. (Implemented: `:task export <task-id> <path>` and
+	`:task import <path>` export and restore task metadata only; imports never load conversation or
+	modify workspace files.)
+- Add retention cleanup and storage diagnostics. (Implemented: `:task storage` and
+	`:task diagnostics` report retained checkpoint count and byte size without checkpoint
+	contents or secrets.)
+- Add clear progress events for capture, compare, restore, and resume. (Implemented:
+	structured start/completion/failure events are emitted through `IAgentProgressSink`.)
+
+### 2. Agent teams
+
+Add optional multi-agent coordination for large tasks.
+
+Scope:
+
+- Coordinator, specialist tasks, and a bounded persisted message mailbox. (Implemented vertical
+	slice: `:team start`, `:team list`, and `:team message`.)
+- Separate context and budgets for each teammate. (Implemented through the existing
+	`ISubAgent`/`SubAgentRunner` boundary: every specialist gets its own model loop, read-only
+	tool set, governor, and token accounting.)
+- Read-only delegation by default; writes stay with the coordinator unless explicitly enabled.
+	(Implemented; this slice has no write-capable teammate mode.)
+- Cancellation, failure propagation, and deterministic shutdown. (Implemented through
+	`:team cancel`, bounded fan-out, specialist result aggregation, and awaited cancellation.)
+- Shared task board is implemented: persisted bounded items support `pending`, `in-progress`,
+	`completed`, and `failed` states, optional specialist assignment, and coordinator `:team add`,
+	`:team list`, and `:team complete` commands. `:team start <coordinator> | <plan> ||
+	<description> | <prompt>` accepts an optional host-provided plan; it is persisted as
+	coordinator context and never triggers an extra model call.
+	Model-driven planning remains future work.
+
+Acceptance criteria:
+
+- Team state survives process restart when the host enables the durable state store; exact
+	specialist background-task IDs and mailbox messages are persisted under `.codai/tasks/teams`.
+- A teammate cannot escape its assigned tools, workspace, or budget; existing sub-agent tests
+	continue to enforce the read-only filter and no nesting.
+- Partial failure leaves the coordinator with specialist states, reports, and bounded mailbox
+	messages.
+
+### 3. MCP and plugin management
+
+- Add inspection, enable/disable, install, remove, and reload operations. (Implemented for
+	the current configuration surface: `codai config plugins`, `codai config mcp`, and
+	`codai config mcp|plugin enable|disable|remove <name-or-path>`. Mutations update only an
+	existing Codai config document through atomic file persistence. Plugin remove removes the
+	configuration entry, never the binary; package installation and binary deletion are not
+	part of Codai's configuration model.)
+- Keep external tool startup lazy for offline inspection. (Implemented: inspection reads
+	manifests and paths only; it never loads plugin assemblies or starts MCP processes.)
+- Apply the same mode, consent, budget, and disabled-tool policy to external tools.
+	(Implemented at composition and execution boundaries; MCP tools enter the ordinary tool
+	registry and plugin paths are filtered before registration.)
+- Report plugin and MCP provenance in configuration inspection. (Implemented for configured
+	paths and project `.codai/plugins` discovery.)
+- Live reload remains a host operation: the current DI composition is immutable after session
+	startup, so inspection does not claim that changing configuration mutates active tools.
+
+- Full ACP/protocol parity remains out of scope. The compatibility adapter still does not
+	implement JSON-RPC request IDs, capability negotiation, authentication, binary/image
+	content, separate ACP terminal resources, or provider/model mutation inside an existing
+	session. Create a new session after changing provider/model or external-tool configuration.
+
+### 4. ACP host integration
+
+Implemented as an optional host-neutral compatibility adapter: start `codai --acp` and
+send one JSON object per line over stdin. One JSON object is emitted per line on stdout.
+The adapter reuses `ICodaiSession`, `SessionOptions`, `IUserInterface`,
+`IAgentProgressSink`, the existing configuration loader, and durable session/task stores.
+
+Supported compatibility messages:
+
+- `initialize` -> `initialized`.
+- `new_session` with `cwd`, optional `provider`, `model`, `mode`, `resume`, `taskId`, and
+	`dataDirectory` -> `session_created`.
+- `prompt`, `set_mode`, `cancel`, and `permission_response`.
+- `permission_request`, `progress`, `text`, `error`, and completion events.
+
+This is deliberately named `codai-acp-compat`, not full ACP. Unsupported parts are
+JSON-RPC request IDs, capability negotiation, authentication, binary/image content,
+terminal streaming as a separate ACP resource, and provider/model mutation inside an
+existing session. Create a new session to select a different provider or model. The
+normal CLI path and `--json` one-shot output are unchanged.
+
+## Explicit Non-Goals
+
+Do not prioritize voice input, desktop settings, marketplace UI, billing, email/connectors, or scheduling until the terminal and SDK workflows are stable. These features add product surface but do not materially improve Codai's core agent safety.
+
+## Delivery Rules
+
+- Each feature gets focused unit tests and at least one composed CLI/session test.
+- Read-only modes remain fail-closed at advertisement, execution, and prose-change boundaries.
+- New persistent data is versioned and isolated from user source control.
+- Every phase ends with a zero-warning build and the full offline test suite.

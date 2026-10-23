@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Codai.Core.Tests</RootNamespace>
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codai.Core\Codai.Core.csproj" />
+    <ProjectReference Include="..\..\src\Codai.Adapters\Codai.Adapters.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Frozen copies of the original Go reference artifacts. Embedded so the parity
+         tests stay meaningful now that the Go sources have been removed. -->
+    <EmbeddedResource Include="Golden/SummarizeFullContextPrompt.tmpl"
+                      LogicalName="Codai.Core.Tests.Golden.SummarizeFullContextPrompt.tmpl" />
+    <EmbeddedResource Include="Golden/model_pricing.json"
+                      LogicalName="Codai.Core.Tests.Golden.model_pricing.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,35 @@
+---
+title: Plugins
+description: Extend Codai with tools, commands, and lifecycle policy.
+---
+
+Codai plugins are .NET assemblies that register additional services and tools. Existing agent mode, approval, and budget policies still apply to tools contributed by a plugin.
+
+## Plugin contract
+
+Implement `IToolPlugin` and register the assembly through Codai configuration or the project plugin directory:
+
+```csharp
+public sealed class ProjectPlugin : IToolPlugin
+{
+    public string Name => "project-tools";
+
+    public void Register(IServiceCollection services)
+    {
+        services.AddSingleton<ProjectLookupTool>();
+    }
+}
+```
+
+Plugins may also implement:
+
+- `IPluginCommandProvider` to add slash and colon commands to the existing command catalog.
+- `IPluginAgentHook` to observe lifecycle events or block an event with a policy decision.
+
+Plugin hooks run through the normal hook pipeline. A blocked decision stops the event before external hooks or the requested action continue.
+
+## Installation and configuration
+
+Project plugins can be placed in `.codai/plugins`. Additional assemblies can be configured with the `plugins` setting. Plugin paths may be enabled, disabled, or removed through the configuration command.
+
+Only trusted assemblies should be installed. Assembly plugins execute in the host process and are not a security sandbox.

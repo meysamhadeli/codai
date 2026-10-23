@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- =====================================================================
+       SourceLink. Publishes the commit SHA inside the assembly and PDB, so a
+       consumer who hits a Codai frame in the debugger lands on the exact
+       commit that produced the binary. Declared once here instead of in
+       every project, so a new project is source-linked when it is created.
+       ===================================================================== -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

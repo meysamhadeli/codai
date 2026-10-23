@@ -1,40 +1,79 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
+# ---------------------------------------------------------------------------
+# .NET
+# ---------------------------------------------------------------------------
+# Build results
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+publish/
+artifacts/
+
+# IDE
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# Test results and coverage
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+coverage*.xml
+coverage*.json
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# MSBuild
+*.binlog
+msbuild.log
+
+# Publish / AOT output
 *.dll
-*.so
-*.dylib
+*.exe
+*.pdb
 
-# Test binary, built with `go test -c`
-*.test
+# ---------------------------------------------------------------------------
+# Node (documentation site)
+# ---------------------------------------------------------------------------
+node_modules/
+.mintlify/
+docs/_site/
 
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
-go.work
-go.work.sum
-
-# env file
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
 .env
+.env.local
 
-# Ignore idea
-.idea/**
+# ---------------------------------------------------------------------------
+# Codai state
+# ---------------------------------------------------------------------------
+# Ignore local runtime data, not shareable project instructions, rules,
+# commands, skills, or memory.
+.codai
 
-# Readme
-README.md
 
-# License
-LICENSE
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Config
-config.yml
+# ---------------------------------------------------------------------------
+# Temporary
+# ---------------------------------------------------------------------------
+*.tmp
+*.log
 
-# Assets
-/assets/
+
+# ---------------------------------------------------------------------------
+# Configs
+# ---------------------------------------------------------------------------
+codai-config.json

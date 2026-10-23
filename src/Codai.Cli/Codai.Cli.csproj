@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>codai</AssemblyName>
+    <Description>Run Codai from anywhere with `dotnet tool install --global Codai`, or grab a self-contained build from the releases page.</Description>
+
+    <!-- Ship the CLI as a .NET tool with a stable command name. The package id is the
+         product name so installing the terminal app is one obvious command. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>codai</ToolCommandName>
+    <PackageId>Codai</PackageId>
+    <PackageTags>$(PackageTags);cli-tool;dotnet-tool</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Spectre.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Codai.Application.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Codai.Adapters\Codai.Adapters.csproj" />
+    <ProjectReference Include="..\Codai.Application\Codai.Application.csproj" />
+    <ProjectReference Include="..\Codai.Core\Codai.Core.csproj" />
+  </ItemGroup>
+
+</Project>

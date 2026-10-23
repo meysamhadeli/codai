@@ -1,0 +1,284 @@
+---
+title: "Agent Mode"
+description: "Plan, execute, and recover Codai tasks safely."
+---
+
+Codai agent mode combines model tool use, explicit write policy, task persistence, and context compaction. The mode is selected with `--mode plan|agent` or changed during an interactive session with `:mode`.
+
+## Modes
+
+| Mode | Read files | Run searches | Change files | Run commands |
+| --- | --- | --- | --- | --- |
+| `plan` | Yes | Yes | No | No |
+| `agent` | Yes | Yes | Yes | Only when shell access is enabled |
+
+Mode policy is enforced when tools are advertised, when tools execute, and when prose contains file changes. A provider cannot bypass the selected mode by calling an unoffered tool or writing a diff in its response.
+
+Agent remains the default; Plan investigates without changing files. Ask mode was removed:
+`--mode ask`, `:mode ask`, and `:model ask` are rejected. Saved tasks from Ask mode
+are read as Plan tasks so resuming them stays read-only.
+SDK hosts constructing `ModeModelState` supply only Plan and Agent provider selections,
+in that order; the former Ask selection was removed.
+
+## Terminal Input
+
+### Connection Setup
+
+Running `codai` without arguments in a terminal, or running `codai auth`, opens a
+searchable setup flow rather than starting a coding session. The first screen has two
+choices, in order: **Use your own provider**, then **Continue with ChatGPT**.
+Own-provider setup lists **Hosted provider** first and **Local server** second, without a
+separate Custom endpoint option. Provider selection shows provider names only; models
+are chosen later. Select a provider, enter its server address and masked credential,
+then select a model or enter a custom model ID. The server address remains editable for
+the selected provider. Escape returns to the previous step;
+Escape on the first screen discards setup. Ctrl+C exits.
+
+Provider choices come from Codai's supported-provider catalog. Model suggestions use
+the endpoint's model-list API where available and the provider's configured default.
+Unavailable model discovery does not block manual entry; deployment-based endpoints
+may require a custom deployment identifier. Listing models is not a chat request and
+does not guarantee that a selected model supports every coding tool.
+
+Saving requires explicit confirmation. Provider, endpoint, credential, and model are
+written together, preserving unrelated settings. Credentials are stored as plaintext
+in the chosen configuration file for own-provider connections; keep it private and out of version control. Remote
+credentials require HTTPS; loopback servers may use HTTP and omit credentials.
+
+Account sign-in opens the system browser and registers Codai using the provider's
+public-client authorization flow. It verifies the returned identity and permission to
+use the account plan before listing account-specific models. Availability depends on
+the account's eligibility and granted permissions; API credentials and subscription
+access are separate connections. Declining consent, cancelling, or discarding setup
+does not replace the existing connection.
+
+Only an opaque account reference and the selected model are saved in project
+configuration. Account tokens live separately under the current user's local application
+data directory in `Codai/accounts`: encrypted for the current Windows user, or in
+owner-only files on Unix. Refreshes are serialized across processes and rotating tokens
+are replaced atomically. Saved account registrations can be reauthorized or signed out
+from `codai auth`; sign-out clears local tokens and attempts remote revocation, warning
+when remote revocation could not be confirmed. Register another workspace separately.
+
+Account requests use streaming inference with server-side response storage disabled.
+Interrupted and incomplete streams are not treated as successful responses. The terminal
+shows the account-plan indicator instead of an estimated API dollar charge; its link
+opens the account's usage settings. Plan limits and credits remain managed by the provider.
+
+Setup updates the file selected by `--config`, or an existing configuration under
+`--config-dir`/`CODAI_CONFIG_DIR`, or the current working directory. Without an existing
+file it creates `codai-config.json`. Environment variables and command-line flags still
+override saved values. Use `codai code` afterward; positional and piped tasks retain
+their existing noninteractive behavior.
+
+### Composer
+
+The interactive composer keeps long requests wrapped within the terminal and preserves the
+unsent draft when browsing previous requests. Model, token usage, cost, mode, and approval
+state appear below the input. The active mode is blue; inactive modes and the shortcut
+hint are gray. Automatic approval is green when enabled, and Agent is the default mode
+unless a different mode is explicitly selected.
+The gray bar beside the model shows the latest reported request's input and output
+tokens against the built-in context estimate (128,000 tokens for unknown models).
+The parenthesized count and API cost are session totals; account-plan connections show
+the plan indicator instead of API cost. Usage updates after responses;
+narrow terminals shorten the model label and hide the bar when space is limited.
+Version and a compact command, file mention, and settings shortcut hint sit below the
+welcome wordmark. Interactive wide terminals show a one-time reveal, bounce, and
+sparkle sweep lasting about one second. Typing skips the animation without discarding
+input. Resizes, settings redraws, and redirected input use a static header.
+
+During a response, the composer remains pinned below a scrollable transcript.
+ANSI terminal sessions use an alternate screen: the mode selector and usage information
+stay together in one live footer instead of leaving copies in shell scrollback.
+Use the mouse wheel or PageUp / PageDown to browse the conversation without moving
+the footer. Click or drag the right-side scrollbar to jump through the transcript;
+scrolling also works while a response runs. Mouse scrolling does not interact with
+an open settings or approval dialog. Terminal text selection may require holding Shift
+while dragging when mouse reporting is active.
+Exiting restores the previous shell screen; saved task history is separate.
+The input marker stays blank while a response or tool work is in progress. A separate
+animated status row above the composer shows Thinking, Reasoning, Loading, Responding,
+or the running tool. Reasoning signals change the phase without exposing private
+reasoning text. The row names the task, then adds, in order of importance,
+`esc to interrupt`, the elapsed time, and the output tokens streamed so far.
+Timing and token counts appear after two seconds so a fast answer never flickers
+numbers that are already gone; the token count climbs toward the real figure instead of
+jumping, and a request that stops producing output dims its spinner rather than looking
+frozen. Narrow terminals drop the token count first, then the timer, then the interrupt
+hint, so the name of the task always survives.
+Synchronous work runs outside the terminal's input and animation loop;
+answer chunks render as they arrive rather than waiting for the response to finish.
+Streamed text and command output redraw at most once per frame, which keeps long answers
+smooth instead of repainting the transcript on every delta.
+Providers must support streaming, and the provider's `stream` setting must be enabled.
+Startup and connection setup keep their separate loading animations.
+Approval prompts and errors remain visible.
+User requests
+appear as shaded rows; streamed answers render headings, tables, lists, and code without
+waiting for a complete line. Thinking, reasoning, and tool calls appear as compact steps,
+closed by default. Click a step's header to open or close only that step; its position
+stays anchored while browsing older conversation. Expanded command steps show live output
+and bounded results. Finished steps record their outcome and show elapsed time when it
+exceeds a second. Thinking and reasoning details contain status and timing only, never
+private model reasoning. Normal assistant commentary and answers remain visible.
+
+Built-in `write_file`, `edit_file`, and `apply_patch` steps show green `+added` and red
+`-removed` line counts computed from actual before/after file contents, excluding unchanged
+context. Expand an edit step for per-file counts and a bounded red/green diff preview.
+Multi-file patches show aggregate counts in their header. If a later patch operation
+fails, the step stays failed and reports only edits that already reached disk.
+Existing files must be readable within the 8 MB editing limit before replacement,
+patching, or patch deletion; unreadable or oversized files are refused without
+overwriting them or inventing line counts.
+SDK tool authors can attach these summaries through `ToolResult.FileChanges`, a list of
+`ToolFileChange` records containing `Path`, `AddedLines`, `RemovedLines`, and `Preview`.
+This display metadata does not replace the model-facing `Content` or grant write access.
+
+Type while a response runs to prepare a draft. Enter queues the draft for the next turn;
+up to eight requests can wait. Escape cancels only the current request and keeps the
+session open. Cancellation does not roll back completed file changes. Transcript rendering
+and tool previews are bounded; saved task history remains separate from the display.
+
+| Key | Action |
+| --- | --- |
+| Enter | Complete the selected command and send it, or queue input while a response runs |
+| Alt+Enter or Shift+Enter | Insert a newline when supported by the terminal |
+| Up / Down | Browse history, move between input lines, or select a completion |
+| Home / End | Move to the current line's start or end |
+| Ctrl+Home / Ctrl+End | Move to the request's start or end |
+| Ctrl+Left / Ctrl+Right | Move by word |
+| Ctrl+W | Delete the preceding word |
+| Ctrl+U | Clear the draft |
+| Tab | Accept a visible completion; otherwise toggle Plan and Agent modes |
+| Shift+Tab | Toggle automatic approval for the session |
+| PageUp / PageDown | Scroll the transcript without moving the composer |
+| Mouse wheel | Scroll the transcript up or down |
+| Click / drag the right-side scrollbar | Jump to a position in the transcript |
+| Click a step header | Expand or collapse that action or thinking status |
+| Ctrl+O | Toggle the last clicked step, or the latest step if none is selected |
+| Escape | Stop the current response, dismiss completions, or decline a confirmation |
+| Ctrl+M, Ctrl+P, or F1 | Open or close the settings palette |
+| Ctrl+D | Exit when the draft is empty |
+
+Type `/` to find session commands or `@` to find workspace files. The `:` command prefix
+remains supported. Arrows browse all matching commands in a six-row window; Tab inserts
+the selection and Enter runs it. Command completion also works during a response.
+Completion discovery
+is bounded and skips hidden, generated, dependency, and linked directories. Paths containing
+whitespace are not offered because file mentions currently use whitespace-delimited syntax.
+Confirmation responses use a separate input channel: composer shortcuts cannot change mode
+or approval state while answering a confirmation. Ctrl+C cancels the running CLI.
+
+### Approvals
+
+Before a tool that can change files or run a command, Codai shows a bordered panel over the
+conversation instead of a one-line yes/no question. The panel names the action ("Run this
+command?", "Write this file?", "Apply these changes?", "Start a sub-agent?"), prints the exact
+command, path, or patch, and then offers three numbered choices:
+
+1. Yes, run it once.
+2. Yes, and don't ask again for this tool for the rest of the session.
+3. No, and tell Codai what to do instead.
+
+Arrow keys and Tab move the highlight; Enter accepts it. `Y`, `1`, `A`, `2`, `N`, and `3`
+choose an option directly, and Escape refuses. The panel keeps the first ten lines of a long
+command, patch, or file and reports how many lines it hid, so the content being approved is
+always the content that will run. Answering writes one confirmation line to the transcript, so
+the decision stays visible in the scrollback.
+
+The remember choice is per tool and per session: approving every `write_file` call does not
+approve `run_command`, and nothing is remembered after the process exits. Automatic approval
+(Shift+Tab) and the `auto_approve` configuration list skip the panel entirely. When the terminal
+is redirected, not ANSI-capable, or not interactive, Codai falls back to the plain yes/no
+confirmation so scripted runs still work.
+
+The settings palette opens over the current conversation without discarding the draft.
+Type to filter actions, use arrows to select, Enter to activate, and Escape to close.
+It includes a typed configuration editor, provider and credential fields, appearance,
+integration management, skills and workflows, saved conversations, checkpoints, and help.
+Model selection uses `provider/model` for the current mode. Actions selected during a
+response wait until that response finishes. Changes to models, modes, and approval are
+session-only; configuration edits require an explicit save and apply at next startup.
+Some terminals send Ctrl+M as plain Enter; use Ctrl+P or F1 in those terminals.
+
+### Configuration Controls
+
+`:preferences` opens the configuration editor. Optional sections are `provider`, `theme`,
+`mcp`, `plugins`, and `skills`. The existing `:settings` alias still inspects resolved
+configuration rather than editing it.
+
+Edits preserve unrelated JSON/YAML fields and use atomic writes. If no configuration file
+exists, the editor creates `codai-config.json` in the configuration directory. Values are
+validated before writing. Provider credentials are masked in the form and omitted from
+the transcript, but saving a credential stores it as plaintext in local configuration;
+environment-based credentials remain preferable. Environment and command-line overrides
+still take precedence over saved values.
+
+Appearance offers Graphite, Forest, and Ember accents for terminal controls and applies
+immediately; saving it also selects the appearance for future sessions. MCP and plugin
+controls enable, disable, or remove existing entries without deleting plugin binaries or
+restarting external services. Restart Codai to rebuild configured tool connections.
+The skills browser inserts a selected skill or workflow before the preserved draft and
+does not send it until Enter is pressed.
+
+### Conversation Controls
+
+`:session fork` archives the current conversation and creates an independent branch.
+`:session new` archives history, clears the active conversation and token counters, and
+keeps workspace files and session policy unchanged. Both require explicit consent.
+`:session history` shows up to 100 recent saved tasks; continuing one opens a new branch
+without overwriting its saved source. The transcript shows the latest 20 restored turns;
+the full saved history remains available to the conversation.
+
+`:session restore` selects a saved task, checkpoint, and restore scope. Confirmation is
+required even with tool auto-approval enabled. File-only restore keeps the active
+conversation; conversation restore continues in an independent branch.
+
+## Plan and Act
+
+Start a planning session with `--mode plan`. Codai preserves the completed proposal in task state. Use `:act [instructions]` or `--execute-plan` to review and execute the matching proposal. The transition requires explicit consent and keeps write and command approval independent.
+
+## Checkpoints
+
+Codai captures a workspace snapshot before each task and after its changes. Snapshots exclude `.codai` state and are stored with the task.
+
+Checkpoints are enabled by default. Set `checkpoints_enabled: false` in configuration, use
+`CHECKPOINTS_ENABLED=false`, or pass `--no-checkpoints` when snapshot overhead is not wanted.
+Existing checkpoint data remains available on disk; disabling capture does not delete it.
+
+```text
+:task checkpoints <task-id>
+:task show <task-id>
+:task resume <task-id>
+:task restore <task-id> <checkpoint-id> [files-only|task-only|files-and-task]
+```
+
+Restore requires confirmation. `files-only` replaces project files and leaves task state and
+conversation unchanged. `task-only` restores captured task metadata without changing files.
+`files-and-task` does both. Older checkpoints without task metadata support `files-only` only.
+
+## Context and delegation
+
+Automatic compaction runs in three tiers, cheapest first, so a session rarely pays for the
+one above it:
+
+1. **Trimming.** Old tool output is cleared down to its start and its end — the head of a
+   build log and the error line that ended it — without a model call. Nothing is summarised
+   and nothing can fail, and a conversation this brings back under its budget never reaches
+   the next tier at all.
+2. **Summarising.** The older turns are replaced by a model-written summary, started in the
+   background while an answer is being read. A second compaction folds new turns into the
+   existing summary instead of summarising the summary, and a summary that is not shorter
+   than what it replaces is refused.
+3. **Deterministic shortening.** When the model cannot summarise, the conversation is still
+   shortened without one, rather than left too long to send.
+
+Every replaced turn is archived in `.codai/transcripts` before it is dropped, and the summary
+names the archive so a later turn can read what it lost. After a summary, the files the
+session was most recently working in are restored into the summary turn — a summary can carry
+a decision but not a file, and re-reading one is what would otherwise pay back the saving.
+`task` delegation runs a separate read-only context with its own budget and cannot nest
+another delegated task.
+
+Project instructions, skills, conditional rules, hooks, and tool access policy are resolved per request. Disable shell, sub-agents, hooks, or auto-compaction with the corresponding CLI options when a host needs stricter control.

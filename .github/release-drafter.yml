@@ -1,4 +1,12 @@
-# This release drafter follows the conventions
+# Release Drafter builds the next release note from merged pull requests and labels them
+# with the autolabeler below, following https://keepachangelog.com and
+# https://www.conventionalcommits.org.
+#
+# Version bumps come from labels: `major`, `minor` (a `feat:` title also adds it) or
+# `patch` (a `fix:` title also adds it). Anything unlabelled resolves to a patch.
+#
+# Publishing is separate: `.github/workflows/publish.yml` pushes the packages to
+# nuget.org when the draft is published.
 
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
@@ -6,6 +14,7 @@ template: |
   ## What Changed 👀
   $CHANGES
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
 categories:
   - title: 🚀 Features
     labels:
@@ -40,45 +49,68 @@ categories:
       - deps
       - dependencies
   - title: 🧰 Maintenance
-    label: 'chore'
+    labels:
+      - chore
   - title: 📝 Other changes
 
 autolabeler:
+  - label: 'deps'
+    title:
+      - '/^chore\(deps\)/'
   - label: 'chore'
     branch:
       - '/(chore)\/.*/'
+    title:
+      - '/^chore(\([^)]*\))?:/'
   - label: 'security'
     branch:
       - '/(security)\/.*/'
+    title:
+      - '/^security(\([^)]*\))?:/'
   - label: 'refactor'
     branch:
       - '/(refactor)\/.*/'
+    title:
+      - '/^refactor(\([^)]*\))?:/'
   - label: 'docs'
     branch:
       - '/(docs)\/.*/'
+    title:
+      - '/^docs(\([^)]*\))?:/'
   - label: 'ci'
     branch:
       - '/(ci)\/.*/'
+    title:
+      - '/^ci(\([^)]*\))?:/'
   - label: 'test'
     branch:
       - '/(test)\/.*/'
+    title:
+      - '/^test(\([^)]*\))?:/'
   - label: 'bug'
     branch:
       - '/(fix)\/.*/'
+    title:
+      - '/^fix(\([^)]*\))?:/'
   - label: 'feature'
     branch:
       - '/(feat)\/.*/'
+    title:
+      - '/^feat(\([^)]*\))?:/'
   - label: 'minor'
     branch:
       - '/(feat)\/.*/'
+    title:
+      - '/^feat(\([^)]*\))?:/'
   - label: 'patch'
     branch:
       - '/(fix)\/.*/'
-    body:
-      - '/JIRA-[0-9]{1,4}/'
+    title:
+      - '/^fix(\([^)]*\))?:/'
 
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
-change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
+change-title-escapes: '\<*_&' # Add # and @ here to disable mentions, and ` to disable code blocks.
+
 version-resolver:
   major:
     labels:

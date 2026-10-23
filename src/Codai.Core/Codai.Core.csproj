@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Domain types, abstractions and first-party services that every other Codai package builds on: chat history, diff application, prompt construction, project scanning contracts and token accounting.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\SummarizeFullContextPrompt.tmpl" />
+    <EmbeddedResource Include="Resources\CompactHistoryPrompt.tmpl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Codai.Core.Tests" />
+    <InternalsVisibleTo Include="Codai.Analysis.Tests" />
+  </ItemGroup>
+
+</Project>

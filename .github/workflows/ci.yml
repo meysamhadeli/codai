@@ -1,5 +1,3 @@
-# This workflow will build and test golang project
-
 name: CI
 
 on:
@@ -8,25 +6,140 @@ on:
     paths-ignore:
       - "README.md"
       - "CHANGELOG.md"
+      - "CONTRIBUTION.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - "assets/**"
+      - "docs/**"
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
-  ci:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v3
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
         with:
-          go-version: 1.23
+          dotnet-version: 10.0.x
 
-      - name: build
-        working-directory: ./
-        run: go build -v ./...
+      - name: Show SDK information
+        run: dotnet --info
 
-      - name: test
-        working-directory: ./
-        run: go test -v ./...
+      - name: Restore
+        run: dotnet restore Codai.slnx
+
+      - name: Build
+        run: dotnet build Codai.slnx --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        # Live provider tests are opt-in (CODAI_RUN_INTEGRATION=1 + API_KEY) and never
+        # run in CI, so no secrets are required here.
+        run: >
+          dotnet test Codai.slnx
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ${{ runner.temp }}/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: ${{ runner.temp }}/test-results
+          if-no-files-found: warn
+
+  publish:
+    name: Verify publish
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish the CLI (framework-dependent)
+        run: >
+          dotnet publish src/Codai.Cli/Codai.Cli.csproj
+          --configuration Release
+          --output ./publish
+
+      - name: Smoke test the published binary
+        run: |
+          ./publish/codai --version
+          ./publish/codai --help
+
+  pack:
+    name: Verify the NuGet packages
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Codai.slnx
+
+      # The release workflow packs every src project and installs the tool before it
+      # pushes, so the same two checks run here and a packaging break fails the PR
+      # instead of the release.
+      - name: Pack every src project
+        shell: bash
+        run: |
+          mkdir -p artifacts/packages
+          while IFS= read -r -d '' project; do
+            dotnet pack "$project" \
+              --configuration Release \
+              --output artifacts/packages
+          done < <(find src -type f -name '*.csproj' -print0 | sort -z)
+
+      - name: Verify every src project was packed
+        shell: bash
+        run: |
+          project_count=$(find src -type f -name '*.csproj' | wc -l)
+          package_count=$(find artifacts/packages -maxdepth 1 -name '*.nupkg' | wc -l)
+          if [[ "$project_count" -ne "$package_count" ]]; then
+            echo "::error::Expected $project_count packages, but produced $package_count."
+            exit 1
+          fi
+
+      - name: Verify the tool package installs
+        shell: bash
+        run: |
+          dotnet tool install Codai --tool-path ./tool-verify --add-source ./artifacts/packages
+          ./tool-verify/codai --version
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/packages
+          if-no-files-found: error
+
+# Pushing to nuget.org is not part of CI: .github/workflows/publish.yml does it when a
+# GitHub release is published, using the NUGET_API_KEY repository secret.
