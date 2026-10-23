@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Apply labels
-        uses: release-drafter/release-drafter@v6
+        uses: release-drafter/release-drafter@v7
         with:
           config-name: release-drafter.yml
           disable-releaser: true

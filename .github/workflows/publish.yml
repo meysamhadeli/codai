@@ -29,12 +29,12 @@ jobs:
 
     steps:
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -123,7 +123,7 @@ jobs:
           fi
 
       - name: Upload packages as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-packages-${{ env.PACKAGE_VERSION }}
           path: artifacts/packages
