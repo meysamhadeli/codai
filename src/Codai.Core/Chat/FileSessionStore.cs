@@ -44,11 +44,22 @@ public sealed class FileSessionStore : ISessionStore
     public async Task<IReadOnlyList<ChatTurn>> LoadAsync(
         string rootDirectory,
         CancellationToken cancellationToken = default)
+        => await LoadPathAsync(GetPath(rootDirectory), cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ChatTurn>> LoadAsync(
+        string rootDirectory,
+        string taskId,
+        CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
+        return await LoadPathAsync(GetTaskPath(rootDirectory, taskId), cancellationToken).ConfigureAwait(false);
+    }
 
-        var path = GetPath(rootDirectory);
-
+    private async Task<IReadOnlyList<ChatTurn>> LoadPathAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
         if (!_fileSystem.FileExists(path))
         {
             return [];
@@ -90,11 +101,28 @@ public sealed class FileSessionStore : ISessionStore
         string rootDirectory,
         IReadOnlyList<ChatTurn> turns,
         CancellationToken cancellationToken = default)
+        => await SavePathAsync(GetPath(rootDirectory), rootDirectory, turns, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task SaveAsync(
+        string rootDirectory,
+        string taskId,
+        IReadOnlyList<ChatTurn> turns,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
+        await SavePathAsync(GetTaskPath(rootDirectory, taskId), rootDirectory, turns, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task SavePathAsync(
+        string path,
+        string rootDirectory,
+        IReadOnlyList<ChatTurn> turns,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         ArgumentNullException.ThrowIfNull(turns);
-
-        var path = GetPath(rootDirectory);
 
         if (turns.Count == 0)
         {
@@ -110,7 +138,7 @@ public sealed class FileSessionStore : ISessionStore
         var json = JsonSerializer.Serialize(stored, SessionJsonContext.Default.StoredSession);
 
         _fileSystem.CreateDirectory(Path.Combine(rootDirectory, RelativeFolder));
-        await _fileSystem.WriteAllTextAsync(path, json, cancellationToken).ConfigureAwait(false);
+        await _fileSystem.WriteAllTextAtomicallyAsync(path, json, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Absolute path of the session file for <paramref name="rootDirectory"/>.</summary>
@@ -119,6 +147,15 @@ public sealed class FileSessionStore : ISessionStore
             rootDirectory,
             RelativeFolder.Replace('/', Path.DirectorySeparatorChar),
             FileName);
+
+    public static string GetTaskPath(string rootDirectory, string taskId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
+        return Path.Combine(
+            rootDirectory,
+            RelativeFolder.Replace('/', Path.DirectorySeparatorChar),
+            $"{taskId}.json");
+    }
 
     private void Delete(string path)
     {

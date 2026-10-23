@@ -1,5 +1,6 @@
 using Codai.Configuration;
 using Codai.Core.Chat;
+using Codai.Core.IO;
 using Codai.Core.Tools;
 using Codai.Providers.Tests.Fakes;
 using FluentAssertions;
@@ -149,6 +150,97 @@ public class ToolCallingTests
     }
 
     [Fact]
+    public async Task Failure_stop_does_not_leak_into_the_next_request()
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("call-1", "grep", new Dictionary<string, object?> { ["pattern"] = "TODO" }),
+            ToolCallingChatClient.Says("next request succeeded"));
+        var executor = new RecordingToolExecutor(new StubTool("grep"))
+        {
+            Outcome = ToolResult.Failure("limit reached") with { StopsExecution = true },
+        };
+        var service = new ChatCompletionService(client, Options(), executor);
+
+        Func<Task> act = async () => await DrainAsync(service);
+        await act.Should().ThrowAsync<Codai.Core.Abstractions.ChatProviderException>();
+
+        var updates = await DrainAsync(service);
+
+        updates.Select(update => update.ContentDelta).Should().Contain("next request succeeded");
+        client.CallCount.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Real_runner_stops_after_limit_and_skips_remaining_batch_calls(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("call-1", "grep", new Dictionary<string, object?> { ["pattern"] = "first" }),
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("call-2", "grep", new Dictionary<string, object?> { ["pattern"] = "second" })]),
+                new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("call-3", "grep", new Dictionary<string, object?> { ["pattern"] = "third" })]),
+            ],
+            ToolCallingChatClient.Says("must not continue"));
+        var tool = new StubTool("grep") { Outcome = ToolResult.Failure("search failed") };
+        var runner = new ToolRunner(
+            new ToolRegistry([tool]),
+            DenyAllToolApprover.Instance,
+            NullToolObserver.Instance,
+            new PhysicalFileSystem(),
+            Path.GetTempPath(),
+            governor: new ToolCallGovernor { MaxConsecutiveFailures = 2 });
+        var service = new ChatCompletionService(client, Options(stream), runner);
+
+        Func<Task> act = async () => await DrainAsync(service);
+        await act.Should().ThrowAsync<Codai.Core.Abstractions.ChatProviderException>()
+            .WithMessage("*search failed*2 consecutive failures*");
+
+        client.CallCount.Should().Be(2);
+        tool.Invocations.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Terminal_tool_failure_stops_the_model_loop()
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("call-1", "grep", new Dictionary<string, object?> { ["pattern"] = "TODO" }),
+            ToolCallingChatClient.Says("must not continue"));
+        var executor = new RecordingToolExecutor(new StubTool("grep"))
+        {
+            Outcome = ToolResult.Failure("Tool failure limit reached.") with { StopsExecution = true },
+        };
+        var service = new ChatCompletionService(client, Options(), executor);
+
+        Func<Task> act = async () => await DrainAsync(service);
+        await act.Should().ThrowAsync<Codai.Core.Abstractions.ChatProviderException>()
+            .WithMessage("Tool failure limit reached.");
+
+        client.CallCount.Should().Be(1);
+        executor.Calls.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Terminal_failure_also_stops_non_streaming_requests()
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("call-1", "grep", new Dictionary<string, object?> { ["pattern"] = "TODO" }),
+            ToolCallingChatClient.Says("must not continue"));
+        var executor = new RecordingToolExecutor(new StubTool("grep"))
+        {
+            Outcome = ToolResult.Failure("Tool failure limit reached.") with { StopsExecution = true },
+        };
+        var service = new ChatCompletionService(client, Options(stream: false), executor);
+
+        Func<Task> act = async () => await DrainAsync(service);
+        await act.Should().ThrowAsync<Codai.Core.Abstractions.ChatProviderException>()
+            .WithMessage("Tool failure limit reached.");
+
+        client.CallCount.Should().Be(1);
+        executor.Calls.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task The_non_streaming_path_also_runs_the_loop()
     {
         var client = new ToolCallingChatClient(
@@ -162,6 +254,52 @@ public class ToolCallingTests
 
         executor.Calls.Should().HaveCount(1);
         updates.Select(u => u.ContentDelta).Where(d => d is not null).Should().Equal("Found it.");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Successful_terminal_tool_submits_content_without_another_model_round(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("finish", "submit_task", new Dictionary<string, object?> { ["result"] = "Finished." }),
+            ToolCallingChatClient.Says("must not continue"));
+        var executor = new RecordingToolExecutor(new StubTool("submit_task"))
+        {
+            Outcome = ToolResult.Success("Finished.") with { StopsExecution = true },
+        };
+        var service = new ChatCompletionService(client, Options(stream), executor);
+
+        var updates = await DrainAsync(service);
+
+        updates.Select(update => update.ContentDelta).Where(delta => delta is not null).Should().Equal("Finished.");
+        client.CallCount.Should().Be(1);
+        executor.Calls.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Submission_skips_remaining_batch_tools_and_does_not_leak_to_next_request(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            [
+                new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("finish", "submit_task", new Dictionary<string, object?> { ["result"] = "Finished." })]),
+                new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("later", "grep", new Dictionary<string, object?> { ["pattern"] = "must not run" })]),
+            ],
+            ToolCallingChatClient.Says("next request"));
+        var executor = new RecordingToolExecutor(new StubTool("submit_task"), new StubTool("grep"))
+        {
+            Outcome = ToolResult.Success("Finished.") with { StopsExecution = true },
+        };
+        var service = new ChatCompletionService(client, Options(stream), executor);
+
+        await DrainAsync(service);
+        executor.Calls.Should().ContainSingle();
+        var next = await DrainAsync(service);
+
+        next.Select(update => update.ContentDelta).Should().Contain("next request");
+        client.CallCount.Should().Be(2);
     }
 
     [Fact]

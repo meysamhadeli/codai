@@ -41,6 +41,7 @@ public static class FrontMatter
 
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var closingIndex = -1;
+        string? listKey = null;
 
         for (var i = 1; i < lines.Length; i++)
         {
@@ -57,18 +58,30 @@ public static class FrontMatter
                 continue;
             }
 
+            var listItem = line.Trim();
+            if (listKey is not null && listItem.StartsWith("- ", StringComparison.Ordinal))
+            {
+                var listValue = Unquote(listItem[2..].Trim());
+                fields[listKey] = string.IsNullOrWhiteSpace(fields[listKey])
+                    ? listValue
+                    : $"{fields[listKey]}, {listValue}";
+                continue;
+            }
+
             var separator = line.IndexOf(':');
             if (separator <= 0)
             {
+                listKey = null;
                 continue;
             }
 
             var key = line[..separator].Trim();
-            var value = Unquote(line[(separator + 1)..].Trim());
+            var fieldValue = Unquote(line[(separator + 1)..].Trim());
 
             if (key.Length > 0)
             {
-                fields[key] = value;
+                fields[key] = fieldValue;
+                listKey = fieldValue.Length == 0 ? key : null;
             }
         }
 

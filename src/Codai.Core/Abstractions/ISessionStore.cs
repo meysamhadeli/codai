@@ -17,9 +17,22 @@ public interface ISessionStore
         string rootDirectory,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Reads the conversation saved for one task.</summary>
+    Task<IReadOnlyList<ChatTurn>> LoadAsync(
+        string rootDirectory,
+        string taskId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Overwrites the stored conversation. An empty list forgets it.</summary>
     Task SaveAsync(
         string rootDirectory,
+        IReadOnlyList<ChatTurn> turns,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Saves the conversation under one task ID.</summary>
+    Task SaveAsync(
+        string rootDirectory,
+        string taskId,
         IReadOnlyList<ChatTurn> turns,
         CancellationToken cancellationToken = default);
 }

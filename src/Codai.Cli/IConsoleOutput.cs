@@ -6,6 +6,8 @@ namespace Codai.Cli;
 /// </summary>
 public interface IConsoleOutput
 {
+    void Write(string message) => WriteLine(message);
+
     void WriteLine(string message);
 
     void WriteError(string message);
@@ -15,6 +17,8 @@ public interface IConsoleOutput
 public sealed class SystemConsoleOutput : IConsoleOutput
 {
     public static SystemConsoleOutput Instance { get; } = new();
+
+    public void Write(string message) => Console.Write(message);
 
     /// <inheritdoc />
     public void WriteLine(string message) => Console.WriteLine(message);

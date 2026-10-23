@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Codai.Tokens;
+using Codai.Pricing;
 using FluentAssertions;
 
 namespace Codai.Core.Tests;
@@ -85,7 +85,7 @@ public class PricingParityTests
 
         // Read the catalog straight from the assembly so the raw key set is visible.
         var assembly = typeof(EmbeddedPricingCatalog).Assembly;
-        using var stream = assembly.GetManifestResourceStream("Codai.Tokens.Data.model_pricing.json")!;
+        using var stream = assembly.GetManifestResourceStream("Codai.Pricing.Data.model_pricing.json")!;
         using var document = JsonDocument.Parse(stream);
 
         var catalogKeys = document.RootElement.GetProperty("models")

@@ -21,7 +21,7 @@
 - [ ] `dotnet test Codai.slnx` passes
 - [ ] Added or updated tests for the change
 - [ ] Updated `CHANGELOG.md`
-- [ ] Updated `README.md` if user-visible behaviour changed
+- [ ] Updated `README.md` and the matching page under `docs/` if user-visible behaviour changed
 
 ## Checklist
 

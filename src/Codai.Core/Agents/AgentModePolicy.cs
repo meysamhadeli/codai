@@ -9,7 +9,7 @@ namespace Codai.Core.Agents;
 /// Two rules keep this honest:
 /// <list type="bullet">
 /// <item>Tools are selected by <see cref="ITool.IsReadOnly"/>, never by a list of names,
-/// so a new mutating tool is excluded from the read-only modes the moment it declares
+/// so a new mutating tool is excluded from Plan mode the moment it declares
 /// itself as mutating rather than when someone remembers to update a table.</item>
 /// <item>The prompt guidance and the tool set are produced from the same mode, so the
 /// assistant is never told it may edit while being given no tool that can.</item>
@@ -42,7 +42,7 @@ public static class AgentModePolicy
     {
         AgentMode.Plan => PlanGuidance,
         AgentMode.Agent => AgentGuidance,
-        _ => AskGuidance,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown agent mode."),
     };
 
     /// <summary>
@@ -53,16 +53,8 @@ public static class AgentModePolicy
     {
         AgentMode.Plan => "I won't change anything; I'll answer with a plan you can review.",
         AgentMode.Agent => "I can change files and run commands, and I'll ask before each one.",
-        _ => "I can read anything in the project, but I won't change it.",
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown agent mode."),
     };
-
-    private const string AskGuidance =
-        "## How to work in this session\n\n" +
-        "You are answering questions about this project.\n\n" +
-        "- You can read anything with the tools, but you must not change any file.\n" +
-        "- Read a file before you claim what it contains. Never guess at contents.\n" +
-        "- When the answer is a change, describe the change precisely: name the file and\n" +
-        "  the code to write. The user applies it.\n";
 
     private const string PlanGuidance =
         "## How to work in this session\n\n" +

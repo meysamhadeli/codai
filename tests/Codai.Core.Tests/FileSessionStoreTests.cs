@@ -80,6 +80,34 @@ public class FileSessionStoreTests
     }
 
     [Fact]
+    public async Task Task_sessions_are_stored_independently_from_latest_session()
+    {
+        var (store, fileSystem) = CreateShared();
+
+        await store.SaveAsync(Root, [new ChatTurn(DateTimeOffset.UtcNow, "latest", "answer")]);
+        await store.SaveAsync(Root, "task-123", [new ChatTurn(DateTimeOffset.UtcNow, "task", "answer")]);
+
+        (await store.LoadAsync(Root)).Single().UserRequest.Should().Be("latest");
+        (await store.LoadAsync(Root, "task-123")).Single().UserRequest.Should().Be("task");
+        fileSystem.FileExists(FileSessionStore.GetTaskPath(Root, "task-123")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_failed_atomic_save_preserves_the_previous_session()
+    {
+        var (store, fileSystem) = CreateShared();
+        await store.SaveAsync(Root, [new ChatTurn(DateTimeOffset.UtcNow, "before", "answer")]);
+        fileSystem.FailAtomicWrites = true;
+
+        await FluentActions.Invoking(() => store.SaveAsync(
+                Root,
+                [new ChatTurn(DateTimeOffset.UtcNow, "after", "answer")]))
+            .Should().ThrowAsync<IOException>();
+
+        (await store.LoadAsync(Root)).Should().ContainSingle().Which.UserRequest.Should().Be("before");
+    }
+
+    [Fact]
     public async Task A_corrupt_session_file_is_treated_as_no_session()
     {
         var (store, fileSystem) = CreateShared();

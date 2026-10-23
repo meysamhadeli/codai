@@ -95,6 +95,65 @@ public class ToolCallGovernorTests
     }
 
     [Fact]
+    public void Consecutive_failures_stop_at_the_configured_limit()
+    {
+        var governor = new ToolCallGovernor { MaxConsecutiveFailures = 2 };
+
+        governor.RecordOutcome(ToolResult.Failure("missing file")).StopsExecution.Should().BeFalse();
+        var result = governor.RecordOutcome(ToolResult.Failure("bad path"));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeTrue();
+        result.Content.Should().Contain("bad path").And.Contain("2 consecutive failures");
+        governor.Review("read_file", Args("{}")).Allowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Success_resets_consecutive_failure_count()
+    {
+        var governor = new ToolCallGovernor { MaxConsecutiveFailures = 2 };
+
+        governor.RecordOutcome(ToolResult.Failure("missing file"));
+        governor.RecordOutcome(ToolResult.Success("found file"));
+
+        governor.RecordOutcome(ToolResult.Failure("bad path")).StopsExecution.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Failure_limit_preserves_changes_that_already_reached_disk()
+    {
+        var governor = new ToolCallGovernor { MaxConsecutiveFailures = 1 };
+        var change = new ToolFileChange("landed.txt", 2, 1, "-old\n+new\n+more");
+
+        var result = governor.RecordOutcome(ToolResult.Failure("later operation failed") with { FileChanges = [change] });
+
+        result.StopsExecution.Should().BeTrue();
+        result.IsSuccess.Should().BeFalse();
+        result.FileChanges.Should().ContainSingle().Which.Should().Be(change);
+    }
+
+    [Fact]
+    public void A_new_request_resets_the_failure_limit()
+    {
+        var governor = new ToolCallGovernor { MaxConsecutiveFailures = 1 };
+        governor.RecordOutcome(ToolResult.Failure("missing file")).StopsExecution.Should().BeTrue();
+
+        governor.BeginRequest();
+
+        governor.Review("read_file", Args("{}")).Allowed.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Failure_limit_must_be_positive(int limit)
+    {
+        Action act = () => _ = new ToolCallGovernor { MaxConsecutiveFailures = limit };
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void A_new_request_starts_with_a_clean_budget()
     {
         var governor = new ToolCallGovernor { MaxCalls = 1 };

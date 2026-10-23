@@ -11,8 +11,6 @@ namespace Codai.Core.Tests;
 public class AgentModeTests
 {
     [Theory]
-    [InlineData("ask", AgentMode.Ask)]
-    [InlineData("ASK", AgentMode.Ask)]
     [InlineData(" plan ", AgentMode.Plan)]
     [InlineData("Plan", AgentMode.Plan)]
     [InlineData("agent", AgentMode.Agent)]
@@ -29,6 +27,8 @@ public class AgentModeTests
     [InlineData("   ")]
     [InlineData(null)]
     [InlineData("yolo")]
+    [InlineData("ask")]
+    [InlineData("ASK")]
     public void Rejects_anything_else_without_throwing(string? input)
     {
         AgentModeParser.TryParse(input, out var mode).Should().BeFalse();
@@ -46,14 +46,13 @@ public class AgentModeTests
     }
 
     [Theory]
-    [InlineData(AgentMode.Ask)]
     [InlineData(AgentMode.Plan)]
     [InlineData(AgentMode.Agent)]
     public void A_mode_round_trips_through_its_name(AgentMode mode) =>
         AgentModeParser.ParseOrDefault(AgentModeParser.ToName(mode)).Should().Be(mode);
 
     [Fact]
-    public void The_read_only_modes_are_offered_only_the_read_only_tools()
+    public void Plan_mode_is_offered_only_the_read_only_tools()
     {
         IReadOnlyList<Core.Tools.ITool> tools =
         [
@@ -62,7 +61,6 @@ public class AgentModeTests
             new StubTool("run_command", isReadOnly: false),
         ];
 
-        AgentModePolicy.AllowedTools(AgentMode.Ask, tools).Should().Equal("read_file");
         AgentModePolicy.AllowedTools(AgentMode.Plan, tools).Should().Equal("read_file");
     }
 
@@ -75,13 +73,12 @@ public class AgentModeTests
             .Should().Equal("read_file", "write_file");
 
     [Fact]
-    public void A_new_mutating_tool_is_excluded_from_the_read_only_modes_automatically()
+    public void A_new_mutating_tool_is_excluded_from_plan_mode_automatically()
     {
         // The rule is the IsReadOnly flag, not a list of names, so declaring a tool as
-        // mutating is the only step needed to keep it out of ask and plan.
+        // mutating is the only step needed to keep it out of Plan mode.
         var tools = new List<Core.Tools.ITool> { new StubTool("brand_new_tool", isReadOnly: false) };
 
-        AgentModePolicy.AllowedTools(AgentMode.Ask, tools).Should().BeEmpty();
         AgentModePolicy.AllowedTools(AgentMode.Plan, tools).Should().BeEmpty();
         AgentModePolicy.AllowedTools(AgentMode.Agent, tools).Should().Equal("brand_new_tool");
     }
@@ -89,7 +86,6 @@ public class AgentModeTests
     [Fact]
     public void Only_agent_mode_may_write()
     {
-        AgentModePolicy.AllowsWrites(AgentMode.Ask).Should().BeFalse();
         AgentModePolicy.AllowsWrites(AgentMode.Plan).Should().BeFalse();
         AgentModePolicy.AllowsWrites(AgentMode.Agent).Should().BeTrue();
     }
@@ -97,14 +93,14 @@ public class AgentModeTests
     [Fact]
     public void Every_mode_gets_its_own_guidance_and_its_own_summary()
     {
-        var guidance = new[] { AgentMode.Ask, AgentMode.Plan, AgentMode.Agent }
+        var guidance = Enum.GetValues<AgentMode>()
             .Select(AgentModePolicy.Guidance)
             .ToArray();
 
         guidance.Should().OnlyHaveUniqueItems();
         guidance.Should().OnlyContain(text => text.Contains("How to work in this session", StringComparison.Ordinal));
 
-        var summaries = new[] { AgentMode.Ask, AgentMode.Plan, AgentMode.Agent }
+        var summaries = Enum.GetValues<AgentMode>()
             .Select(AgentModePolicy.Summary)
             .ToArray();
 
@@ -119,10 +115,19 @@ public class AgentModeTests
 
         state.Mode.Should().Be(AgentModeParser.Default);
 
-        state.Mode = AgentMode.Ask;
+        state.Mode = AgentMode.Plan;
 
-        state.Mode.Should().Be(AgentMode.Ask);
+        state.Mode.Should().Be(AgentMode.Plan);
 
         new AgentModeState(AgentMode.Plan).Mode.Should().Be(AgentMode.Plan);
+    }
+
+    [Fact]
+    public void Only_plan_and_agent_are_available_and_stored_mode_values_are_preserved()
+    {
+        Enum.GetValues<AgentMode>().Should().Equal(AgentMode.Plan, AgentMode.Agent);
+        AgentModeParser.Names.Should().Be("plan | agent");
+        ((int)AgentMode.Plan).Should().Be(1);
+        ((int)AgentMode.Agent).Should().Be(2);
     }
 }

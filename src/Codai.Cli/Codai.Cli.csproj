@@ -3,29 +3,30 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>codai</AssemblyName>
-    <Description>Run Codai from anywhere with `dotnet tool install --global Codai.Tool`, or grab a self-contained build from the releases page.</Description>
-    <IsAotCompatible>true</IsAotCompatible>
-    <PublishAot Condition="'$(PublishAot)' == ''">false</PublishAot>
+    <Description>Run Codai from anywhere with `dotnet tool install --global Codai`, or grab a self-contained build from the releases page.</Description>
 
-    <!-- Ship the CLI as a .NET tool with a stable command name. -->
+    <!-- Ship the CLI as a .NET tool with a stable command name. The package id is the
+         product name so installing the terminal app is one obvious command. -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>codai</ToolCommandName>
-    <PackageId>Codai.Tool</PackageId>
+    <PackageId>Codai</PackageId>
     <PackageTags>$(PackageTags);cli-tool;dotnet-tool</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Spectre.Console" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Codai.Analysis\Codai.Analysis.csproj" />
-    <ProjectReference Include="..\Codai.Configuration\Codai.Configuration.csproj" />
+    <InternalsVisibleTo Include="Codai.Application.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Codai.Adapters\Codai.Adapters.csproj" />
+    <ProjectReference Include="..\Codai.Application\Codai.Application.csproj" />
     <ProjectReference Include="..\Codai.Core\Codai.Core.csproj" />
-    <ProjectReference Include="..\Codai.Providers\Codai.Providers.csproj" />
-    <ProjectReference Include="..\Codai.Session\Codai.Session.csproj" />
-    <ProjectReference Include="..\Codai.Tokens\Codai.Tokens.csproj" />
   </ItemGroup>
 
 </Project>

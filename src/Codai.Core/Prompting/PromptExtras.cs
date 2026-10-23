@@ -39,6 +39,9 @@ public sealed record PromptExtras
     /// </summary>
     public string? Instructions { get; init; }
 
+    /// <summary>Durable project knowledge loaded from <c>.codai/memory</c>.</summary>
+    public IReadOnlyList<ProjectMemoryDocument>? Memory { get; init; }
+
     /// <summary>
     /// The skills the project ships. Only each skill's name and description are
     /// rendered: the body is fetched by the <c>read_skill</c> tool when the model decides
@@ -57,4 +60,10 @@ public sealed record PromptExtras
     /// enough. Produced by the retry, never by the first request.
     /// </summary>
     public string? RequestedContext { get; init; }
+
+    /// <summary>
+    /// The project rules that apply to this one request, already rendered. Rules with an
+    /// <c>applyTo</c> glob are included only when the request references a matching file.
+    /// </summary>
+    public string? ProjectRules { get; init; }
 }

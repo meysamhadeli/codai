@@ -97,6 +97,28 @@ public class ListFilesToolTests
         result.Content.Should().Contain("is empty");
     }
 
+    [Theory]
+    [InlineData("src/nested", false)]
+    [InlineData("src/nested/", false)]
+    [InlineData("src/nested/./", false)]
+    [InlineData("src/nested/../nested", false)]
+    [InlineData("src/../src/nested", false)]
+    [InlineData("src/nested", true)]
+    public async Task Equivalent_scope_paths_list_same_children_without_siblings(string scope, bool absolute)
+    {
+        var files = SampleProject()
+            .AddFile(Path.Combine(ToolTestHost.Root, "src", "nested-other", "sibling.cs"), "sibling");
+        var path = absolute ? Path.Combine(ToolTestHost.Root, scope) : scope;
+        var arguments = System.Text.Json.JsonSerializer.SerializeToElement(new { path });
+
+        var result = await Tool.InvokeAsync(arguments, ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        ToolTestHost.Lines(result.Content).Should().Contain("b.cs")
+            .And.NotContain("sibling.cs");
+        result.Content.Should().NotContain("a.cs");
+    }
+
     [Fact]
     public void Declares_itself_read_only() => Tool.IsReadOnly.Should().BeTrue();
 }

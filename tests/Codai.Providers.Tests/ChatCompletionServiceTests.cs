@@ -9,6 +9,28 @@ namespace Codai.Providers.Tests;
 
 public class ChatCompletionServiceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reasoning_chunks_report_phase_without_exposing_private_text(bool compatible)
+    {
+        var reasoning = new ChatResponseUpdate(ChatRole.Assistant, [new TextReasoningContent("private reasoning")]);
+        if (compatible)
+        {
+            reasoning = new ChatResponseUpdate(ChatRole.Assistant, Array.Empty<AIContent>())
+            {
+                RawRepresentation = System.ClientModel.Primitives.ModelReaderWriter.Read<OpenAI.Chat.StreamingChatCompletionUpdate>(
+                    BinaryData.FromString("""{"id":"codai-response","object":"chat.completion.chunk","created":1760000000,"model":"codai-model","choices":[{"index":0,"delta":{"reasoning_content":"private reasoning"}}]}""")),
+            };
+        }
+        var service = new ChatCompletionService(new ScriptedChatClient([reasoning, new ChatResponseUpdate(ChatRole.Assistant, "Visible answer")]), Options());
+        var updates = await DrainAsync(service);
+        updates[0].IsReasoning.Should().BeTrue();
+        updates[0].ContentDelta.Should().BeNull();
+        string.Concat(updates.Select(update => update.ContentDelta)).Should().Be("Visible answer");
+        updates[^1].IsCompleted.Should().BeTrue();
+    }
+
     private static ResolvedProviderOptions Options(
         float? temperature = null,
         int maxTokens = 0,

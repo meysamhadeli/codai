@@ -16,6 +16,8 @@ public interface IFileSystem
 
     Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default);
 
+    Task WriteAllTextAtomicallyAsync(string path, string contents, CancellationToken cancellationToken = default);
+
     void CreateDirectory(string path);
 
     void DeleteFile(string path);

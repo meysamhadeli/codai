@@ -17,5 +17,14 @@ public sealed class ChatHistory : IChatHistory
         _turns.Add(turn);
     }
 
+    public void Replace(int index, ChatTurn turn)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _turns.Count);
+
+        _turns[index] = turn;
+    }
+
     public void Clear() => _turns.Clear();
 }

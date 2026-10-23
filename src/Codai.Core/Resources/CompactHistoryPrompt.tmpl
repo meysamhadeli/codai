@@ -1,17 +1,80 @@
-You are compacting the conversation history of a coding session so that the work can
-continue without the earlier turns.
+You are compacting a coding session so that the work can continue after the earlier
+turns are gone. Nobody will be able to ask you what you left out, so anything you drop is
+dropped for good. The reader is a competent developer with no memory of this
+conversation: everything they will know about it is what you write here.
 
-Write one dense summary of everything that still matters:
+Start with an <analysis> block. In it, walk the conversation turn by turn and note what
+the user asked for, what was decided, what was changed, what was rejected and what was
+left open. That block is scratch work and is discarded, so use it to check that you have
+not skipped anything that still matters.
 
-- what the user asked for, in the order it was asked
-- what was decided, changed or rejected, with the exact file paths and identifiers
-- the current state of the work and anything left unfinished
-- constraints, preferences and corrections the user gave
+Then write the summary itself inside a <summary> block, with these sections, using these
+heading texts exactly:
+
+## Primary Request and Intent
+What the user is trying to achieve, in their own terms. Include the wording of any
+requirement that constrains how the work may be done, and any correction the user gave
+about your approach.
+
+## Key Technical Concepts
+The languages, frameworks, libraries, commands, patterns and domain rules the work
+depends on — the knowledge that had to be established during this conversation and would
+otherwise have to be established again.
+
+## Files and Code Sections
+Every file that was read, created or changed, with its path, why it matters and the parts
+of it that carry the decisions. Quote what has to survive exactly: a signature, a
+constant, a configuration value, a schema, an interface member.
+
+## Errors and Fixes
+Every failure that was hit and what resolved it — build errors, failed tests, wrong
+assumptions, tools that misbehaved. Record a fix the user gave as the user's correction,
+not as your own conclusion.
+
+## Problem Solving
+What was investigated, what was ruled out and why, and what is still not understood.
+Include the approaches that were tried and abandoned, so the same dead end is not walked
+down twice.
+
+## All User Messages
+Every message the user sent, in order, quoted verbatim and in full, excluding tool
+results and anything Codai itself printed. Their exact wording is the instruction that
+still has to be honoured, and it is the one thing a summary must never paraphrase.
+
+## Pending Tasks
+Work that was asked for and is not finished, including anything the user deferred and
+anything that was only implied.
+
+## Current Work
+The state of the work at the moment the conversation was cut, with exact paths and
+identifiers, and precisely what was in progress.
+
+## Optional Next Step
+The next step, if the conversation makes it unambiguous. Quote the user's most recent
+request verbatim and say how the next step follows from it. If the next step is not
+obvious, write that it should be confirmed with the user instead of guessed at.
+
+If the request that follows these instructions names an archived copy of the
+conversation, finish with one more section:
+
+## Full Conversation Archive
+With the path to that archive, stated plainly, and a sentence telling the reader to open
+it before re-deriving anything that is missing from this summary.
 
 Rules:
 
-- Keep file paths, type and member names, commands and error messages exactly as they
-  appeared.
-- Do not invent anything that was not in the conversation.
-- Do not include code blocks longer than a few lines.
-- Answer with the summary only: no preamble, no closing remarks.
+- If a summary already exists and the request names it, continue it. Fold the newer
+  conversation into it rather than starting again, and carry forward every decision and
+  open thread it records that is still true. Never restate it twice.
+- Keep file paths, type and member names, commands, flags, identifiers and error messages
+  exactly as they appeared in the conversation. A symbol renamed in the summary is worse
+  than a symbol omitted.
+- Do not invent anything. If the conversation does not say something, say that it is not
+  known rather than filling the gap.
+- Prefer specific over general: "the reserve is 13,000 tokens" beats "a reserve is
+  configured".
+- Keep code to the lines that carry a decision. Never paste a whole file.
+- Write prose, not an echo of the headings. Each section is thorough; the summary as a
+  whole is not. A shorter summary that keeps every decision beats a longer one that
+  repeats them.
+- Answer with the two blocks only. No preamble, no closing remarks, no offer to help.

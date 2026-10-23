@@ -133,6 +133,28 @@ public class GrepToolTests
         matchLine.Should().EndWith("...");
     }
 
+    [Theory]
+    [InlineData("docs", false)]
+    [InlineData("docs/", false)]
+    [InlineData("./docs/", false)]
+    [InlineData("src/../docs", false)]
+    [InlineData("docs/./", false)]
+    [InlineData("docs", true)]
+    public async Task Equivalent_scope_paths_find_same_matches_without_siblings_or_ignored(string scope, bool absolute)
+    {
+        var files = SampleProject()
+            .AddFile(Path.Combine(ToolTestHost.Root, "docs", "nested", "more.md"), "todo nested\n")
+            .AddFile(Path.Combine(ToolTestHost.Root, "bin", "ignored.md"), "todo ignored\n");
+        var path = absolute ? Path.Combine(ToolTestHost.Root, scope) : scope;
+        var arguments = System.Text.Json.JsonSerializer.SerializeToElement(new { pattern = "todo", path });
+
+        var result = await Tool.InvokeAsync(arguments, ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Content.Should().Contain("docs/notes.md").And.Contain("docs/nested/more.md")
+            .And.NotContain("src/a.cs").And.NotContain("ignored.md");
+    }
+
     [Fact]
     public void Declares_itself_read_only() => Tool.IsReadOnly.Should().BeTrue();
 

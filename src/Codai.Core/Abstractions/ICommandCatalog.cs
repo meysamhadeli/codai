@@ -22,3 +22,10 @@ public interface ICommandCatalog
         string name,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Provides commands from a loaded plugin.</summary>
+public interface IPluginCommandProvider
+{
+    /// <summary>Commands contributed by this plugin.</summary>
+    IReadOnlyList<CommandDefinition> Commands { get; }
+}

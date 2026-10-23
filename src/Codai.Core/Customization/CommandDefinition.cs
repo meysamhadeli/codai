@@ -12,10 +12,14 @@ namespace Codai.Core.Customization;
 /// </param>
 /// <param name="ArgumentHint">Optional reminder of what arguments the command takes.</param>
 /// <param name="Body">The prompt this command expands to.</param>
-/// <param name="SourcePath">Relative path of the file it came from.</param>
+/// <param name="SourcePath">Project-relative path, or absolute path for a global workflow.</param>
 public sealed record CommandDefinition(
     string Name,
     string Description,
     string ArgumentHint,
     string Body,
-    string SourcePath);
+    string SourcePath)
+{
+    /// <summary>True when this workflow came from the configured global command directory.</summary>
+    public bool IsGlobal { get; init; }
+}

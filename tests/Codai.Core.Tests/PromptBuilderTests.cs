@@ -1,6 +1,7 @@
 using Codai.Core.Agents;
 using Codai.Core.Assets;
 using Codai.Core.Chat;
+using Codai.Core.Customization;
 using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using Codai.Core.Tools;
@@ -166,6 +167,46 @@ public class PromptBuilderTests
     }
 
     [Fact]
+    public void Build_includes_durable_project_memory()
+    {
+        var prompt = CreateBuilder()
+            .Build(
+                Context("code"),
+                [],
+                "x",
+                new PromptExtras
+                {
+                    Memory = [new ProjectMemoryDocument("status", ".codai/memory/status.md", "MARKER_MEMORY")],
+                })
+            .SystemPrompt;
+
+        prompt.Should().Contain("## Here is durable project memory");
+        prompt.Should().Contain(".codai/memory/status.md");
+        prompt.Should().Contain("MARKER_MEMORY");
+    }
+
+    [Fact]
+    public void Build_includes_the_project_rules_that_apply()
+    {
+        var prompt = CreateBuilder()
+            .Build(Context("code"), [], "x", new PromptExtras { ProjectRules = "MARKER_RULES" })
+            .SystemPrompt;
+
+        prompt.Should().Contain("## Here are the project rules that apply to this request");
+        prompt.Should().Contain("MARKER_RULES");
+    }
+
+    [Fact]
+    public void An_empty_rules_block_does_not_add_a_section()
+    {
+        var prompt = CreateBuilder()
+            .Build(Context("code"), [], "x", new PromptExtras { ProjectRules = string.Empty })
+            .SystemPrompt;
+
+        prompt.Should().NotContain("## Here are the project rules that apply to this request");
+    }
+
+    [Fact]
     public void Build_includes_the_files_the_user_referenced()
     {
         var prompt = CreateBuilder()
@@ -230,7 +271,7 @@ public class PromptBuilderTests
             Context("code"),
             [],
             "x",
-            new PromptExtras { Mode = AgentMode.Ask });
+            new PromptExtras { Mode = AgentMode.Plan });
 
         request.SystemPrompt.Should().Contain("- read_file:");
         request.SystemPrompt.Should().NotContain("- write_file:");

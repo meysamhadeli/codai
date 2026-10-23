@@ -4,21 +4,24 @@ on:
   push:
     branches:
       - "main"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
 
 jobs:
   update-release-draft:
     name: Release drafter
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
     steps:
-      - name: Update Release Draft
+      - name: Update release draft
         uses: release-drafter/release-drafter@v6
-        id: semantic
         with:
           config-name: release-drafter.yml
+          # Labelling runs in .github/workflows/labeler.yml, so a pull request from a
+          # fork never needs this workflow's write access.
           disable-autolabeler: true
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

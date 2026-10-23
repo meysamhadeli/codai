@@ -92,6 +92,27 @@ public class SubAgentRunnerTests
     }
 
     [Fact]
+    public async Task A_sub_agent_cannot_consume_foreground_user_input()
+    {
+        var (runner, factory, _, _) = Create([new StubTool("read_file"), new ForegroundInputTool()]);
+        factory.Service.Enqueue("Found it.");
+
+        await runner.RunAsync(Question());
+
+        factory.OfferedToolNames.Should().BeEquivalentTo(["read_file"]);
+    }
+
+    private sealed class ForegroundInputTool : ToolBase
+    {
+        public override string Name => "foreground_input";
+        public override string Description => "Requires user input";
+        public override bool RequiresUserInput => true;
+        public override string ParametersSchema => "{\"type\":\"object\"}";
+        public override Task<ToolResult> InvokeAsync(System.Text.Json.JsonElement arguments, ToolContext context,
+            CancellationToken cancellationToken = default) => throw new InvalidOperationException("Delegated tools must not read foreground input.");
+    }
+
+    [Fact]
     public async Task A_session_with_nothing_to_read_reports_that_instead_of_running()
     {
         // Running a model call with no tools would produce a confident answer built from

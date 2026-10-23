@@ -13,6 +13,10 @@ internal sealed class InMemoryFileSystem : IFileSystem
     private readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _directories = new(StringComparer.OrdinalIgnoreCase);
 
+    public List<string> ReadPaths { get; } = [];
+
+    public Action<string>? AfterRead { get; set; }
+
     public InMemoryFileSystem AddDirectory(string path)
     {
         var full = Canonical(path);
@@ -47,12 +51,23 @@ internal sealed class InMemoryFileSystem : IFileSystem
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        return _files.TryGetValue(Canonical(path), out var contents)
-            ? Task.FromResult(contents)
-            : throw new FileNotFoundException(path);
+        if (!_files.TryGetValue(Canonical(path), out var contents))
+        {
+            throw new FileNotFoundException(path);
+        }
+
+        ReadPaths.Add(Canonical(path));
+        AfterRead?.Invoke(path);
+        return Task.FromResult(contents);
     }
 
     public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default)
+    {
+        AddFile(path, contents);
+        return Task.CompletedTask;
+    }
+
+    public Task WriteAllTextAtomicallyAsync(string path, string contents, CancellationToken cancellationToken = default)
     {
         AddFile(path, contents);
         return Task.CompletedTask;

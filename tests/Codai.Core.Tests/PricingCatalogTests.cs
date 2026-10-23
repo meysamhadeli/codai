@@ -1,5 +1,5 @@
 using Codai.Core.Tokens;
-using Codai.Tokens;
+using Codai.Pricing;
 using FluentAssertions;
 
 namespace Codai.Core.Tests;

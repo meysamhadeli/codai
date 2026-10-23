@@ -30,6 +30,7 @@ public class EditFileToolTests
 
         result.IsSuccess.Should().BeTrue();
         result.Content.Should().Contain("Edited a.cs at line 2");
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(new { AddedLines = 1, RemovedLines = 1 });
         (await fileSystem.ReadAllTextAsync(PathOf("a.cs"))).Should().Be("line one\nLINE TWO\nline three\n");
     }
 
@@ -43,6 +44,7 @@ public class EditFileToolTests
             ToolTestHost.Context(fileSystem));
 
         result.IsSuccess.Should().BeTrue();
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(new { AddedLines = 0, RemovedLines = 1 });
         (await fileSystem.ReadAllTextAsync(PathOf("a.cs"))).Should().Be("keep\nkeep\n");
     }
 
@@ -57,6 +59,7 @@ public class EditFileToolTests
 
         result.IsSuccess.Should().BeFalse();
         result.Content.Should().Contain("does not contain");
+        result.FileChanges.Should().BeEmpty();
         (await fileSystem.ReadAllTextAsync(PathOf("a.cs"))).Should().Be("actually present");
     }
 
@@ -89,6 +92,7 @@ public class EditFileToolTests
 
         result.IsSuccess.Should().BeTrue();
         result.Content.Should().Contain("2 occurrences replaced");
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(new { AddedLines = 2, RemovedLines = 2 });
         (await fileSystem.ReadAllTextAsync(PathOf("a.cs"))).Should().Be("value = 2;\nvalue = 2;\n");
     }
 

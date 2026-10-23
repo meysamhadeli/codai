@@ -34,6 +34,23 @@ analyzer rules are declared in `.editorconfig` and `Directory.Build.props`, not 
 IDE, so the same rules apply locally and on the build server. `dotnet format
 Codai.slnx --no-restore` will apply the mechanical ones.
 
+### Documentation
+
+The docs site in `docs/` is built and published by [docs.yml](.github/workflows/docs.yml) to
+https://meysamhadeli.github.io/codai. Pages are `.mdx` files; `docs/docs.json` declares the
+navigation. Before pushing a docs change:
+
+```bash
+cd docs
+npm ci
+npm run check   # pages registered, frontmatter present, README links resolve
+npm run build   # renders docs/_site
+```
+
+Pages must be configured once with **GitHub Actions** as the source in
+Settings → Pages. Adding a custom domain means a `docs/CNAME` file plus updating the base
+URL constants in `docs/build.mjs` and `docs/check.mjs`.
+
 ### Live provider tests
 
 Tests that call a real provider are opt-in and never run in CI:
@@ -50,11 +67,34 @@ dotnet test tests/Codai.Providers.Tests --filter FullyQualifiedName~DeepSeekLive
   suppressing the rule; if you must suppress, do it narrowly and say why.
 - Every collaborator is an interface, and it lives in an `Abstractions` folder next to
   the code that consumes it.
-- Keep provider-specific behaviour inside `src/Codai.Providers`. `Codai.Core` must not
+- Keep provider-specific behaviour inside `src/Codai.Adapters/Providers`. `Codai.Core` must not
   learn about a specific vendor.
 - Add tests with the change. Bug fixes should arrive with a test that fails before the
   fix.
-- Update `CHANGELOG.md` and `README.md` when behaviour a user can see changes.
+- Update `CHANGELOG.md`, `README.md` and the pages under `docs/` when behaviour a user
+  can see changes. The detail belongs in `docs/`; `README.md` stays a short landing page
+  that links to the published documentation.
+
+### Releases and NuGet
+
+Merged pull requests are grouped into a draft release by
+[Release Drafter](.github/release-drafter.yml), which also decides the next version from
+labels: `major`, `minor` (added automatically by a `feat:` title) or `patch` (added
+automatically by a `fix:` title). Anything unlabelled is a patch.
+
+Publishing the draft is the only manual step. [publish.yml](.github/workflows/publish.yml)
+then stamps every package with the release tag, packs each project under `src/`, checks
+that the `Codai` tool installs, and pushes to nuget.org. It needs the `NUGET_API_KEY`
+repository secret; without it the workflow fails before packing.
+
+The packages produced by a release are:
+
+| Package | Contents |
+| --- | --- |
+| `Codai` | The terminal app, installed with `dotnet tool install --global Codai` |
+| `Codai.Application` | Host-neutral session runtime |
+| `Codai.Core` | Domain types and abstractions |
+| `Codai.Adapters` | Providers, configuration, MCP, tools, analysis |
 
 ## Resources
 

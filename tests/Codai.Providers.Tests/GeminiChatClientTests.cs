@@ -31,7 +31,11 @@ public class GeminiChatClientTests
     [Fact]
     public void Returns_empty_text_when_no_candidates()
     {
-        const string payload = """{ "candidates": [] }""";
+        const string payload = """
+            {
+              "candidates": []
+            }
+            """;
 
         var result = GeminiChatClient.ParseGenerateContent(payload);
 

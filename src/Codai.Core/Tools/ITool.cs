@@ -26,6 +26,12 @@ public interface ITool
     /// </summary>
     bool IsReadOnly { get; }
 
+    /// <summary>Whether invocation requires user approval. Defaults to the read-only policy.</summary>
+    bool RequiresApproval => !IsReadOnly;
+
+    /// <summary>Whether invocation consumes foreground user input; excluded from delegated runs.</summary>
+    bool RequiresUserInput => false;
+
     /// <summary>
     /// JSON Schema for the arguments object, as a string. Parsed once and cached by
     /// <see cref="ToolBase"/>.

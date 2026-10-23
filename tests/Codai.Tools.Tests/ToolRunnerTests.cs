@@ -1,3 +1,4 @@
+using Codai.Core.Abstractions;
 using Codai.Core.Tools;
 using FluentAssertions;
 
@@ -5,6 +6,170 @@ namespace Codai.Tools.Tests;
 
 public class ToolRunnerTests
 {
+    [Fact]
+    public async Task Result_observer_receives_bounded_result_and_structured_arguments()
+    {
+        var observer = new RecordingObserver();
+        var change = new ToolFileChange("sample.txt", 40, 0, "+preview");
+        var tool = new FakeTool("read_file")
+        {
+            Result = () => ToolResult.Success(new string('x', 500)) with { FileChanges = [change] },
+        };
+        var runner = Runner(new ToolRegistry([tool]), observer: observer, maxResultChars: 100);
+
+        var result = await runner.ExecuteAsync("read_file", ToolTestHost.Args("{\"path\":\"sample.txt\"}"));
+
+        observer.Results.Should().ContainSingle();
+        observer.Results[0].Result.Should().Be(result);
+        observer.Results[0].Arguments.GetProperty("path").GetString().Should().Be("sample.txt");
+        result.Content.Length.Should().BeLessThan(500);
+        result.FileChanges.Should().ContainSingle().Which.Should().Be(change);
+    }
+
+    [Fact]
+    public async Task Preview_observer_failure_does_not_change_success_or_repeat_execution()
+    {
+        var observer = new RecordingObserver { ThrowOnResult = true };
+        var tool = new FakeTool("read_file");
+        var result = await Runner(new ToolRegistry([tool]), observer: observer).ExecuteAsync("read_file", ToolTestHost.Args("{}"));
+
+        result.IsSuccess.Should().BeTrue();
+        tool.Invocations.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Denied_tool_has_no_result_preview()
+    {
+        var observer = new RecordingObserver();
+        var tool = new FakeTool("write_file", isReadOnly: false);
+        var result = await Runner(new ToolRegistry([tool]), DenyAllToolApprover.Instance, observer)
+            .ExecuteAsync("write_file", ToolTestHost.Args("{}"));
+
+        result.IsSuccess.Should().BeFalse();
+        observer.Results.Should().BeEmpty();
+        tool.Invocations.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Clarification_preserves_real_answer_without_granting_consent()
+    {
+        var handler = new RecordingClarificationHandler("Use PostgreSQL.");
+        var tool = new AskQuestionTool(handler);
+        var result = await Runner(new ToolRegistry([tool]), DenyAllToolApprover.Instance)
+            .ExecuteAsync(tool.Name, ToolTestHost.Args("{\"question\":\"Which database?\",\"options\":[\"SQLite\",\"PostgreSQL\"]}"));
+
+        result.IsSuccess.Should().BeTrue();
+        result.StopsExecution.Should().BeFalse();
+        result.Content.Should().Be("Use PostgreSQL.");
+        tool.RequiresUserInput.Should().BeTrue();
+        handler.Options.Should().Equal("SQLite", "PostgreSQL");
+    }
+
+    [Fact]
+    public async Task Missing_clarification_answer_stops_instead_of_assuming()
+    {
+        var tool = new AskQuestionTool(UnavailableClarificationHandler.Instance);
+        var result = await Runner(new ToolRegistry([tool])).ExecuteAsync(tool.Name,
+            ToolTestHost.Args("{\"question\":\"Which database?\"}"));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeTrue();
+        result.Content.Should().Contain("Which database?");
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"question\":\"  \"}")]
+    [InlineData("{\"question\":42}")]
+    [InlineData("{\"question\":\"Which?\",\"options\":{}}")]
+    [InlineData("{\"question\":\"Which?\",\"options\":[42]}")]
+    [InlineData("{\"question\":\"Which?\",\"options\":[\"\"]}")]
+    [InlineData("{\"question\":\"Which?\",\"options\":[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\"]}")]
+    public async Task Invalid_clarification_does_not_consume_user_input(string args)
+    {
+        var handler = new RecordingClarificationHandler("answer");
+        var tool = new AskQuestionTool(handler);
+
+        var result = await Runner(new ToolRegistry([tool])).ExecuteAsync(tool.Name, ToolTestHost.Args(args));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeFalse();
+        handler.Calls.Should().Be(0);
+    }
+
+    private sealed class RecordingClarificationHandler(string? answer) : IClarificationHandler
+    {
+        public int Calls { get; private set; }
+        public IReadOnlyList<string> Options { get; private set; } = [];
+        public bool Throws { get; init; }
+
+        public Task<string?> AskAsync(string question, IReadOnlyList<string> options, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls++;
+            if (Throws)
+            {
+                throw new IOException("Input unavailable.");
+            }
+
+            Options = options;
+            return Task.FromResult(answer);
+        }
+    }
+
+    [Fact]
+    public async Task Clarification_handler_failure_stops_instead_of_assuming_answer()
+    {
+        var tool = new AskQuestionTool(new RecordingClarificationHandler(null) { Throws = true });
+
+        var result = await Runner(new ToolRegistry([tool])).ExecuteAsync(tool.Name,
+            ToolTestHost.Args("{\"question\":\"Which database?\"}"));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeTrue();
+        result.Content.Should().Contain("Which database?").And.Contain("Input handler failed");
+    }
+
+    [Fact]
+    public async Task Final_submission_is_read_only_and_preserves_final_text()
+    {
+        var tool = new SubmitTaskTool();
+        var runner = Runner(new ToolRegistry([tool]), DenyAllToolApprover.Instance);
+
+        var result = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args("{\"result\":\"Finished.\\nNo edits applied.\"}"));
+
+        tool.IsReadOnly.Should().BeTrue();
+        result.IsSuccess.Should().BeTrue();
+        result.StopsExecution.Should().BeTrue();
+        result.Content.Should().Be("Finished.\nNo edits applied.");
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"result\":\"\"}")]
+    [InlineData("{\"result\":\"  \"}")]
+    [InlineData("{\"result\":42}")]
+    public async Task Invalid_final_submission_does_not_complete_task(string args)
+    {
+        var tool = new SubmitTaskTool();
+        var result = await Runner(new ToolRegistry([tool])).ExecuteAsync(tool.Name, ToolTestHost.Args(args));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Oversized_final_submission_is_rejected_instead_of_silently_completed()
+    {
+        var tool = new SubmitTaskTool();
+        var args = System.Text.Json.JsonSerializer.Serialize(new { result = new string('x', SubmitTaskTool.MaxResultChars + 1) });
+
+        var result = await Runner(new ToolRegistry([tool])).ExecuteAsync(tool.Name, ToolTestHost.Args(args));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeFalse();
+    }
+
     private static ToolRunner Runner(
         IToolRegistry registry,
         IToolApprover? approver = null,
@@ -114,6 +279,59 @@ public class ToolRunnerTests
         result.IsSuccess.Should().BeFalse();
         result.Content.Should().Be("no such file");
         observer.Events.Should().Equal("started:read_file", "completed:read_file:False");
+    }
+
+    [Fact]
+    public async Task Consecutive_tool_failures_stop_further_invocations()
+    {
+        var tool = new FakeTool("read_file") { Result = () => ToolResult.Failure("missing file") };
+        var runner = Runner(new ToolRegistry([tool]));
+
+        for (var index = 0; index < ToolCallGovernor.DefaultMaxConsecutiveFailures; index++)
+        {
+            var result = await runner.ExecuteAsync("read_file", ToolTestHost.Args($$"""{"path":"{{index}}"}"""));
+            result.StopsExecution.Should().Be(index == ToolCallGovernor.DefaultMaxConsecutiveFailures - 1);
+        }
+
+        var denied = await runner.ExecuteAsync("read_file", ToolTestHost.Args("{}"));
+
+        denied.IsSuccess.Should().BeFalse();
+        tool.Invocations.Should().Be(ToolCallGovernor.DefaultMaxConsecutiveFailures);
+    }
+
+    [Fact]
+    public async Task Tool_exceptions_count_toward_the_failure_limit()
+    {
+        var tool = new FakeTool("read_file") { Result = () => throw new IOException("read failed") };
+        var runner = Runner(new ToolRegistry([tool]));
+        ToolResult result = default;
+
+        for (var index = 0; index < ToolCallGovernor.DefaultMaxConsecutiveFailures; index++)
+        {
+            result = await runner.ExecuteAsync("read_file", ToolTestHost.Args($$"""{"path":"{{index}}"}"""));
+        }
+
+        result.StopsExecution.Should().BeTrue();
+        result.Content.Should().Contain("IOException").And.Contain("failure limit reached");
+    }
+
+    [Fact]
+    public async Task Approval_denials_are_not_executed_tool_failures()
+    {
+        var write = new FakeTool("write_file", isReadOnly: false);
+        var read = new FakeTool("read_file") { Result = () => ToolResult.Failure("missing file") };
+        var runner = Runner(new ToolRegistry([write, read]), DenyAllToolApprover.Instance);
+
+        for (var index = 0; index < 4; index++)
+        {
+            await runner.ExecuteAsync("write_file", ToolTestHost.Args($$"""{"path":"{{index}}"}"""));
+        }
+
+        var result = await runner.ExecuteAsync("read_file", ToolTestHost.Args("{}"));
+
+        result.StopsExecution.Should().BeFalse();
+        write.Invocations.Should().Be(0);
+        read.Invocations.Should().Be(1);
     }
 
     [Fact]

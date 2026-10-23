@@ -35,9 +35,14 @@ public sealed class ToolCallGovernor
     /// <summary>Times one identical call may be repeated before it is refused.</summary>
     public const int DefaultMaxRepeats = 2;
 
+    /// <summary>Consecutive tool failures allowed before execution stops.</summary>
+    public const int DefaultMaxConsecutiveFailures = 3;
+
     private readonly Dictionary<string, int> _repeats = new(StringComparer.Ordinal);
 
     private int _calls;
+    private int _consecutiveFailures;
+    private int _maxConsecutiveFailures = DefaultMaxConsecutiveFailures;
 
     /// <summary>Total tool calls allowed in one request.</summary>
     public int MaxCalls { get; init; } = DefaultMaxCalls;
@@ -48,17 +53,47 @@ public sealed class ToolCallGovernor
     /// <summary>Calls made since the last <see cref="BeginRequest"/>.</summary>
     public int Calls => _calls;
 
+    /// <summary>Maximum consecutive executed-tool failures in one request.</summary>
+    public int MaxConsecutiveFailures
+    {
+        get => _maxConsecutiveFailures;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            _maxConsecutiveFailures = value;
+        }
+    }
+
     /// <summary>Clears the per-request counters. Called once per user request.</summary>
     public void BeginRequest()
     {
         _calls = 0;
+        _consecutiveFailures = 0;
         _repeats.Clear();
     }
+
+    /// <summary>Records an executed tool outcome, allowing recovery only within the failure limit.</summary>
+    public ToolResult RecordOutcome(ToolResult result)
+    {
+        _consecutiveFailures = result.IsSuccess ? 0 : _consecutiveFailures + 1;
+        return _consecutiveFailures >= MaxConsecutiveFailures
+            ? result with { Content = $"{result.Content}\n\n{FailureLimitReason()}", StopsExecution = true }
+            : result;
+    }
+
+    private string FailureLimitReason() =>
+        $"Tool failure limit reached ({MaxConsecutiveFailures} consecutive failures). " +
+        "Execution stopped. Review the failures before starting another request.";
 
     /// <summary>Reviews a call about to be made.</summary>
     public ToolCallDecision Review(string toolName, JsonElement arguments)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
+
+        if (_consecutiveFailures >= MaxConsecutiveFailures)
+        {
+            return ToolCallDecision.Deny(FailureLimitReason());
+        }
 
         if (_calls >= MaxCalls)
         {

@@ -31,7 +31,11 @@ public sealed class PromptBuilder : IPromptBuilder
     private const string ToolsHeader = "## Here are the tools you can call\n\n";
     private const string InstructionsHeader =
         "## Here are the project instructions you must follow\n\n";
+    private const string MemoryHeader =
+        "## Here is durable project memory\n\n";
     private const string SkillsHeader = "## Here are the skills available in this project\n\n";
+    private const string RulesHeader =
+        "## Here are the project rules that apply to this request\n\n";
     private const string AttachedContextHeader =
         "## Here are the files the user referenced in this request\n\n";
     private readonly string _fullContextTemplate;
@@ -94,6 +98,23 @@ public sealed class PromptBuilder : IPromptBuilder
             systemPrompt
                 .Append(InstructionsHeader)
                 .Append(extras.Instructions)
+                .Append("\n\n______\n");
+        }
+
+        if (extras?.Memory is { Count: > 0 } memory)
+        {
+            systemPrompt
+                .Append(MemoryHeader)
+                .AppendJoin("\n\n---------\n\n", memory.Select(document =>
+                    $"### {document.Name} ({document.SourcePath})\n\n{document.Content}"))
+                .Append("\n\n______\n");
+        }
+
+        if (!string.IsNullOrEmpty(extras?.ProjectRules))
+        {
+            systemPrompt
+                .Append(RulesHeader)
+                .Append(extras.ProjectRules)
                 .Append("\n\n______\n");
         }
 
@@ -160,7 +181,7 @@ public sealed class PromptBuilder : IPromptBuilder
     /// </summary>
     private static string RenderSkills(IReadOnlyList<SkillDefinition> skills) =>
         new StringBuilder()
-            .AppendLine("These skills are available. Read one with the read_skill tool when ")
+            .AppendLine("These skills are available. Load one with the skills tool when ")
             .AppendLine("its description matches what you are about to do, and follow it.")
             .AppendLine()
             .AppendJoin(
@@ -173,8 +194,17 @@ public sealed class PromptBuilder : IPromptBuilder
     /// Renders one history entry. The timestamp is formatted with the invariant culture
     /// so the same conversation produces the same prompt on every machine.
     /// </summary>
+    /// <remarks>
+    /// A summary turn is a note the session wrote, not something the user asked for, so it
+    /// is labelled as such. Rendered as a user request it would read as though the user had
+    /// typed the summary, and the model would treat a paraphrase of old work as a live
+    /// instruction.
+    /// </remarks>
     private static string RenderTurn(ChatTurn turn) =>
-        $"### History time:\n\n{turn.Timestamp.ToString(CultureInfo.InvariantCulture)}\n---------\n\n" +
-        $"### Here is user request:\n\n{turn.UserRequest}\n---------\n\n" +
-        $"### Here is the the response from using AI:\n\n{turn.AiResponse}";
+        turn.IsCompactionSummary
+            ? $"### History time:\n\n{turn.Timestamp.ToString(CultureInfo.InvariantCulture)}\n---------\n\n" +
+              $"### Summary of earlier conversation (this is a notation, not a user request):\n\n{turn.AiResponse}"
+            : $"### History time:\n\n{turn.Timestamp.ToString(CultureInfo.InvariantCulture)}\n---------\n\n" +
+              $"### Here is user request:\n\n{turn.UserRequest}\n---------\n\n" +
+              $"### Here is the the response from using AI:\n\n{turn.AiResponse}";
 }

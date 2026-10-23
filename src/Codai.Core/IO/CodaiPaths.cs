@@ -19,11 +19,26 @@ public static class CodaiPaths
     /// <summary>Where skills live, one folder per skill.</summary>
     public static string SkillsDirectory { get; } = $"{Folder}/skills";
 
+    /// <summary>Where conditional <c>applyTo</c> rules live, one file per rule.</summary>
+    public static string RulesDirectory { get; } = $"{Folder}/rules";
+
+    /// <summary>Where durable project memory documents live.</summary>
+    public static string MemoryDirectory { get; } = $"{Folder}/memory";
+
+    /// <summary>Configuration file containing rule names to disable.</summary>
+    public const string RulesConfigurationFileName = "rules.json";
+
     /// <summary>Where the stored conversation lives.</summary>
     public static string SessionsDirectory { get; } = $"{Folder}/sessions";
 
+    /// <summary>Where the latest resumable agent task lives.</summary>
+    public static string TasksDirectory { get; } = $"{Folder}/tasks";
+
     /// <summary>File name of a skill's instructions.</summary>
     public const string SkillFileName = "SKILL.md";
+
+    /// <summary>Configuration file containing skill names to disable.</summary>
+    public const string SkillsConfigurationFileName = "skills.json";
 
     /// <summary>
     /// Directory for a relative path expressed with forward slashes, using the platform

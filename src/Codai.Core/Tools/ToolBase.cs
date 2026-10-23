@@ -21,6 +21,12 @@ public abstract class ToolBase : ITool
     public virtual bool IsReadOnly => true;
 
     /// <inheritdoc />
+    public virtual bool RequiresApproval => !IsReadOnly;
+
+    /// <inheritdoc />
+    public virtual bool RequiresUserInput => false;
+
+    /// <inheritdoc />
     public abstract string ParametersSchema { get; }
 
     /// <inheritdoc />

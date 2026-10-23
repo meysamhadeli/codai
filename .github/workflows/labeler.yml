@@ -1,25 +1,31 @@
 name: Auto Labeler
 
+# Labels decide which Release Drafter category a pull request lands in and whether the
+# next release is a major, minor or patch bump, so they are derived from the Conventional
+# Commit title and the branch name.
+
 on:
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
+      - edited
       - labeled
       - unlabeled
-  # pull_request_target:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   auto-labeler:
     name: Auto Labeler
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
 
     steps:
-      - uses: release-drafter/release-drafter@v6
+      - name: Apply labels
+        uses: release-drafter/release-drafter@v6
         with:
           config-name: release-drafter.yml
           disable-releaser: true

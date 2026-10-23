@@ -1,0 +1,19 @@
+{
+  "name": "Codai",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Agent mode",
+        "pages": ["agent-mode", "agent-mode-roadmap", "acp-compatibility"]
+      },
+      {
+        "group": "Customization",
+        "pages": ["skills", "plugins"]
+      },
+      {
+        "group": "Integrations",
+        "pages": ["mcp"]
+      }
+    ]
+  }
+}

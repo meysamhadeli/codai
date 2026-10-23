@@ -10,6 +10,31 @@ namespace Codai.Tools.Tests;
 /// </summary>
 public class RunCommandToolTests
 {
+    [Theory]
+    [InlineData("run_command")]
+    [InlineData("dotnet_build")]
+    [InlineData("dotnet_test")]
+    public async Task Live_output_is_observed_before_command_tool_finishes(string name)
+    {
+        var runner = new StreamingRunner();
+        var observer = new OutputObserver();
+        ITool tool = name switch
+        {
+            "run_command" => new RunCommandTool(runner),
+            "dotnet_build" => new DotnetBuildTool(runner),
+            _ => new DotnetTestTool(runner),
+        };
+        var arguments = ToolTestHost.Args(name == "run_command" ? """{"command":"echo live"}""" : "{}");
+        var run = tool.InvokeAsync(arguments, new ToolContext(ToolTestHost.Root, FileSystem(), observer));
+
+        run.IsCompleted.Should().BeFalse();
+        observer.Outputs.Should().Equal((name, new ProcessOutput("live stdout", false)),
+            (name, new ProcessOutput("live stderr", true)));
+
+        runner.Completion.SetResult(new ProcessResult(0, "live stdout", "live stderr", false));
+        (await run).IsSuccess.Should().BeTrue();
+    }
+
     private static ToolContext Context(IFileSystem fileSystem) => ToolTestHost.Context(fileSystem);
 
     private static IFileSystem FileSystem() => ToolTestHost.NewProject();
@@ -150,5 +175,30 @@ public class RunCommandToolTests
 
         result.IsSuccess.Should().BeFalse();
         result.Content.Should().Contain("command");
+    }
+
+    private sealed class StreamingRunner : IProcessRunner
+    {
+        public TaskCompletionSource<ProcessResult> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<ProcessResult> RunAsync(string commandLine, string workingDirectory, TimeSpan timeout,
+            CancellationToken cancellationToken = default) => throw new InvalidOperationException("Expected streaming execution.");
+
+        public Task<ProcessResult> RunStreamingAsync(string commandLine, string workingDirectory, TimeSpan timeout,
+            Action<ProcessOutput> onOutput, CancellationToken cancellationToken = default)
+        {
+            onOutput(new ProcessOutput("live stdout", false));
+            onOutput(new ProcessOutput("live stderr", true));
+            return Completion.Task;
+        }
+    }
+
+    private sealed class OutputObserver : IToolObserver
+    {
+        public List<(string Name, ProcessOutput Output)> Outputs { get; } = [];
+        public void OnToolStarted(string toolName, string summary) { }
+        public void OnToolCompleted(string toolName, bool succeeded, string detail) { }
+        public void OnToolDenied(string toolName, string summary) { }
+        public void OnToolOutput(string toolName, ProcessOutput output) => Outputs.Add((toolName, output));
     }
 }

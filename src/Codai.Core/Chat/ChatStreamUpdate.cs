@@ -9,6 +9,10 @@ namespace Codai.Core.Chat;
 /// <param name="IsCompleted">True for the final chunk of the stream.</param>
 public readonly record struct ChatStreamUpdate(string? ContentDelta, TokenUsage Usage, bool IsCompleted)
 {
+    public bool IsReasoning { get; init; }
+
+    public static ChatStreamUpdate Reasoning() => new(null, TokenUsage.Empty, false) { IsReasoning = true };
+
     public static ChatStreamUpdate Content(string delta) => new(delta, TokenUsage.Empty, false);
 
     public static ChatStreamUpdate Completed(TokenUsage usage = default) => new(null, usage, true);

@@ -1,3 +1,5 @@
+using Codai.Core.Tools;
+
 namespace Codai.Core.Context;
 
 /// <summary>
@@ -24,6 +26,12 @@ public static class TokenEstimator
 
     /// <summary>Tokens charged for a request regardless of its content.</summary>
     public const int PerRequestOverhead = 8;
+
+    /// <summary>
+    /// Tokens charged per tool on top of its text, covering the envelope a provider
+    /// wraps around a function declaration.
+    /// </summary>
+    public const int PerToolOverhead = 12;
 
     /// <summary>Rounds <paramref name="characters"/> up to a token count.</summary>
     public static int FromCharacters(long characters) =>
@@ -55,5 +63,35 @@ public static class TokenEstimator
         }
 
         return FromCharacters(characters) + (messages * PerMessageOverhead) + PerRequestOverhead;
+    }
+
+    /// <summary>
+    /// Estimates the tokens the tool definitions cost on <em>every</em> request.
+    /// </summary>
+    /// <remarks>
+    /// A tool is charged for its name, its description and its argument schema, because
+    /// that is what the provider is sent, once per call and once per tool. Nothing here
+    /// shrinks as the conversation grows, so a caller deciding whether a conversation
+    /// fits has to subtract this first: nine tools with a schema each are thousands of
+    /// tokens that the history never gets to use.
+    /// </remarks>
+    public static int EstimateTools(IEnumerable<ITool>? tools)
+    {
+        if (tools is null)
+        {
+            return 0;
+        }
+
+        var total = 0;
+
+        foreach (var tool in tools)
+        {
+            total += Estimate(tool.Name);
+            total += Estimate(tool.Description);
+            total += Estimate(tool.ParametersSchema);
+            total += PerToolOverhead;
+        }
+
+        return total;
     }
 }

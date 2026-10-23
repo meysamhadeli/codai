@@ -13,21 +13,18 @@ public static class AgentModeParser
     /// This is <c>agent</c>, like every other coding agent CLI: the point of the tool is
     /// to make the change, and being asked before each one is what makes that safe. A
     /// read-only session is the deliberate choice, so it is the one that has to be asked
-    /// for with <c>--mode ask</c> or <c>:mode ask</c>.
+    /// for with <c>--mode plan</c> or <c>:mode plan</c>.
     /// </remarks>
     public const AgentMode Default = AgentMode.Agent;
 
     /// <summary>Accepted spellings, in the order they are shown to the user.</summary>
-    public static string Names => "ask | plan | agent";
+    public static string Names => "plan | agent";
 
     /// <summary>Parses <paramref name="value"/>, ignoring case and surrounding space.</summary>
     public static bool TryParse(string? value, out AgentMode mode)
     {
         switch (value?.Trim().ToLowerInvariant())
         {
-            case "ask":
-                mode = AgentMode.Ask;
-                return true;
             case "plan":
                 mode = AgentMode.Plan;
                 return true;
@@ -52,6 +49,6 @@ public static class AgentModeParser
     {
         AgentMode.Plan => "plan",
         AgentMode.Agent => "agent",
-        _ => "ask",
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown agent mode."),
     };
 }

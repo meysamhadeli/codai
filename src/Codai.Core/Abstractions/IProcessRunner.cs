@@ -31,4 +31,26 @@ public interface IProcessRunner
         string workingDirectory,
         TimeSpan timeout,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Runs a command with serialized, bounded live-output notifications.</summary>
+    /// <remarks>Callbacks must return promptly. Legacy runners fall back to capture-only execution.</remarks>
+    Task<ProcessResult> RunStreamingAsync(
+        string commandLine,
+        string workingDirectory,
+        TimeSpan timeout,
+        Action<ProcessOutput> onOutput,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onOutput);
+        return RunAsync(commandLine, workingDirectory, timeout, cancellationToken);
+    }
+
+    /// <summary>Runs a command with explicit stdin; never inherits session input.</summary>
+    Task<ProcessResult> RunWithInputAsync(
+        string commandLine,
+        string workingDirectory,
+        string standardInput,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This process runner does not support explicit stdin.");
 }

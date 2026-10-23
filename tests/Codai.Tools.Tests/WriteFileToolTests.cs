@@ -25,6 +25,8 @@ public class WriteFileToolTests
 
         result.IsSuccess.Should().BeTrue();
         result.Content.Should().Contain("Created src/new.cs");
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { Path = "src/new.cs", AddedLines = 1, RemovedLines = 0 });
         fileSystem.FileExists(Path.Combine(ToolTestHost.Root, "src", "new.cs")).Should().BeTrue();
     }
 
@@ -52,6 +54,8 @@ public class WriteFileToolTests
             ToolTestHost.Context(fileSystem));
 
         result.Content.Should().StartWith("Updated a.cs");
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { AddedLines = 1, RemovedLines = 1 });
         (await fileSystem.ReadAllTextAsync(Path.Combine(ToolTestHost.Root, "a.cs")))
             .Should().Be("new contents");
     }
@@ -93,6 +97,7 @@ public class WriteFileToolTests
 
         result.IsSuccess.Should().BeFalse();
         result.Content.Should().Contain("path");
+        result.FileChanges.Should().BeEmpty();
     }
 
     [Fact]
@@ -128,5 +133,59 @@ public class WriteFileToolTests
 
         result.IsSuccess.Should().BeFalse();
         result.Content.Should().Contain("larger than");
+    }
+
+    [Fact]
+    public async Task Rewriting_unchanged_content_reports_zero_changed_lines()
+    {
+        var files = ToolTestHost.NewProject().AddFile(Path.Combine(ToolTestHost.Root, "same.txt"), "same\n");
+        var result = await Tool.InvokeAsync(
+            ToolTestHost.Args("""{"path":"same.txt","content":"same\n"}"""), ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(new { AddedLines = 0, RemovedLines = 0 });
+    }
+
+    [Fact]
+    public async Task Creating_forty_lines_reports_the_exact_counts()
+    {
+        var content = string.Join('\n', Enumerable.Range(1, 40).Select(index => $"line {index}")) + "\n";
+        var result = await Tool.InvokeAsync(
+            ToolTestHost.Args(System.Text.Json.JsonSerializer.Serialize(new { path = "forty.txt", content })),
+            ToolTestHost.Context(ToolTestHost.NewProject()));
+
+        result.FileChanges.Should().ContainSingle().Which.Should().BeEquivalentTo(new { AddedLines = 40, RemovedLines = 0 });
+    }
+
+    [Fact]
+    public async Task Refuses_to_overwrite_when_existing_contents_cannot_be_read()
+    {
+        var path = Path.Combine(ToolTestHost.Root, "existing.txt");
+        var files = ToolTestHost.NewProject().AddFile(path, "original");
+        files.AfterRead = _ => throw new UnauthorizedAccessException("Read denied.");
+        var result = await Tool.InvokeAsync(
+            ToolTestHost.Args("""{"path":"existing.txt","content":"replacement"}"""), ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("could not be read").And.Contain("Read denied");
+        result.FileChanges.Should().BeEmpty();
+        files.AfterRead = null;
+        (await files.ReadAllTextAsync(path)).Should().Be("original");
+    }
+
+    [Fact]
+    public async Task Refuses_to_overwrite_an_existing_file_above_the_read_limit()
+    {
+        var path = Path.Combine(ToolTestHost.Root, "large.txt");
+        var original = new string('x', (int)ToolWrites.MaxWriteBytes + 1);
+        var files = ToolTestHost.NewProject().AddFile(path, original);
+        var result = await Tool.InvokeAsync(
+            ToolTestHost.Args("""{"path":"large.txt","content":"replacement"}"""), ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("larger than").And.Contain("not opened for editing");
+        result.FileChanges.Should().BeEmpty();
+        files.ReadPaths.Should().BeEmpty();
+        (await files.ReadAllTextAsync(path)).Should().Be(original);
     }
 }

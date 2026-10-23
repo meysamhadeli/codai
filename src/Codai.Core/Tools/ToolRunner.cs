@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Codai.Core.Abstractions;
+using Codai.Core.Agents;
 
 namespace Codai.Core.Tools;
 
@@ -25,6 +26,11 @@ public sealed class ToolRunner : IToolExecutor
     private readonly IFileSystem _fileSystem;
     private readonly string _projectRoot;
     private readonly int _maxResultChars;
+    private readonly AgentBudget _budget;
+    private readonly IAgentHooks _hooks;
+    private readonly IToolGuidance? _guidance;
+    private readonly IWorkspaceCheckpointStore? _checkpoints;
+    private readonly AgentTaskContext? _taskContext;
 
     /// <summary>Creates a runner.</summary>
     /// <param name="registry">The tools the model may call.</param>
@@ -44,6 +50,11 @@ public sealed class ToolRunner : IToolExecutor
     /// and must be the same instance the caller uses to begin each request, or the
     /// restriction would be recorded somewhere this runner never reads.
     /// </param>
+    /// <param name="budget">Shared per-task token, cost, and tool-call limits.</param>
+    /// <param name="hooks">Optional lifecycle policy; failures stop execution without replay.</param>
+    /// <param name="guidance">Optional pre-execution guidance requiring a new model decision.</param>
+    /// <param name="checkpoints">Optional workspace checkpoint store for mutating tool calls.</param>
+    /// <param name="taskContext">Optional active task identity used by checkpoint capture.</param>
     public ToolRunner(
         IToolRegistry registry,
         IToolApprover approver,
@@ -52,7 +63,12 @@ public sealed class ToolRunner : IToolExecutor
         string projectRoot,
         int maxResultChars = DefaultMaxResultChars,
         ToolCallGovernor? governor = null,
-        ToolAccessPolicy? access = null)
+        ToolAccessPolicy? access = null,
+        AgentBudget? budget = null,
+        IAgentHooks? hooks = null,
+        IToolGuidance? guidance = null,
+        IWorkspaceCheckpointStore? checkpoints = null,
+        AgentTaskContext? taskContext = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(approver);
@@ -69,6 +85,11 @@ public sealed class ToolRunner : IToolExecutor
         _fileSystem = fileSystem;
         _projectRoot = projectRoot;
         _maxResultChars = maxResultChars;
+        _budget = budget ?? new AgentBudget();
+        _hooks = hooks ?? NullAgentHooks.Instance;
+        _guidance = guidance;
+        _checkpoints = checkpoints;
+        _taskContext = taskContext;
     }
 
     /// <inheritdoc />
@@ -110,7 +131,37 @@ public sealed class ToolRunner : IToolExecutor
             return ToolResult.Failure(decision.Reason);
         }
 
-        if (!tool.IsReadOnly && !await IsApprovedAsync(tool, summary, cancellationToken).ConfigureAwait(false))
+        if (!_budget.TryConsumeToolCall(out var budgetReason))
+        {
+            _observer.OnToolDenied(toolName, budgetReason);
+            return ToolResult.Failure(budgetReason);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            if (_guidance?.GetGuidance(tool, arguments) is { } guidance)
+            {
+                if (guidance.Length > _maxResultChars)
+                {
+                    throw new InvalidOperationException("Tool guidance exceeds the result limit; tool was not executed.");
+                }
+
+                return ToolResult.Success(guidance) with { RequiresModelReview = true };
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var reason = $"Tool guidance blocked '{toolName}': {exception.Message}";
+            _observer.OnToolDenied(toolName, reason);
+            return _governor.RecordOutcome(ToolResult.Failure(reason)) with { StopsExecution = true };
+        }
+
+        if (tool.RequiresApproval && !await IsApprovedAsync(tool, summary, arguments, cancellationToken).ConfigureAwait(false))
         {
             _observer.OnToolDenied(toolName, summary);
             return ToolResult.Failure(
@@ -118,13 +169,24 @@ public sealed class ToolRunner : IToolExecutor
                 "Explain what you wanted to do and ask how to proceed.");
         }
 
-        _observer.OnToolStarted(toolName, summary);
+        var before = await InvokeHookAsync(new AgentHookContext(AgentHookEvent.PreToolUse, _projectRoot)
+        {
+            ToolName = toolName,
+            Arguments = arguments,
+        }, cancellationToken).ConfigureAwait(false);
+        if (!before.Allowed)
+        {
+            return RejectHook(toolName, before, "PreToolUse");
+        }
+
+        _observer.OnToolStarted(toolName, summary, arguments);
 
         var context = new ToolContext(_projectRoot, _fileSystem, _observer);
 
+        ToolResult result;
         try
         {
-            var result = await tool.InvokeAsync(arguments, context, cancellationToken).ConfigureAwait(false);
+            result = await tool.InvokeAsync(arguments, context, cancellationToken).ConfigureAwait(false);
             var content = Truncate(result.Content);
 
             _observer.OnToolCompleted(
@@ -132,7 +194,7 @@ public sealed class ToolRunner : IToolExecutor
                 result.IsSuccess,
                 result.IsSuccess ? summary : FirstLine(content));
 
-            return result with { Content = content };
+            result = result with { Content = content };
         }
         catch (OperationCanceledException)
         {
@@ -143,7 +205,72 @@ public sealed class ToolRunner : IToolExecutor
             // A buggy or badly-configured tool must not end the session; the model gets
             // told what went wrong and can adapt.
             _observer.OnToolCompleted(toolName, succeeded: false, ex.Message);
-            return ToolResult.Failure($"Tool '{toolName}' threw {ex.GetType().Name}: {ex.Message}");
+            result = ToolResult.Failure($"Tool '{toolName}' threw {ex.GetType().Name}: {ex.Message}");
+        }
+
+        result = _governor.RecordOutcome(result);
+        var after = await InvokeHookAsync(new AgentHookContext(AgentHookEvent.PostToolUse, _projectRoot)
+        {
+            ToolName = toolName,
+            Arguments = arguments,
+            Result = result,
+        }, cancellationToken).ConfigureAwait(false);
+        if (!after.Allowed)
+        {
+            return RejectHook(toolName, after, "PostToolUse (tool already ran)");
+        }
+
+        if (!tool.IsReadOnly && result.IsSuccess && _checkpoints is not null && _taskContext?.TaskId is { } taskId)
+        {
+            try
+            {
+                await _checkpoints.CaptureAsync(_projectRoot, taskId, $"After tool: {toolName}", cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return ToolResult.Failure(
+                    $"Tool '{toolName}' completed, but its checkpoint could not be saved: {ex.Message}") with
+                {
+                    StopsExecution = true,
+                };
+            }
+        }
+
+        try
+        {
+            _observer.OnToolResult(toolName, arguments, result);
+        }
+        catch
+        {
+        }
+        return result;
+    }
+
+    private ToolResult RejectHook(string toolName, AgentHookDecision decision, string stage)
+    {
+        var reason = $"{stage} hook blocked '{toolName}': {decision.Reason ?? "No reason supplied."}";
+        _observer.OnToolDenied(toolName, reason);
+        return ToolResult.Failure(reason) with { StopsExecution = true };
+    }
+
+    private async Task<AgentHookDecision> InvokeHookAsync(AgentHookContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _hooks.InvokeAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return AgentHookDecision.Block($"Hook threw {ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -154,9 +281,10 @@ public sealed class ToolRunner : IToolExecutor
     private async Task<bool> IsApprovedAsync(
         ITool tool,
         string summary,
+        JsonElement arguments,
         CancellationToken cancellationToken)
     {
-        var request = new ToolApprovalRequest(tool.Name, tool.Description, summary);
+        var request = ToolApprovalRequest.Create(tool.Name, tool.Description, summary, arguments);
 
         try
         {

@@ -12,6 +12,36 @@ public sealed class FakeUserInterface : IUserInterface
 {
     private readonly Queue<string?> _inputs = new();
     private readonly Queue<bool> _confirmations = new();
+    private readonly Queue<Func<IReadOnlyList<SessionMenuItem>, string?>> _choices = new();
+    private readonly Queue<string?> _values = new();
+    public List<string> Themes { get; } = [];
+    public List<string> Insertions { get; } = [];
+    public List<string> Dialogs { get; } = [];
+    public List<bool> SecretInputs { get; } = [];
+
+    public void EnqueueChoice(string? value) => _choices.Enqueue(_ => value);
+
+    public void EnqueueSelection(Func<IReadOnlyList<SessionMenuItem>, string?> select) => _choices.Enqueue(select);
+
+    public void EnqueueValue(string? value) => _values.Enqueue(value);
+
+    public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Dialogs.Add(title);
+        return Task.FromResult(_choices.Count > 0 ? _choices.Dequeue()(items) : null);
+    }
+
+    public Task<string?> ReadValueAsync(string title, string initialValue = "", bool secret = false, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SecretInputs.Add(secret);
+        return Task.FromResult(_values.Count > 0 ? _values.Dequeue() : null);
+    }
+
+    public void SetTheme(string name) => Themes.Add(name);
+
+    public void InsertInput(string text) => Insertions.Add(text);
 
     public List<string> Lines { get; } = [];
 

@@ -17,8 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Codai.Core\Codai.Core.csproj" />
-    <ProjectReference Include="..\..\src\Codai.Configuration\Codai.Configuration.csproj" />
-    <ProjectReference Include="..\..\src\Codai.Tokens\Codai.Tokens.csproj" />
+    <ProjectReference Include="..\..\src\Codai.Adapters\Codai.Adapters.csproj" />
   </ItemGroup>
 
   <ItemGroup>

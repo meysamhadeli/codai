@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Codai.Core.Abstractions;
 
 namespace Codai.Core.IO;
@@ -42,14 +43,61 @@ public sealed class ProcessRunner : IProcessRunner
     }
 
     /// <inheritdoc />
-    public async Task<ProcessResult> RunAsync(
+    public Task<ProcessResult> RunAsync(
         string commandLine,
         string workingDirectory,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        RunCoreAsync(commandLine, workingDirectory, null, timeout, null, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ProcessResult> RunStreamingAsync(string commandLine, string workingDirectory, TimeSpan timeout,
+        Action<ProcessOutput> onOutput, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onOutput);
+        return RunCoreAsync(commandLine, workingDirectory, null, timeout, onOutput, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<ProcessResult> RunWithInputAsync(string commandLine, string workingDirectory, string standardInput,
+        TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(standardInput);
+        return RunCoreAsync(commandLine, workingDirectory, standardInput, timeout, null, cancellationToken);
+    }
+
+    private async Task<ProcessResult> RunCoreAsync(string commandLine, string workingDirectory, string? standardInput,
+        TimeSpan timeout, Action<ProcessOutput>? onOutput, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(commandLine);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var timeoutSource = new CancellationTokenSource(timeout);
+        using var observerFailure = new CancellationTokenSource();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token, observerFailure.Token);
+        var observerGate = new object();
+        Exception? observerError = null;
+
+        void Publish(ProcessOutput output)
+        {
+            lock (observerGate)
+            {
+                if (observerError is not null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    onOutput?.Invoke(output);
+                }
+                catch (Exception exception)
+                {
+                    observerError = exception;
+                    observerFailure.Cancel();
+                }
+            }
+        }
 
         using var process = new Process
         {
@@ -63,33 +111,61 @@ public sealed class ProcessRunner : IProcessRunner
 
         // Read both pipes concurrently: a process that fills one while the parent waits on
         // the other deadlocks.
-        var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-
-        using var timeoutSource = new CancellationTokenSource(timeout);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutSource.Token);
+        var standardOutput = ReadPipeAsync(process.StandardOutput, false, onOutput is null ? null : Publish, linked.Token);
+        var standardError = ReadPipeAsync(process.StandardError, true, onOutput is null ? null : Publish, linked.Token);
 
         var timedOut = false;
 
         try
         {
+            try
+            {
+                if (standardInput is not null)
+                {
+                    await process.StandardInput.WriteAsync(standardInput.AsMemory(), linked.Token).ConfigureAwait(false);
+                    await process.StandardInput.FlushAsync(linked.Token).ConfigureAwait(false);
+                }
+
+                process.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+            }
+
             await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested)
+        catch (OperationCanceledException)
+        {
+            await KillAsync(process).ConfigureAwait(false);
+            await SafeAwait(standardOutput).ConfigureAwait(false);
+            await SafeAwait(standardError).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (observerError is null && !timeoutSource.IsCancellationRequested)
+            {
+                throw;
+            }
+
+            timedOut = timeoutSource.IsCancellationRequested;
+        }
+
+        var output = await SafeAwait(standardOutput).ConfigureAwait(false);
+        var error = await SafeAwait(standardError).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (observerError is not null)
+        {
+            throw new IOException("Command output observer failed.", observerError);
+        }
+
+        if (timeoutSource.IsCancellationRequested && !timedOut)
         {
             timedOut = true;
             await KillAsync(process).ConfigureAwait(false);
         }
 
-        // The caller's own cancellation is not a result: it means the session is ending.
-        cancellationToken.ThrowIfCancellationRequested();
-
         return new ProcessResult(
             timedOut ? -1 : process.ExitCode,
-            Cap(await SafeAwait(standardOutput).ConfigureAwait(false)),
-            Cap(await SafeAwait(standardError).ConfigureAwait(false)),
+            output,
+            error,
             timedOut);
     }
 
@@ -100,7 +176,8 @@ public sealed class ProcessRunner : IProcessRunner
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            RedirectStandardInput = false,
+            RedirectStandardInput = true,
+            StandardInputEncoding = new UTF8Encoding(false),
             UseShellExecute = false,
             CreateNoWindow = true,
         };
@@ -159,15 +236,48 @@ public sealed class ProcessRunner : IProcessRunner
         }
     }
 
-    private string Cap(string text)
+    private async Task<string> ReadPipeAsync(StreamReader reader, bool isStandardError,
+        Action<ProcessOutput>? onOutput, CancellationToken cancellationToken)
     {
-        if (text.Length <= _maxOutputChars)
+        var captured = new StringBuilder();
+        var buffer = new char[4096];
+        var truncated = false;
+        while (!cancellationToken.IsCancellationRequested)
         {
-            return text;
+            int count;
+            try
+            {
+                count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            if (count == 0)
+            {
+                break;
+            }
+
+            var retained = Math.Min(count, _maxOutputChars - captured.Length);
+            captured.Append(buffer, 0, retained);
+            if (retained > 0)
+            {
+                onOutput?.Invoke(new ProcessOutput(new string(buffer, 0, retained), isStandardError));
+            }
+
+            if (retained < count && !truncated)
+            {
+                truncated = true;
+                onOutput?.Invoke(new ProcessOutput($"\n\n[output truncated after {_maxOutputChars} characters]", isStandardError));
+            }
         }
 
-        return string.Concat(
-            text.AsSpan(0, _maxOutputChars),
-            $"\n\n[output truncated after {_maxOutputChars} characters]");
+        if (truncated)
+        {
+            captured.Append($"\n\n[output truncated after {_maxOutputChars} characters]");
+        }
+
+        return captured.ToString();
     }
 }

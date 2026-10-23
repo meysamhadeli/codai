@@ -58,4 +58,26 @@ public class TokenEstimatorTests
     [Fact]
     public void A_request_with_no_content_still_costs_the_request_overhead() =>
         TokenEstimator.EstimateRequest().Should().Be(TokenEstimator.PerRequestOverhead);
+
+    [Fact]
+    public void No_tools_cost_nothing() =>
+        TokenEstimator.EstimateTools(null).Should().Be(0);
+
+    [Fact]
+    public void Each_tool_is_charged_for_everything_that_is_sent_about_it()
+    {
+        var tool = new Fakes.StubTool("read_file");
+
+        var expected =
+            TokenEstimator.Estimate(tool.Name) +
+            TokenEstimator.Estimate(tool.Description) +
+            TokenEstimator.Estimate(tool.ParametersSchema) +
+            TokenEstimator.PerToolOverhead;
+
+        TokenEstimator.EstimateTools([tool]).Should().Be(expected);
+
+        // The cost is charged on every request and never shrinks, so two tools cost twice
+        // what one does.
+        TokenEstimator.EstimateTools([tool, tool]).Should().Be(expected * 2);
+    }
 }

@@ -11,6 +11,7 @@ on:
       - ".gitignore"
       - ".gitattributes"
       - "assets/**"
+      - "docs/**"
   pull_request:
     branches: ["main"]
   workflow_dispatch:
@@ -87,3 +88,58 @@ jobs:
         run: |
           ./publish/codai --version
           ./publish/codai --help
+
+  pack:
+    name: Verify the NuGet packages
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Codai.slnx
+
+      # The release workflow packs every src project and installs the tool before it
+      # pushes, so the same two checks run here and a packaging break fails the PR
+      # instead of the release.
+      - name: Pack every src project
+        shell: bash
+        run: |
+          mkdir -p artifacts/packages
+          while IFS= read -r -d '' project; do
+            dotnet pack "$project" \
+              --configuration Release \
+              --output artifacts/packages
+          done < <(find src -type f -name '*.csproj' -print0 | sort -z)
+
+      - name: Verify every src project was packed
+        shell: bash
+        run: |
+          project_count=$(find src -type f -name '*.csproj' | wc -l)
+          package_count=$(find artifacts/packages -maxdepth 1 -name '*.nupkg' | wc -l)
+          if [[ "$project_count" -ne "$package_count" ]]; then
+            echo "::error::Expected $project_count packages, but produced $package_count."
+            exit 1
+          fi
+
+      - name: Verify the tool package installs
+        shell: bash
+        run: |
+          dotnet tool install Codai --tool-path ./tool-verify --add-source ./artifacts/packages
+          ./tool-verify/codai --version
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/packages
+          if-no-files-found: error
+
+# Pushing to nuget.org is not part of CI: .github/workflows/publish.yml does it when a
+# GitHub release is published, using the NUGET_API_KEY repository secret.

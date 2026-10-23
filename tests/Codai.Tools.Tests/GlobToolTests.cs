@@ -13,6 +13,28 @@ public class GlobToolTests
             .AddFile(Path.Combine(ToolTestHost.Root, "src", "notes.md"), "# notes")
             .AddFile(Path.Combine(ToolTestHost.Root, "bin", "ignored.cs"), "class Ignored { }");
 
+    [Theory]
+    [InlineData("src/nested", false)]
+    [InlineData("src/nested/", false)]
+    [InlineData("src/nested/./", false)]
+    [InlineData("src/nested/../nested", false)]
+    [InlineData("src/../src/nested", false)]
+    [InlineData("src/nested", true)]
+    public async Task Equivalent_scope_paths_find_same_files_without_sibling_or_ignored_entries(string scope, bool absolute)
+    {
+        var files = SampleProject()
+            .AddFile(Path.Combine(ToolTestHost.Root, "src", "nested-other", "sibling.cs"), "sibling")
+            .AddFile(Path.Combine(ToolTestHost.Root, "src", "nested", "bin", "ignored.cs"), "ignored");
+        var path = absolute ? Path.Combine(ToolTestHost.Root, scope) : scope;
+        var arguments = System.Text.Json.JsonSerializer.SerializeToElement(new { pattern = "**/*.cs", path });
+
+        var result = await Tool.InvokeAsync(arguments, ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Content.Should().Contain("1 file(s) match").And.Contain("src/nested/b.cs")
+            .And.NotContain("sibling.cs").And.NotContain("ignored.cs");
+    }
+
     [Fact]
     public async Task Matches_files_recursively()
     {

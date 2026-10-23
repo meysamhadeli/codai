@@ -1,5 +1,8 @@
 namespace Codai.Core.Abstractions;
 
+/// <summary>A bounded command-output chunk with its source stream.</summary>
+public readonly record struct ProcessOutput(string Text, bool IsStandardError);
+
 /// <summary>
 /// What a finished command produced.
 /// </summary>

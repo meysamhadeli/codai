@@ -1,3 +1,4 @@
+using Codai.Core.Tools;
 using FluentAssertions;
 
 namespace Codai.Tools.Tests;
@@ -8,6 +9,200 @@ public class ReadFileToolTests
 
     private static InMemoryFileSystem ProjectWithFile(string relativePath, string contents) =>
         ToolTestHost.NewProject().AddFile(Path.Combine(ToolTestHost.Root, relativePath), contents);
+
+    [Fact]
+    public async Task Reads_multiple_files_in_order_with_common_line_window()
+    {
+        var files = ProjectWithFile("a.txt", "alpha\nbravo\ncharlie")
+            .AddFile(Path.Combine(ToolTestHost.Root, "b.txt"), "one\ntwo\nthree");
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","b.txt"],"offset":2,"limit":1}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Content.Should().Contain("a.txt (lines 2-2 of 3):").And.Contain("2\tbravo")
+            .And.Contain("b.txt (lines 2-2 of 3):").And.Contain("2\ttwo");
+        result.Content.IndexOf("a.txt", StringComparison.Ordinal).Should()
+            .BeLessThan(result.Content.IndexOf("b.txt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Batch_errors_preserve_other_file_content_and_mark_failure()
+    {
+        var files = ProjectWithFile("a.txt", "visible")
+            .AddFile(Path.Combine(ToolTestHost.Root, "b.bin"), "binary\0data");
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","missing.txt","b.bin"]}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("visible").And.Contain("[error]")
+            .And.Contain("missing.txt").And.Contain("does not exist").And.Contain("binary");
+    }
+
+    [Theory]
+    [InlineData("{\"paths\":[]}")]
+    [InlineData("{\"paths\":\"a.txt\"}")]
+    [InlineData("{\"paths\":[1]}")]
+    [InlineData("{\"paths\":[\" \" ]}")]
+    [InlineData("{\"paths\":[\"a.txt\",\"./a.txt\"]}")]
+    [InlineData("{\"path\":\"a.txt\",\"paths\":[\"a.txt\"]}")]
+    public async Task Invalid_batches_are_rejected(string arguments)
+    {
+        var result = await Tool.InvokeAsync(ToolTestHost.Args(arguments), ToolTestHost.Context(ToolTestHost.NewProject()));
+
+        result.IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Entire_batch_is_path_validated_before_reading()
+    {
+        var files = ProjectWithFile("a.txt", "must not read");
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","../outside.txt"]}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("outside the project").And.NotContain("does not exist");
+        files.ReadPaths.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Long_lines_obey_result_budget_without_reading_later_batch_content(bool batch)
+    {
+        var files = ProjectWithFile("a.txt", new string('a', ToolRunner.DefaultMaxResultChars * 2))
+            .AddFile(Path.Combine(ToolTestHost.Root, "b.txt"), "later sentinel");
+        var arguments = batch ? """{"paths":["a.txt","b.txt"]}""" : """{"path":"a.txt"}""";
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args(arguments), ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Content.Length.Should().BeLessThanOrEqualTo(ToolRunner.DefaultMaxResultChars);
+        result.Content.Should().Contain("output budget reached").And.NotContain("later sentinel");
+        files.ReadPaths.Should().Equal(Path.Combine(ToolTestHost.Root, "a.txt"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Oversized_paths_fail_before_any_read(bool batch)
+    {
+        var files = ToolTestHost.NewProject();
+        var path = new string('a', ReadFileTool.MaxPathChars + 1);
+        var arguments = batch ? $$"""{"paths":["{{path}}"]}""" : $$"""{"path":"{{path}}"}""";
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args(arguments), ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("2048");
+        files.ReadPaths.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(ReadFileTool.MaxFileCount, true)]
+    [InlineData(ReadFileTool.MaxFileCount + 1, false)]
+    public async Task File_count_limit_is_enforced_before_reads(int count, bool valid)
+    {
+        var files = ToolTestHost.NewProject();
+        var paths = Enumerable.Range(0, count).Select(index => $"{index}.txt").ToArray();
+        foreach (var path in paths)
+        {
+            files.AddFile(Path.Combine(ToolTestHost.Root, path), string.Empty);
+        }
+
+        var arguments = System.Text.Json.JsonSerializer.SerializeToElement(new { paths });
+        var result = await Tool.InvokeAsync(arguments, ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().Be(valid);
+        files.ReadPaths.Count.Should().Be(valid ? count : 0);
+    }
+
+    [Fact]
+    public async Task Oversized_batch_file_is_reported_without_read_and_other_files_continue()
+    {
+        var files = ProjectWithFile("large.txt", new string('x', (int)ReadFileTool.MaxFileSizeBytes + 1))
+            .AddFile(Path.Combine(ToolTestHost.Root, "a.txt"), "visible");
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["large.txt","a.txt"]}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("larger than 5 MB").And.Contain("visible");
+        files.ReadPaths.Should().Equal(Path.Combine(ToolTestHost.Root, "a.txt"));
+    }
+
+    [Fact]
+    public async Task Cancellation_between_files_prevents_next_read()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var files = ProjectWithFile("a.txt", "one").AddFile(Path.Combine(ToolTestHost.Root, "b.txt"), "two");
+        files.AfterRead = _ => cancellation.Cancel();
+        var read = () => Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","b.txt"]}"""),
+            ToolTestHost.Context(files), cancellation.Token);
+
+        await read.Should().ThrowAsync<OperationCanceledException>();
+        files.ReadPaths.Should().Equal(Path.Combine(ToolTestHost.Root, "a.txt"));
+    }
+
+    [Fact]
+    public async Task Batch_budget_is_shared_across_files_and_skips_unvisited_files()
+    {
+        var files = ProjectWithFile("a.txt", new string('a', 30_000))
+            .AddFile(Path.Combine(ToolTestHost.Root, "b.txt"), new string('b', 40_000))
+            .AddFile(Path.Combine(ToolTestHost.Root, "c.txt"), "must not read");
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","b.txt","c.txt"]}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Content.Length.Should().BeLessThanOrEqualTo(ToolRunner.DefaultMaxResultChars);
+        result.Content.Should().Contain("a.txt").And.Contain("b.txt").And.Contain("output budget reached")
+            .And.NotContain("must not read");
+        files.ReadPaths.Should().Equal(Path.Combine(ToolTestHost.Root, "a.txt"), Path.Combine(ToolTestHost.Root, "b.txt"));
+    }
+
+    [Fact]
+    public async Task Unreadable_file_does_not_hide_later_successful_content()
+    {
+        var files = ProjectWithFile("a.txt", "unreadable").AddFile(Path.Combine(ToolTestHost.Root, "b.txt"), "visible");
+        files.AfterRead = path =>
+        {
+            if (Path.GetFileName(path) == "a.txt")
+            {
+                throw new IOException("read unavailable");
+            }
+        };
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","b.txt"]}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("[error]").And.Contain("read unavailable").And.Contain("visible");
+    }
+
+    [Fact]
+    public async Task Invalid_window_for_one_file_does_not_hide_other_file_window()
+    {
+        var files = ProjectWithFile("a.txt", "one").AddFile(Path.Combine(ToolTestHost.Root, "b.txt"), "one\ntwo");
+
+        var result = await Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt","b.txt"],"offset":2}"""),
+            ToolTestHost.Context(files));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("past the end").And.Contain("b.txt (lines 2-2 of 2):").And.Contain("2\ttwo");
+    }
+
+    [Fact]
+    public async Task Cancelled_batch_propagates_cancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var read = () => Tool.InvokeAsync(ToolTestHost.Args("""{"paths":["a.txt"]}"""),
+            ToolTestHost.Context(ProjectWithFile("a.txt", "content")), cancellation.Token);
+
+        await read.Should().ThrowAsync<OperationCanceledException>();
+    }
 
     [Fact]
     public async Task Reads_a_file_with_line_numbers()
@@ -171,6 +366,7 @@ public class ReadFileToolTests
     {
         var schema = Tool.Schema;
 
-        schema.GetProperty("required")[0].GetString().Should().Be("path");
+        schema.GetProperty("oneOf")[0].GetProperty("required")[0].GetString().Should().Be("path");
+        schema.GetProperty("oneOf")[1].GetProperty("required")[0].GetString().Should().Be("paths");
     }
 }

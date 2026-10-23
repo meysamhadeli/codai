@@ -28,6 +28,43 @@ public sealed class PhysicalFileSystem : IFileSystem
         File.WriteAllTextAsync(path, contents, cancellationToken);
 
     /// <inheritdoc />
+    public async Task WriteAllTextAtomicallyAsync(
+        string path,
+        string contents,
+        CancellationToken cancellationToken = default)
+    {
+        var temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, contents, cancellationToken).ConfigureAwait(false);
+            for (var attempt = 0; ; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    File.Move(temporaryPath, path, overwrite: true);
+                    break;
+                }
+                catch (Exception exception) when (
+                    OperatingSystem.IsWindows() && attempt < 5 &&
+                    exception is IOException or UnauthorizedAccessException &&
+                    (exception.HResult & 0xFFFF) is 5 or 32 or 33)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25 * (1 << attempt)), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+    }
+
+    /// <inheritdoc />
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);
 
     /// <inheritdoc />

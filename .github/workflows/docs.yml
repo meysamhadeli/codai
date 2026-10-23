@@ -1,0 +1,81 @@
+name: Docs
+
+# Builds docs/ into a static site and publishes it to GitHub Pages, so the documentation
+# is reachable without a Mintlify account. Pages must be set to "GitHub Actions" as its
+# source in Settings > Pages once; after that, every push to main republishes the site.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install
+        working-directory: docs
+        run: npm ci
+
+      - name: Check pages and links
+        working-directory: docs
+        run: npm run check
+
+      - name: Build
+        working-directory: docs
+        run: npm run build
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    name: Deploy to Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

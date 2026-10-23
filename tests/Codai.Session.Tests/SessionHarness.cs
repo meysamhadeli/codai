@@ -1,3 +1,5 @@
+using Codai.Configuration;
+using Codai.Application.Inspection;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Chat;
@@ -8,6 +10,7 @@ using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
+using Codai.Providers;
 using Codai.Session.Tests.Fakes;
 
 namespace Codai.Session.Tests;
@@ -49,6 +52,23 @@ internal sealed class SessionHarness
             Root,
             governor: Governor,
             access: Access);
+
+        Inspector = new ConfigurationInspector(
+            new ConfigurationInspectionContext
+            {
+                ProjectRoot = Root,
+                ConfigurationDirectory = Root,
+                Provider = provider,
+                Model = model,
+            },
+            Mode,
+            Budget,
+            Governor,
+            () => new ToolRegistry(Tools),
+            new ProjectRuleCatalog(FileSystem),
+            new SkillCatalog(FileSystem),
+            new CommandCatalog(FileSystem),
+            FileSystem);
     }
 
     public string Root { get; }
@@ -75,11 +95,23 @@ internal sealed class SessionHarness
     /// <summary>The store the session persists into. Backed by the in-memory file system.</summary>
     public ISessionStore SessionStore { get; }
 
+    public IAgentTaskStore? TaskStore { get; set; }
+
+    public IAgentHooks? Hooks { get; set; }
+
+    public IWorkspaceCheckpointStore? Checkpoints { get; set; }
+
     /// <summary>The mode the session is running in. Tests change it the way the user does.</summary>
     public AgentModeState Mode { get; } = new();
 
     /// <summary>The per-request tool budget the session shares with its executor.</summary>
     public ToolCallGovernor Governor { get; } = new();
+
+    /// <summary>The run budget an inspection reports.</summary>
+    public AgentBudget Budget { get; } = new();
+
+    /// <summary>Reports what the session is configured to do; used by <c>:config</c>.</summary>
+    public ConfigurationInspector Inspector { get; }
 
     /// <summary>
     /// The tools the request in flight may call, shared with the executor the way the
@@ -109,13 +141,14 @@ internal sealed class SessionHarness
         var instructionsProvider = new FakeProjectInstructionsProvider(Instructions);
         var skills = new SkillCatalog(FileSystem);
         var commands = new CommandCatalog(FileSystem);
-        var compactor = new HistoryCompactor(Chat, History, Tokens, Access, Ui);
+        var compactor = new HistoryCompactor(
+            Chat, History, Tokens, Access, Ui, new TranscriptStore(FileSystem), Options);
 
         return new CodeSession(
             Options,
             Ui,
             new ProjectContextLoader(Options, Scanner, Ui),
-            new ProjectGuidanceLoader(Options, instructionsProvider, skills, Ui),
+            new ProjectGuidanceLoader(Options, instructionsProvider, skills, new ProjectRuleCatalog(FileSystem)),
             new ChatExchangeService(
                 Options,
                 new PromptBuilder(Template, Tools),
@@ -127,7 +160,15 @@ internal sealed class SessionHarness
                 Mode,
                 Governor,
                 Access,
-                new AutoCompactor(Options, History, compactor, new CompactionPolicy(), Ui),
+                new AutoCompactor(
+                    Options,
+                    History,
+                    compactor,
+                    new BackgroundSummarizer(compactor),
+                    new CompactionPolicy(),
+                    Ui,
+                    Mode,
+                    new StubToolRegistry([.. Tools])),
                 Ui),
             new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Mode, Ui),
             new SessionCommandHandler(
@@ -137,10 +178,30 @@ internal sealed class SessionHarness
                 CostCalculator ?? NullCostCalculator.Instance,
                 compactor,
                 Mode,
-                Ui),
-            new UserCommandResolver(commands, Options),
+                Ui,
+                sessionStore: SessionStore,
+                taskStore: TaskStore,
+                inspector: Inspector,
+                models: CreateModelState(),
+                fileSystem: FileSystem,
+                checkpoints: Checkpoints),
+            new UserCommandResolver(commands, new SkillCatalog(FileSystem), Options),
             History,
-            SessionStore);
+            SessionStore,
+            taskStore: TaskStore,
+            hooks: Hooks,
+            checkpoints: Checkpoints);
+    }
+
+    private ModeModelState CreateModelState()
+    {
+        var options = ResolvedProviderOptions.From(new AiProviderOptions
+        {
+            Provider = Options.Provider,
+            Model = Options.Model,
+        });
+
+        return new ModeModelState(options, options);
     }
 
     /// <summary>Queues the given lines followed by end-of-input.</summary>

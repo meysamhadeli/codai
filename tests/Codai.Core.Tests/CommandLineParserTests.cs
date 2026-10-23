@@ -1,11 +1,174 @@
 using Codai.Configuration;
 using Codai.Core.Agents;
+using Codai.Core.Chat;
 using FluentAssertions;
 
 namespace Codai.Core.Tests;
 
 public class CommandLineParserTests
 {
+    [Fact]
+    public void Disabled_tools_are_repeatable_run_restrictions_not_prompt_text()
+    {
+        var result = CommandLineParser.Parse(["--disable-tool", "write_file", "--disable-tool=run_command", "task"]);
+
+        result.Errors.Should().BeEmpty();
+        result.DisabledTools.Should().Equal("write_file", "run_command");
+        result.Prompt.Should().Be("task");
+        result.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse(["--", "--disable-tool"]).DisabledTools.Should().BeEmpty();
+        CommandLineParser.Parse(["--disable-tool", "--mode", "plan"]).Errors.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("--disable-tool")]
+    [InlineData("--disable-tool=")]
+    [InlineData("--disable-tool= ")]
+    public void Missing_disabled_tool_name_is_reported(string option) =>
+        CommandLineParser.Parse([option]).Errors.Should().ContainSingle();
+
+    [Fact]
+    public void Execute_plan_is_explicit_run_operation_with_optional_instructions()
+    {
+        var result = CommandLineParser.Parse(["--execute-plan", "Run", "tests"]);
+
+        result.ExecutePlan.Should().BeTrue();
+        result.Prompt.Should().Be("Run tests");
+        result.Errors.Should().BeEmpty();
+        result.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse(["--execute-plan"]).Prompt.Should().BeNull();
+        CommandLineParser.Parse(["--execute-plan=true"]).Errors.Should().ContainSingle();
+        CommandLineParser.Parse(["--", "--execute-plan"]).ExecutePlan.Should().BeFalse();
+        CommandLineParser.Parse(["--mode", "ask", "--execute-plan"]).Errors.Should().ContainSingle();
+    }
+    [Theory]
+    [InlineData("agentic", true, CompactionStrategy.Agentic)]
+    [InlineData("basic", true, CompactionStrategy.Basic)]
+    [InlineData("off", false, CompactionStrategy.Agentic)]
+    [InlineData("BASIC", true, CompactionStrategy.Basic)]
+    public void Compaction_strategy_is_run_scoped(string option, bool automatic, CompactionStrategy expected)
+    {
+        var result = CommandLineParser.Parse([$"--compaction={option}", "task"]);
+
+        result.Errors.Should().BeEmpty();
+        result.AutoCompact.Should().Be(automatic);
+        result.CompactionStrategy.Should().Be(expected);
+        result.Prompt.Should().Be("task");
+        result.Overrides.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Compaction_flags_follow_argument_order()
+    {
+        CommandLineParser.Parse(["--compaction", "off", "--auto-compact"]).AutoCompact.Should().BeTrue();
+        CommandLineParser.Parse(["--compaction", "basic", "--no-auto-compact"]).AutoCompact.Should().BeFalse();
+        CommandLineParser.Parse(["--no-auto-compact", "--compaction", "basic"]).AutoCompact.Should().BeTrue();
+        CommandLineParser.Parse(["--compaction", "basic", "--compaction", "off"]).CompactionStrategy.Should().Be(CompactionStrategy.Basic);
+    }
+
+    [Theory]
+    [InlineData("--compaction")]
+    [InlineData("--compaction=")]
+    [InlineData("--compaction=unknown")]
+    [InlineData("--compaction=0")]
+    public void Invalid_compaction_strategy_is_reported(string option) =>
+        CommandLineParser.Parse([option]).Errors.Should().ContainSingle();
+
+    [Fact]
+    public void Structured_output_and_isolated_paths_are_run_options()
+    {
+        var parsed = CommandLineParser.Parse(["--json", "--data-dir", "../state", "--config-dir=../config", "task"]);
+        parsed.JsonOutput.Should().BeTrue();
+        parsed.DataDirectory.Should().Be("../state");
+        parsed.ConfigurationDirectory.Should().Be("../config");
+        parsed.Prompt.Should().Be("task");
+        parsed.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse(["--json=false"]).Errors.Should().ContainSingle();
+        CommandLineParser.Parse(["--data-dir"]).Errors.Should().ContainSingle();
+        CommandLineParser.Parse(["--config-dir="]).Errors.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void System_override_is_run_scoped_and_does_not_consume_task_text()
+    {
+        var parsed = CommandLineParser.Parse(["-s", "Custom system prompt", "task"]);
+        parsed.SystemPrompt.Should().Be("Custom system prompt");
+        parsed.Prompt.Should().Be("task");
+        parsed.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse(["--system="]).Errors.Should().ContainSingle();
+        CommandLineParser.Parse(["--system"]).Errors.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Timeout_is_run_scoped_and_accepts_invariant_fractional_seconds()
+    {
+        var parsed = CommandLineParser.Parse(["--timeout", "0.25", "task"]);
+        parsed.RunTimeout.Should().Be(TimeSpan.FromMilliseconds(250));
+        parsed.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse(["-t=0"]).RunTimeout.Should().Be(TimeSpan.Zero);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("4294968")]
+    [InlineData("invalid")]
+    public void Invalid_timeout_is_reported(string value) =>
+        CommandLineParser.Parse([$"--timeout={value}"]).Errors.Should().ContainSingle();
+
+    [Fact]
+    public void Auto_approval_requires_explicit_true_and_is_not_a_provider_override()
+    {
+        CommandLineParser.Parse([]).AutoApprove.Should().BeFalse();
+        CommandLineParser.Parse(["task"]).AutoApprove.Should().BeFalse();
+        CommandLineParser.Parse(["--auto-approve", "false"]).AutoApprove.Should().BeFalse();
+        var parsed = CommandLineParser.Parse(["--auto-approve=true", "task"]);
+        parsed.AutoApprove.Should().BeTrue();
+        parsed.Prompt.Should().Be("task");
+        parsed.Overrides.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("")]
+    public void Invalid_auto_approval_value_is_an_error(string value)
+    {
+        CommandLineParser.Parse([$"--auto-approve={value}"]).Errors.Should().ContainSingle();
+        CommandLineParser.Parse(["--auto-approve"]).Errors.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Positional_prompts_do_not_include_command_or_option_values()
+    {
+        var parsed = CommandLineParser.Parse(["code", "fix", "tests", "--model", "model-name"]);
+
+        parsed.Prompt.Should().Be("fix tests");
+        parsed.Overrides[ConfigKeys.Model].Should().Be("model-name");
+        CommandLineParser.Parse(["fix tests"]).Prompt.Should().Be("fix tests");
+    }
+
+    [Fact]
+    public void End_of_options_preserves_flag_like_prompt_text()
+    {
+        var parsed = CommandLineParser.Parse(["code", "--", "--help", "--model", "code"]);
+
+        parsed.Prompt.Should().Be("--help --model code");
+        parsed.Errors.Should().BeEmpty();
+        parsed.Overrides.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Working_directory_is_separate_from_configuration_overrides()
+    {
+        var parsed = CommandLineParser.Parse(["code", "--cwd", "../project", "task"]);
+
+        parsed.WorkingDirectory.Should().Be("../project");
+        parsed.Prompt.Should().Be("task");
+        parsed.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse(["--cwd"]).Errors.Should().ContainSingle();
+    }
+
     [Fact]
     public void Empty_args_produce_empty_result()
     {
@@ -77,7 +240,6 @@ public class CommandLineParserTests
     }
 
     [Theory]
-    [InlineData("ask", AgentMode.Ask)]
     [InlineData("plan", AgentMode.Plan)]
     [InlineData("agent", AgentMode.Agent)]
     [InlineData("edit", AgentMode.Agent)]
@@ -111,7 +273,18 @@ public class CommandLineParserTests
         var result = CommandLineParser.Parse(["code", "--mode", "yolo"]);
 
         result.Errors.Should().ContainSingle()
-            .Which.Should().Contain("yolo").And.Contain("ask | plan | agent");
+            .Which.Should().Contain("yolo").And.Contain("plan | agent");
+    }
+
+    [Theory]
+    [InlineData("--mode", "ask")]
+    [InlineData("--mode=ASK")]
+    public void Removed_ask_mode_is_rejected(params string[] arguments)
+    {
+        var result = CommandLineParser.Parse(arguments);
+
+        result.Errors.Should().ContainSingle()
+            .Which.Should().Contain("Unknown mode").And.Contain("plan | agent");
     }
 
     [Fact]

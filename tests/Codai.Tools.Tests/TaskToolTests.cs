@@ -15,7 +15,7 @@ public class TaskToolTests
         // Read-only is what makes the tool safe in every mode: it cannot be the way a
         // read-only session ends up writing, because the sub-agent only ever gets
         // read-only tools.
-        var tool = new TaskTool(new RecordingSubAgent());
+        var tool = new TaskTool(() => new RecordingSubAgent());
 
         tool.Name.Should().Be(SubAgent.ToolName);
         tool.IsReadOnly.Should().BeTrue();
@@ -26,7 +26,7 @@ public class TaskToolTests
     {
         // "description" is what the user sees while it runs, so a call without one would
         // leave a progress line that says nothing.
-        var tool = new TaskTool(new RecordingSubAgent());
+        var tool = new TaskTool(() => new RecordingSubAgent());
 
         var schema = System.Text.Json.JsonDocument.Parse(tool.ParametersSchema).RootElement;
 
@@ -40,7 +40,7 @@ public class TaskToolTests
     public async Task Hands_the_question_to_the_sub_agent()
     {
         var subAgent = new RecordingSubAgent();
-        var tool = new TaskTool(subAgent);
+        var tool = new TaskTool(() => subAgent);
 
         await tool.InvokeAsync(
             ToolTestHost.Args("""{"description":"Where is the token validated?","prompt":"Look in src/Auth."}"""),
@@ -54,7 +54,7 @@ public class TaskToolTests
     [Fact]
     public async Task Returns_the_report_as_a_successful_result()
     {
-        var tool = new TaskTool(new RecordingSubAgent { Report = "# Report from a sub-agent\n\nIt is in Program.cs." });
+        var tool = new TaskTool(() => new RecordingSubAgent { Report = "# Report from a sub-agent\n\nIt is in Program.cs." });
 
         var result = await tool.InvokeAsync(
             ToolTestHost.Args("""{"description":"d","prompt":"p"}"""),
@@ -69,7 +69,7 @@ public class TaskToolTests
     {
         // Failure as data, not an exception: the parent's loop carries on and the model
         // decides what to do instead.
-        var tool = new TaskTool(new RecordingSubAgent
+        var tool = new TaskTool(() => new RecordingSubAgent
         {
             Report = "The sub-agent could not run: overloaded.",
             Succeeded = false,
@@ -87,7 +87,7 @@ public class TaskToolTests
     public async Task A_call_missing_an_argument_never_reaches_the_sub_agent()
     {
         var subAgent = new RecordingSubAgent();
-        var tool = new TaskTool(subAgent);
+        var tool = new TaskTool(() => subAgent);
 
         var result = await tool.InvokeAsync(
             ToolTestHost.Args("""{"description":"only a label"}"""),

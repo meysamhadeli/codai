@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Codai.Application.Tests</RootNamespace>
+    <AssemblyName>Codai.Application.Tests</AssemblyName>
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Codai.Cli\Codai.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Codai.Application\Codai.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Codai.Application" />
+    <Using Include="Codai.Application.Interaction" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

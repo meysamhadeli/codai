@@ -1,0 +1,59 @@
+---
+title: MCP integrations
+description: Connect Codai to external tool servers over local processes or HTTP.
+---
+
+Codai can discover and invoke tools from configured MCP servers. Discovered tools remain ordinary Codai tools, so mode restrictions, budgets, access rules, and approval policy still apply.
+
+## Transports
+
+- `stdio` starts a local process using `command`, `args`, `working_directory`, and `env`.
+- `streamableHttp` connects to a remote HTTP endpoint using `url` and `headers`.
+- `sse` connects to servers that expose the legacy server-sent events transport.
+
+## Configuration
+
+Add servers under `mcp.servers` in the project configuration file:
+
+```yaml
+mcp:
+  servers:
+    - name: local-tools
+      transport: stdio
+      command: dotnet
+      args: [run, --project, tools/LocalTools]
+      timeout_seconds: 60
+      auto_approve:
+        - mcp_local_tools_read_status
+
+    - name: remote-tools
+      transport: streamableHttp
+      url: https://tools.example.test/mcp
+      headers:
+        Authorization: Bearer ${TOOLS_TOKEN}
+      timeout_seconds: 30
+
+    - name: protected-tools
+      transport: streamableHttp
+      url: https://secure.example.test/mcp
+      oauth_authorization_endpoint: https://secure.example.test/authorize
+      oauth_token_endpoint: https://secure.example.test/token
+      oauth_client_id: codai-local
+      oauth_scopes: [tools.read]
+```
+
+`timeout_seconds` bounds discovery and each tool call. Values must be greater than zero. `auto_approve` accepts Codai-facing tool names and bypasses the approval prompt only for those exact names. Use it sparingly, especially for remote tools.
+
+OAuth configuration opens the authorization endpoint in the default browser, receives the authorization code on a loopback callback, exchanges it using PKCE, and sends the resulting bearer token to the MCP endpoint. Client secrets, when required, must be supplied through `oauth_client_secret_environment`; they are never stored in the project configuration.
+
+Set `enabled: false` to keep a server configured without loading it. `read_only: true` marks every server tool as safe for read-only modes; it does not replace normal access controls.
+
+## Name mapping
+
+Each remote tool receives a stable Codai-facing name. By default, names use `mcp_<server>_<tool>`, with non-alphanumeric characters replaced by underscores. Set `tool_prefix` when a different prefix is needed.
+
+Remote MCP resources and prompts are exposed as read-only Codai capabilities using `resource_` and `prompt_` name suffixes. Progress notifications received during a remote call are forwarded to Codai's normal tool observer. If a remote HTTP session fails at the transport layer, Codai performs one bounded reinitialization before retrying that request.
+
+## Current scope
+
+Codai supports MCP tool discovery and invocation, including the local Codai MCP server. Resource subscriptions and server-side resource/prompt registration are not currently exposed by the local server; remote resources and prompts are available to Codai as read-only capabilities.

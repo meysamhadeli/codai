@@ -1,14 +1,14 @@
 namespace Codai.Core.Customization;
 
 /// <summary>
-/// The <c>:command</c> a user typed, split into its name and its arguments.
+/// A user command or skill invocation, split into its name and arguments.
 /// </summary>
 /// <param name="Name">Command name without the leading colon, lower-cased.</param>
 /// <param name="Arguments">Everything after the command name, trimmed.</param>
 public sealed record CommandInvocation(string Name, string Arguments)
 {
     /// <summary>
-    /// Parses a <c>:name arguments</c> line.
+    /// Parses a <c>:name arguments</c> or <c>/name arguments</c> line.
     /// </summary>
     /// <returns>
     /// False when the input is not a command-shaped line, which is the case for blank
@@ -30,12 +30,12 @@ public sealed record CommandInvocation(string Name, string Arguments)
 
         var trimmed = input.TrimStart();
 
-        if (trimmed.Length < 2 || trimmed[0] != ':')
+        if (trimmed.Length < 2 || trimmed[0] is not (':' or '/'))
         {
             return false;
         }
 
-        if (trimmed[1] is ':' or '=')
+        if (trimmed[1] is ':' or '=' or '/')
         {
             // Not a command line at all, e.g. a "::" separator or a ":=" operator.
             return false;

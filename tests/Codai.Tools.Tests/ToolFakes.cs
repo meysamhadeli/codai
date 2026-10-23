@@ -44,12 +44,25 @@ internal sealed class RecordingObserver : IToolObserver
 {
     public List<string> Events { get; } = [];
 
+    public List<(string Tool, JsonElement Arguments, ToolResult Result)> Results { get; } = [];
+
+    public bool ThrowOnResult { get; init; }
+
     public void OnToolStarted(string toolName, string summary) => Events.Add($"started:{toolName}");
 
     public void OnToolCompleted(string toolName, bool succeeded, string detail) =>
         Events.Add($"completed:{toolName}:{succeeded}");
 
     public void OnToolDenied(string toolName, string summary) => Events.Add($"denied:{toolName}");
+
+    public void OnToolResult(string toolName, JsonElement arguments, ToolResult result)
+    {
+        if (ThrowOnResult)
+        {
+            throw new InvalidOperationException("Preview rendering failed.");
+        }
+        Results.Add((toolName, arguments.Clone(), result));
+    }
 }
 
 /// <summary>An approver with a fixed answer.</summary>

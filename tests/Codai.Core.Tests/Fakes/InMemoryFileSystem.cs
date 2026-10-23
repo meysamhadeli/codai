@@ -21,6 +21,10 @@ internal sealed class InMemoryFileSystem : IFileSystem
 
     public IReadOnlyCollection<string> Directories => _directories;
 
+    public List<string> ReadPaths { get; } = [];
+
+    public bool FailAtomicWrites { get; set; }
+
     public InMemoryFileSystem AddDirectory(string path)
     {
         for (var current = Normalize(path); !string.IsNullOrEmpty(current); current = Parent(current))
@@ -56,6 +60,7 @@ internal sealed class InMemoryFileSystem : IFileSystem
     public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ReadPaths.Add(Normalize(path));
 
         return _files.TryGetValue(Normalize(path), out var content)
             ? Task.FromResult(content)
@@ -64,6 +69,17 @@ internal sealed class InMemoryFileSystem : IFileSystem
 
     public Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken = default)
     {
+        AddFile(path, contents);
+        return Task.CompletedTask;
+    }
+
+    public Task WriteAllTextAtomicallyAsync(string path, string contents, CancellationToken cancellationToken = default)
+    {
+        if (FailAtomicWrites)
+        {
+            throw new IOException("Atomic replacement failed.");
+        }
+
         AddFile(path, contents);
         return Task.CompletedTask;
     }

@@ -4,7 +4,7 @@ namespace Codai.Core.Abstractions;
 
 /// <summary>
 /// Converts token usage into a monetary cost. Implemented by the pricing catalog in
-/// <c>Codai.Tokens</c>; optional in the session.
+/// <c>Codai.Pricing</c>; optional in the application runtime.
 /// </summary>
 public interface ICostCalculator
 {

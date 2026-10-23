@@ -9,6 +9,111 @@ namespace Codai.Core.Tests;
 /// </summary>
 public class SkillCatalogTests
 {
+    [Fact]
+    public async Task Identical_global_and_project_skill_roots_keep_project_origin()
+    {
+        var fileSystem = Project().AddFile(SkillPath("review"), "Project skill.");
+        var catalog = new SkillCatalog(fileSystem, Path.Combine(Root, ".codai", "."));
+
+        var skills = await catalog.LoadAsync(Root);
+
+        skills.Should().ContainSingle().Which.IsGlobal.Should().BeFalse();
+        skills[0].SourcePath.Should().Be(".codai/skills/review/SKILL.md");
+        fileSystem.ReadPaths.Should().ContainSingle().Which.Should()
+            .Be(InMemoryFileSystem.Normalize(SkillPath("review")));
+        (await catalog.FindAsync(Root, "review"))!.Body.Should().Be("Project skill.");
+    }
+
+    [Fact]
+    public async Task Empty_project_skill_does_not_hide_valid_global_fallback()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-skills"));
+        var fileSystem = Project().AddFile(SkillPath("review"), "---\ndescription: Empty\n---\n")
+            .AddFile(Path.Combine(global, "skills", "review", "SKILL.md"), "Global skill.");
+        var catalog = new SkillCatalog(fileSystem, global);
+
+        var skills = await catalog.LoadAsync(Root);
+
+        skills.Should().ContainSingle().Which.IsGlobal.Should().BeTrue();
+        (await catalog.FindAsync(Root, "review"))!.Body.Should().Be("Global skill.");
+    }
+
+    [Fact]
+    public async Task Combined_skill_limit_reserves_project_entries_and_cancellation_is_not_swallowed()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-skills"));
+        var fileSystem = Project().AddFile(SkillPath("project"), "Project.");
+        for (var index = 0; index < SkillCatalog.MaxSkills; index++)
+        {
+            fileSystem.AddFile(Path.Combine(global, "skills", $"global-{index:D3}", "SKILL.md"), "Global.");
+        }
+
+        var catalog = new SkillCatalog(fileSystem, global);
+        var skills = await catalog.LoadAsync(Root);
+        skills.Should().HaveCount(SkillCatalog.MaxSkills);
+        skills.Should().Contain(skill => skill.Name == "project" && !skill.IsGlobal);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Func<Task> load = () => catalog.LoadAsync(Root, cancellation.Token);
+        await load.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Global_skills_are_discovered_but_project_names_override_case_insensitively()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-skills"));
+        var fileSystem = Project().AddFile(SkillPath("REVIEW"), "Project skill.")
+            .AddFile(Path.Combine(global, "skills", "review", "SKILL.md"), "Shadowed skill.")
+            .AddFile(Path.Combine(global, "skills", "ship", "SKILL.md"), "Global skill.");
+        var catalog = new SkillCatalog(fileSystem, global);
+
+        var skills = await catalog.LoadAsync(Root);
+
+        skills.Select(skill => skill.Name).Should().Equal("review", "ship");
+        skills[0].IsGlobal.Should().BeFalse();
+        skills[1].IsGlobal.Should().BeTrue();
+        (await catalog.FindAsync(Root, "REVIEW"))!.Body.Should().Be("Project skill.");
+        (await catalog.FindAsync(Root, "ship"))!.SourcePath.Should()
+            .Be(Path.Combine(global, "skills", "ship", "SKILL.md").Replace('\\', '/'));
+    }
+
+    [Fact]
+    public async Task Disabled_project_and_global_skills_are_not_advertised()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-skills"));
+        var fileSystem = Project()
+            .AddFile(SkillPath("review"), "Review.")
+            .AddFile(SkillPath("ship"), "Ship.")
+            .AddFile(Path.Combine(global, "skills", "deploy", "SKILL.md"), "Deploy.")
+            .AddFile(Path.Combine(Root, ".codai", "skills.json"), "{\"disabled\":[\"REVIEW\"]}")
+            .AddFile(Path.Combine(global, "skills.json"), "{\"disabled\":[\"deploy\"]}");
+
+        var skills = await new SkillCatalog(fileSystem, global).LoadAsync(Root);
+
+        skills.Select(skill => skill.Name).Should().Equal("ship");
+    }
+
+    [Fact]
+    public async Task Invalid_skill_settings_do_not_hide_valid_skills()
+    {
+        var fileSystem = Project()
+            .AddFile(SkillPath("review"), "Review.")
+            .AddFile(Path.Combine(Root, ".codai", "skills.json"), "not json");
+
+        (await new SkillCatalog(fileSystem).LoadAsync(Root)).Should().ContainSingle()
+            .Which.Name.Should().Be("review");
+    }
+
+    [Fact]
+    public async Task Global_skill_fallback_works_without_project_directory_and_requires_opt_in()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-skills"));
+        var fileSystem = Project().AddFile(Path.Combine(global, "skills", "review", "SKILL.md"), "Global.");
+
+        (await new SkillCatalog(fileSystem).LoadAsync(Root)).Should().BeEmpty();
+        (await new SkillCatalog(fileSystem, global).LoadAsync(Root)).Should().ContainSingle();
+    }
+
     private const string Root = @"C:\project";
 
     private static InMemoryFileSystem Project() => new InMemoryFileSystem().AddDirectory(Root);

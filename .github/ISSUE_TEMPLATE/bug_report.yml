@@ -69,7 +69,7 @@ body:
     attributes:
       label: How did you install Codai?
       options:
-        - dotnet tool install --global Codai.Tool
+        - dotnet tool install --global Codai
         - Built from source
         - Release binary
         - Other

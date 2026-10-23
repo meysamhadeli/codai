@@ -1,0 +1,47 @@
+---
+title: "ACP Compatibility"
+description: "Drive Codai through its optional stdin/stdout JSON-lines host adapter."
+---
+
+# ACP Compatibility
+
+Codai includes a host-neutral compatibility subset for editor integrations. Start it
+with:
+
+```text
+codai --acp
+```
+
+Send one JSON object per line to stdin and read one JSON object per line from stdout.
+The adapter is optional and does not change the normal `codai code` or `codai --json`
+behavior.
+
+## Messages
+
+Create or resume a session:
+
+```json
+{"type":"new_session","sessionId":"demo","cwd":"C:/work","provider":"ollama","model":"qwen","mode":"plan","resume":true}
+```
+
+Then send a prompt:
+
+```json
+{"type":"prompt","sessionId":"demo","text":"Inspect the project"}
+```
+
+Supported commands are `initialize`, `new_session`, `prompt`, `set_mode`, `cancel`, and
+`permission_response`. Events include `session_created`, `mode_changed`,
+`permission_request`, `progress`, `text`, `usage`, `prompt_complete`, and structured
+`error` objects.
+
+Session modes are `plan` and `agent` (the default). Both `new_session` and `set_mode`
+reject the removed `ask` mode.
+
+## Compatibility boundary
+
+This adapter is not the complete Agent Client Protocol. It does not implement JSON-RPC
+request IDs, capability negotiation, authentication, binary/image content, separate ACP
+terminal resources, or changing provider/model in an existing session. Create another
+session when provider or model selection changes. The application layer still owns
+configuration, permission policy, cancellation, and session/task persistence.

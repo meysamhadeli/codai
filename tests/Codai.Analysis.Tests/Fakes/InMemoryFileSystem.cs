@@ -38,6 +38,12 @@ internal sealed class InMemoryFileSystem : Core.Abstractions.IFileSystem
         return Task.CompletedTask;
     }
 
+    public Task WriteAllTextAtomicallyAsync(string path, string contents, CancellationToken cancellationToken = default)
+    {
+        AddFile(path, contents);
+        return Task.CompletedTask;
+    }
+
     public void CreateDirectory(string path) => _directories.Add(Normalize(path));
 
     public void DeleteFile(string path)

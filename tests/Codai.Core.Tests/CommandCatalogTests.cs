@@ -1,3 +1,4 @@
+using Codai.Core.Abstractions;
 using Codai.Core.Customization;
 using Codai.Core.Tests.Fakes;
 using FluentAssertions;
@@ -9,12 +10,108 @@ namespace Codai.Core.Tests;
 /// </summary>
 public class CommandCatalogTests
 {
+    [Fact]
+    public async Task Identical_global_and_project_workflow_roots_keep_project_origin()
+    {
+        var fileSystem = Project().AddFile(CommandPath("review.md"), "Project workflow.");
+        var catalog = new CommandCatalog(fileSystem, Path.Combine(Root, ".codai", "."));
+
+        var commands = await catalog.LoadAsync(Root);
+
+        commands.Should().ContainSingle().Which.IsGlobal.Should().BeFalse();
+        commands[0].SourcePath.Should().Be(".codai/commands/review.md");
+        fileSystem.ReadPaths.Should().ContainSingle().Which.Should()
+            .Be(InMemoryFileSystem.Normalize(CommandPath("review.md")));
+        (await catalog.FindAsync(Root, "review"))!.Body.Should().Be("Project workflow.");
+    }
+
+    [Fact]
+    public async Task Empty_project_workflow_does_not_hide_valid_global_fallback()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-workflows"));
+        var fileSystem = Project().AddFile(CommandPath("review.md"), "---\ndescription: Empty\n---\n")
+            .AddFile(Path.Combine(global, "commands", "review.md"), "Global workflow.");
+        var catalog = new CommandCatalog(fileSystem, global);
+
+        var commands = await catalog.LoadAsync(Root);
+
+        commands.Should().ContainSingle().Which.IsGlobal.Should().BeTrue();
+        (await catalog.FindAsync(Root, "review"))!.Body.Should().Be("Global workflow.");
+    }
+
+    [Fact]
+    public async Task Combined_workflow_limit_reserves_project_entries_and_cancellation_is_not_swallowed()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-workflows"));
+        var fileSystem = Project().AddFile(CommandPath("project.md"), "Project.");
+        for (var index = 0; index < CommandCatalog.MaxCommands; index++)
+        {
+            fileSystem.AddFile(Path.Combine(global, "commands", $"global-{index:D3}.md"), "Global.");
+        }
+
+        var catalog = new CommandCatalog(fileSystem, global);
+        var commands = await catalog.LoadAsync(Root);
+        commands.Should().HaveCount(CommandCatalog.MaxCommands);
+        commands.Should().Contain(command => command.Name == "project" && !command.IsGlobal);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Func<Task> load = () => catalog.LoadAsync(Root, cancellation.Token);
+        await load.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Global_workflows_are_discovered_but_project_names_override_case_insensitively()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-workflows"));
+        var fileSystem = Project().AddFile(CommandPath("REVIEW.md"), "Project $ARGUMENTS")
+            .AddFile(Path.Combine(global, "commands", "review.md"), "Shadowed")
+            .AddFile(Path.Combine(global, "commands", "ship.md"), "Global $ARGUMENTS");
+        var catalog = new CommandCatalog(fileSystem, global);
+
+        var commands = await catalog.LoadAsync(Root);
+
+        commands.Select(command => command.Name).Should().Equal("review", "ship");
+        commands[0].IsGlobal.Should().BeFalse();
+        commands[1].IsGlobal.Should().BeTrue();
+        (await catalog.FindAsync(Root, "REVIEW"))!.Body.Should().Be("Project $ARGUMENTS");
+        (await catalog.FindAsync(Root, "ship"))!.SourcePath.Should()
+            .Be(Path.Combine(global, "commands", "ship.md").Replace('\\', '/'));
+    }
+
+    [Fact]
+    public async Task Global_workflow_fallback_works_without_project_directory_and_requires_opt_in()
+    {
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-global-workflows"));
+        var fileSystem = Project().AddFile(Path.Combine(global, "commands", "review.md"), "Global.");
+
+        (await new CommandCatalog(fileSystem).LoadAsync(Root)).Should().BeEmpty();
+        (await new CommandCatalog(fileSystem, global).LoadAsync(Root)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Plugin_commands_are_available_alongside_project_commands()
+    {
+        var provider = new TestPluginCommandProvider(
+            new CommandDefinition("format", "Format files", string.Empty, "Format the files.", "plugin:format"));
+
+        var catalog = new CommandCatalog(Project(), pluginProviders: [provider]);
+        var commands = await catalog.LoadAsync(Root);
+
+        commands.Should().ContainSingle().Which.Name.Should().Be("format");
+        (await catalog.FindAsync(Root, "format"))!.SourcePath.Should().Be("plugin:format");
+    }
+
     private const string Root = @"C:\project";
 
     private static InMemoryFileSystem Project() => new InMemoryFileSystem().AddDirectory(Root);
 
     private static string CommandPath(string fileName) =>
         Path.Combine(Root, ".codai", "commands", fileName);
+
+    private sealed class TestPluginCommandProvider(CommandDefinition command) : IPluginCommandProvider
+    {
+        public IReadOnlyList<CommandDefinition> Commands { get; } = [command];
+    }
 
     [Fact]
     public async Task A_project_without_the_directory_has_no_commands()

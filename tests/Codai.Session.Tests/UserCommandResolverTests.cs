@@ -25,7 +25,10 @@ public class UserCommandResolverTests
             Model = "gpt-4o",
         };
 
-        return (new UserCommandResolver(new CommandCatalog(fileSystem), options), fileSystem);
+        return (new UserCommandResolver(
+            new CommandCatalog(fileSystem),
+            new SkillCatalog(fileSystem),
+            options), fileSystem);
     }
 
     [Fact]
@@ -94,5 +97,36 @@ public class UserCommandResolverTests
         fileSystem.AddFile(CommandPath("review.md"), "Review it.");
 
         (await resolver.ExpandAsync(":review"))!.Request.Should().Be("Review it.");
+    }
+
+    [Fact]
+    public async Task Slash_skill_invocation_loads_skill_and_appends_request()
+    {
+        var (resolver, fileSystem) = Build();
+        fileSystem.AddFile(
+            Path.Combine(Root, ".codai", "skills", "review", "SKILL.md"),
+            "---\ndescription: Review code\n---\nReview carefully.");
+
+        var expansion = await resolver.ExpandAsync("/review src/a.cs");
+
+        expansion.Should().NotBeNull();
+        expansion!.IsSkill.Should().BeTrue();
+        expansion.Request.Should().Contain("Review carefully.").And.Contain("src/a.cs");
+    }
+
+    [Fact]
+    public async Task Project_command_wins_over_skill_with_same_name()
+    {
+        var (resolver, fileSystem) = Build();
+        fileSystem.AddFile(CommandPath("review.md"), "Use command workflow.");
+        fileSystem.AddFile(
+            Path.Combine(Root, ".codai", "skills", "review", "SKILL.md"),
+            "Use skill workflow.");
+
+        var expansion = await resolver.ExpandAsync(":review");
+
+        expansion.Should().NotBeNull();
+        expansion!.IsSkill.Should().BeFalse();
+        expansion.Request.Should().Be("Use command workflow.");
     }
 }

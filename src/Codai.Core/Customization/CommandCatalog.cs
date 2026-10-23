@@ -24,12 +24,20 @@ public sealed class CommandCatalog : ICommandCatalog
     public const int MaxNameLength = 40;
 
     private readonly IFileSystem _fileSystem;
+    private readonly string? _globalConfigurationDirectory;
+    private readonly IReadOnlyList<IPluginCommandProvider> _pluginProviders;
 
     /// <summary>Creates the catalog.</summary>
-    public CommandCatalog(IFileSystem fileSystem)
+    public CommandCatalog(
+        IFileSystem fileSystem,
+        string? globalConfigurationDirectory = null,
+        IEnumerable<IPluginCommandProvider>? pluginProviders = null)
     {
         ArgumentNullException.ThrowIfNull(fileSystem);
         _fileSystem = fileSystem;
+        _globalConfigurationDirectory = globalConfigurationDirectory is null
+            ? null : Path.GetFullPath(globalConfigurationDirectory);
+        _pluginProviders = [.. pluginProviders ?? []];
     }
 
     /// <inheritdoc />
@@ -38,11 +46,37 @@ public sealed class CommandCatalog : ICommandCatalog
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var directory = Path.Combine(
             rootDirectory,
             CodaiPaths.ToPlatformPath(CodaiPaths.CommandsDirectory));
+        var project = (await LoadDirectoryAsync(rootDirectory, directory, false, cancellationToken).ConfigureAwait(false))
+            .Concat(_pluginProviders.SelectMany(provider => provider.Commands))
+            .OrderBy(command => command.Name, StringComparer.Ordinal)
+            .ToList();
+        if (_globalConfigurationDirectory is null || project.Count >= MaxCommands)
+        {
+            return project;
+        }
 
+        var globalDirectory = Path.Combine(_globalConfigurationDirectory, "commands");
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        if (comparer.Equals(Path.GetFullPath(directory), Path.GetFullPath(globalDirectory)))
+        {
+            return project;
+        }
+
+        var names = project.Select(command => command.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var global = await LoadDirectoryAsync(_globalConfigurationDirectory, globalDirectory, true, cancellationToken)
+            .ConfigureAwait(false);
+        return [.. project.Concat(global.Where(command => !names.Contains(command.Name)).Take(MaxCommands - project.Count))
+            .OrderBy(command => command.Name, StringComparer.Ordinal)];
+    }
+
+    private async Task<IReadOnlyList<CommandDefinition>> LoadDirectoryAsync(
+        string rootDirectory, string directory, bool isGlobal, CancellationToken cancellationToken)
+    {
         if (!_fileSystem.DirectoryExists(directory))
         {
             return [];
@@ -61,7 +95,7 @@ public sealed class CommandCatalog : ICommandCatalog
                 continue;
             }
 
-            var definition = await TryReadAsync(rootDirectory, file, name, cancellationToken)
+            var definition = await TryReadAsync(rootDirectory, file, name, isGlobal, cancellationToken)
                 .ConfigureAwait(false);
 
             if (definition is not null)
@@ -109,6 +143,7 @@ public sealed class CommandCatalog : ICommandCatalog
         string rootDirectory,
         string file,
         string name,
+        bool isGlobal,
         CancellationToken cancellationToken)
     {
         string text;
@@ -142,7 +177,7 @@ public sealed class CommandCatalog : ICommandCatalog
             description,
             hint.Trim(),
             body,
-            Relative(rootDirectory, file));
+            isGlobal ? Path.GetFullPath(file).Replace('\\', '/') : Relative(rootDirectory, file)) { IsGlobal = isGlobal };
     }
 
     private static string Relative(string rootDirectory, string file) =>

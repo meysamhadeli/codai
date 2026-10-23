@@ -1,0 +1,31 @@
+---
+title: Skills
+description: Configure and invoke Codai skills.
+---
+
+Codai loads skills from project and global skill directories. Skill instructions are loaded progressively: descriptions are advertised first, and full instructions are loaded when a skill is invoked.
+
+## Disable skills
+
+Create `.codai/skills.json` in a project:
+
+```json
+{
+  "disabled": ["review", "deploy"]
+}
+```
+
+Disabled names are excluded from prompt advertisement, direct invocation, and skill tools. Names are case-insensitive. Global configuration can use `skills.json` in the configured Codai global directory. Project and global disabled lists are combined.
+
+Invalid optional settings do not prevent valid skills from loading.
+
+## Invoke a skill
+
+Use either form in an interactive session:
+
+```text
+/review src/api
+:review src/api
+```
+
+Project commands take precedence when a command and skill have the same name.

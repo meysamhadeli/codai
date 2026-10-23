@@ -36,14 +36,22 @@ internal sealed class StubTool : ToolBase
 
     public override bool IsReadOnly { get; }
 
+    public ToolResult Outcome { get; set; } = ToolResult.Success("stub");
+
+    public int Invocations { get; private set; }
+
     public override string ParametersSchema =>
         _schema ?? """{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"]}""";
 
     public override Task<ToolResult> InvokeAsync(
         JsonElement arguments,
         ToolContext context,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(ToolResult.Success("stub"));
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Invocations++;
+        return Task.FromResult(Outcome);
+    }
 }
 
 /// <summary>One tool call the model asked for.</summary>
