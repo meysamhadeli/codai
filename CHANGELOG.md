@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added a Mintlify documentation experience using the `mint` theme, Codai-specific
-  light/dark wordmarks, native cards and steps, and a first-session quickstart.
-  Accents, wordmarks, and favicon matched the app's default blue (`#00AFFF`).
-  Replaced the custom GitHub Pages renderer with Mintlify preview and validation;
-  publishing now requires connecting the repository's `docs/` directory to Mintlify.
-  Existing README URLs were retained pending a verified Mintlify deployment.
+- Added a Nextra documentation experience with Codai-specific light/dark wordmarks,
+  native cards and steps, and a first-session quickstart. Accents, wordmarks, and favicon
+  matched the app's default blue (`#00AFFF`). Static Pagefind search worked without a
+  hosted documentation account.
+
+- Validated README and deployment-workflow changes on documentation pull requests,
+  in addition to documentation content. Patched the documentation build's transitive
+  XML parser without downgrading Nextra.
 
 - Added a cyan terminal-style SVG wordmark as the README logo.
 
@@ -42,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toggles move paths between `plugins` and `disabled_plugins`; remove deletes only the
   configuration entry. Concrete `.dll` validation, offline inspection, lazy startup and
   tests ensure no plugin binary is installed, loaded, executed or deleted. Full ACP/protocol
-  parity remains intentionally unsupported as documented in `docs/acp-compatibility.mdx`.
+  parity remains intentionally unsupported as documented in `docs/content/acp-compatibility.mdx`.
 
 - **Lazy foreground rule activation.** Read/write/edit file targets activate matching
   conditional rules before approval, hooks or I/O. Guidance-only results pause the rest
@@ -318,12 +320,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version, verifies the `Codai` tool installs and pushes to nuget.org with the
   `NUGET_API_KEY` secret. Package and install verification runs during release publishing;
   regular CI is build-only.
-- **The documentation site is built and published by GitHub Actions.** `docs/` now holds
-  the pages themselves and a dependency-free-in-spirit Node build that renders them into
-  `docs/_site`; [docs.yml](.github/workflows/docs.yml) publishes that output to GitHub
-  Pages. `docs/check.mjs` fails when a page is missing from the `docs.json` navigation, has
-  no frontmatter, or is linked from `README.md` without existing. Mintlify is no longer
-  required.
+- **The documentation site is built and published by GitHub Actions.** Nextra and Next.js
+  exported all pages from `docs/content` into `docs/out`, with `/codai` links and assets.
+  [docs.yml](.github/workflows/docs.yml) restored GitHub Pages deployment after source,
+  static-link, asset, and search-index checks. Native `_meta.js` navigation replaced
+  Mintlify configuration; Mintlify hosting and login were no longer required.
 - **The documentation lives at https://meysamhadeli.github.io/codai.** `README.md` links
   point there instead of the unpublished `docs.codai.dev`.
 - **The CLI package is `Codai`.** `dotnet tool install --global Codai` now installs the

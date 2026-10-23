@@ -44,6 +44,8 @@ msbuild.log
 node_modules/
 .mintlify/
 docs/_site/
+docs/.next/
+docs/out/
 
 # ---------------------------------------------------------------------------
 # Environment

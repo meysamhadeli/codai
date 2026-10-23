@@ -16,18 +16,18 @@ A change is not done until the docs that describe it are updated in the same com
 
 - `README.md` is a short landing page: pitch, install, feature summary, links to
   published documentation. Detail goes in `docs/`, never in the README.
-- `docs/` is the documentation site. Pages are `.mdx` files with `title` and `description`
-  frontmatter; `docs/docs.json` declares Mintlify's theme, branding and navigation.
-  `npm run dev` in `docs/` previews the actual Mintlify engine.
-  [docs.yml](./.github/workflows/docs.yml) validates sources; Mintlify's connected GitHub
-  integration handles hosting, not GitHub Pages.
-- A new `.mdx` page must be registered in the `navigation` of
-  [docs/docs.json](./docs/docs.json) or `node docs/check.mjs` fails — the site would
-  otherwise not link to it.
-- README links temporarily retain the legacy `https://meysamhadeli.github.io/codai` URL.
-  After Mintlify hosting is connected and verified, update those links and the temporary
-  base URL in `docs/check.mjs` together. Do not invent a live Mintlify URL. Hosting setup
-  is documented in `CONTRIBUTION.md`; Mintlify does not use `docs/CNAME`.
+- `docs/` is the Nextra documentation site. Pages live in `docs/content/` as `.mdx` files
+  with `title` and `description` frontmatter. Co-located `_meta.js` files declare navigation.
+  `npm run dev` in `docs/` previews it at `http://localhost:3000/codai/`.
+- Register each new page in its directory's `_meta.js` or `node docs/check.mjs` fails.
+  Use native Nextra MDX components and root-relative internal routes; Next.js adds the
+  `/codai` base path automatically. Public asset URLs must include that prefix.
+- `npm run build` exports static HTML to `docs/out` and builds Pagefind search.
+  [docs.yml](./.github/workflows/docs.yml) validates pull requests and deploys pushes to
+  `main` to GitHub Pages. No hosted documentation account is required.
+- The public URL is `https://meysamhadeli.github.io/codai`. Its base path, URL and branding
+  live in `docs/site.config.mjs`. If hosting changes, update that configuration, README
+  links and Pages settings together. Deployment setup is documented in `CONTRIBUTION.md`.
 - Links in `README.md` point at published docs pages, not local file paths.
 - `CHANGELOG.md` entries are user-facing, past tense, under `Added` / `Changed` / `Fixed` /
   `Removed`.
@@ -70,5 +70,5 @@ Never bump `<Version>` for a release by hand — the tag is the version.
 | `src/Codai.Core/` | Domain types and abstractions |
 | `src/Codai.Adapters/` | Providers, configuration, MCP, tools, analysis |
 | `tests/` | Test projects, one per area |
-| `docs/` | Mintlify documentation site source |
+| `docs/` | Nextra documentation site and GitHub Pages static export |
 | `assets/` | Images used by `README.md` |

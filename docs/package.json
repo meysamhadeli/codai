@@ -3,14 +3,28 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Codai documentation powered by Mintlify.",
+  "description": "Codai documentation powered by Nextra and published to GitHub Pages.",
   "scripts": {
-    "dev": "mint dev",
+    "dev": "next dev --webpack",
     "test": "node --test check.test.mjs",
-    "check": "node check.mjs && mint broken-links",
-    "build": "mint validate"
+    "check": "node check.mjs",
+    "build": "next build --webpack",
+    "postbuild": "pagefind --site out --output-subdir _pagefind && node check-export.mjs"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "nextra": "4.6.1",
+    "nextra-theme-docs": "4.6.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "mint": "4.2.1111"
+    "pagefind": "1.5.2",
+    "yaml": "2.8.3"
+  },
+  "overrides": {
+    "speech-rule-engine": {
+      "@xmldom/xmldom": "0.9.12"
+    }
   }
 }
