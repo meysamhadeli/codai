@@ -1,4 +1,6 @@
-<h1 align="center">Codai</h1>
+<p align="center">
+  <img src="assets/codai-logo.png" alt="Codai" width="480" />
+</p>
 
 <p align="center">
 The open source coding agent for your terminal.
@@ -26,7 +28,7 @@ The open source coding agent for your terminal.
 <br>
 
 <p align="center">
-  <img src="assets/codai-demo.gif" alt="Codai working in a terminal" />
+  <img src="assets/codai.png" alt="Codai working in a terminal" />
 </p>
 
 ---
@@ -92,7 +94,8 @@ Everything beyond getting started lives in the [documentation](https://meysamhad
 ## Contributing
 
 Bug reports, feature requests and pull requests are welcome. Start with
-[CONTRIBUTION.md](CONTRIBUTION.md); security issues should go through [SECURITY.md](SECURITY.md)
+[CONTRIBUTION.md](CONTRIBUTION.md); report security issues through
+[GitHub private vulnerability reporting](https://github.com/meysamhadeli/codai/security/advisories/new)
 rather than a public issue.
 
 ## License
