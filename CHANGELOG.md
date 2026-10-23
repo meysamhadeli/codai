@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a cyan terminal-style SVG wordmark as the README logo.
+
 - **Compact, clickable terminal steps.** Thinking, reasoning, and tool actions started
   collapsed and opened individually by clicking their headers. Ctrl+O toggled the
   selected step, with the latest step as its fallback. Edit headers displayed actual
@@ -250,6 +252,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified CI to one Ubuntu build job with warnings treated as errors. Removed CI
+  tests, test artifacts, Windows matrix, and publish/package verification jobs while
+  retaining Release Drafter, automatic release labels, NuGet publishing, and docs deployment.
+  Removed scheduled Dependabot updates and the CodeQL analysis workflow.
+
 - Reordered connection setup to offer **Use your own provider** first, followed by
   **Continue with ChatGPT**, and **Hosted provider** before **Local server**.
   Removed the separate **Custom endpoint** setup choice while retaining editable
@@ -289,8 +296,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Releases publish themselves to nuget.org.** Publishing the draft Release Drafter
   prepares now packs every project under `src/`, stamps the release tag as the package
   version, verifies the `Codai` tool installs and pushes to nuget.org with the
-  `NUGET_API_KEY` secret. CI runs the same pack and install checks first, so a packaging
-  break fails the pull request instead of the release.
+  `NUGET_API_KEY` secret. Package and install verification runs during release publishing;
+  regular CI is build-only.
 - **The documentation site is built and published by GitHub Actions.** `docs/` now holds
   the pages themselves and a dependency-free-in-spirit Node build that renders them into
   `docs/_site`; [docs.yml](.github/workflows/docs.yml) publishes that output to GitHub

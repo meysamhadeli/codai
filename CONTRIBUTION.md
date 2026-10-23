@@ -29,6 +29,12 @@ dotnet build Codai.slnx
 dotnet test Codai.slnx
 ```
 
+CI currently runs one Ubuntu build job using
+`dotnet build Codai.slnx --configuration Release -warnaserror`. It does not run tests,
+package/install checks, or a Windows matrix; run relevant tests locally. Release Drafter
+and its automatic labels, release publishing, and documentation deployment remain separate
+workflows. Scheduled Dependabot updates and the CodeQL workflow are disabled.
+
 CI builds with `-warnaserror`, so a change must leave the build warning-free. Style and
 analyzer rules are declared in `.editorconfig` and `Directory.Build.props`, not in the
 IDE, so the same rules apply locally and on the build server. `dotnet format

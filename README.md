@@ -1,4 +1,6 @@
-<h1 align="center">Codai</h1>
+<p align="center">
+  <img src="assets/codai-logo.png" alt="Codai" width="480" />
+</p>
 
 <p align="center">
 The open source coding agent for your terminal.
@@ -26,7 +28,7 @@ The open source coding agent for your terminal.
 <br>
 
 <p align="center">
-  <img src="assets/codai-demo.gif" alt="Codai working in a terminal" />
+  <img src="assets/codai.png" alt="Codai working in a terminal" />
 </p>
 
 ---
