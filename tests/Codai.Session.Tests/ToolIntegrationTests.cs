@@ -104,9 +104,12 @@ public class ToolIntegrationTests
             services.AddSingleton<IUserInterface>(ui);
             services.AddCodaiApplication(options, root.FullName, mode: mode);
             services.Replace(ServiceDescriptor.Singleton<IChatClientFactory>(client));
+            var scanner = new FakeProjectScanner { Failure = new IOException("Automatic scanning must not run.") };
+            services.Replace(ServiceDescriptor.Singleton<IProjectScanner>(scanner));
             await using var provider = services.BuildServiceProvider();
 
             var exitCode = await provider.GetRequiredService<ICodaiSession>().RunTaskAsync("Inspect relevant source files");
+            scanner.ScannedRoots.Should().BeEmpty();
             provider.GetRequiredService<RequestRuleGuidance>().RenderActivated().Should().BeNull();
             if (oversized)
             {

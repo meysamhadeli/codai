@@ -31,8 +31,8 @@ namespace Codai.Application;
 /// <item><b>No nesting.</b> <see cref="SubAgent.ToolName"/> is excluded from the set, so a
 /// sub-agent cannot start another one. Two levels would cost more than they explain.</item>
 /// <item><b>A window of its own.</b> It gets no conversation history and, deliberately, no
-/// project summary: the summary is what the parent already has, and copying it per run is
-/// the cost this feature exists to avoid. The sub-agent finds what it needs with the
+/// project summary: copying the parent's discovered file context per run is the cost
+/// this feature exists to avoid. The sub-agent finds what it needs with the
 /// tools.</item>
 /// <item><b>Its own budget.</b> A fresh <see cref="ToolCallGovernor"/> per run, and a
 /// smaller one than a user request gets, because a sub-agent that needs sixty calls has

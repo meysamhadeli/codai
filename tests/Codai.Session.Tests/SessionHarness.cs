@@ -92,6 +92,8 @@ internal sealed class SessionHarness
     /// <summary>Instructions the project "ships"; null means the project has none.</summary>
     public string? Instructions { get; set; }
 
+    public IProjectInstructionsProvider? InstructionsProvider { get; set; }
+
     /// <summary>The store the session persists into. Backed by the in-memory file system.</summary>
     public ISessionStore SessionStore { get; }
 
@@ -138,7 +140,7 @@ internal sealed class SessionHarness
 
     public CodeSession Build()
     {
-        var instructionsProvider = new FakeProjectInstructionsProvider(Instructions);
+        var instructionsProvider = InstructionsProvider ?? new FakeProjectInstructionsProvider(Instructions);
         var skills = new SkillCatalog(FileSystem);
         var commands = new CommandCatalog(FileSystem);
         var compactor = new HistoryCompactor(

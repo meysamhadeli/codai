@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="40" viewBox="0 0 176 40" role="img" aria-label="Codai">
+  <rect x="1" y="3" width="34" height="34" rx="9" fill="#00AFFF"/>
+  <path d="m10 13 7 7-7 7m12 0h5" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="47" y="29" fill="#171717" font-family="Arial, sans-serif" font-size="29" font-weight="700" letter-spacing="-1">codai</text>
+</svg>

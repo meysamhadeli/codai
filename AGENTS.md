@@ -15,17 +15,19 @@ A change is not done until the docs that describe it are updated in the same com
 | Layout or package name | [README.md](./README.md) index · `CONTRIBUTION.md` |
 
 - `README.md` is a short landing page: pitch, install, feature summary, links to
-  `https://docs.codai.dev`. Detail goes in `docs/`, never in the README.
+  published documentation. Detail goes in `docs/`, never in the README.
 - `docs/` is the documentation site. Pages are `.mdx` files with `title` and `description`
-  frontmatter; `docs/docs.json` declares the navigation, and `node docs/build.mjs` renders
-  the static site into `docs/_site`, which
-  [docs.yml](./.github/workflows/docs.yml) publishes to GitHub Pages.
+  frontmatter; `docs/docs.json` declares Mintlify's theme, branding and navigation.
+  `npm run dev` in `docs/` previews the actual Mintlify engine.
+  [docs.yml](./.github/workflows/docs.yml) validates sources; Mintlify's connected GitHub
+  integration handles hosting, not GitHub Pages.
 - A new `.mdx` page must be registered in the `navigation` of
   [docs/docs.json](./docs/docs.json) or `node docs/check.mjs` fails — the site would
   otherwise not link to it.
-- The published base URL is `https://meysamhadeli.github.io/codai`. It is defined in
-  `docs/build.mjs` and `docs/check.mjs`; if a custom domain is added later, add a
-  `docs/CNAME` file and update those two constants together.
+- README links temporarily retain the legacy `https://meysamhadeli.github.io/codai` URL.
+  After Mintlify hosting is connected and verified, update those links and the temporary
+  base URL in `docs/check.mjs` together. Do not invent a live Mintlify URL. Hosting setup
+  is documented in `CONTRIBUTION.md`; Mintlify does not use `docs/CNAME`.
 - Links in `README.md` point at published docs pages, not local file paths.
 - `CHANGELOG.md` entries are user-facing, past tense, under `Added` / `Changed` / `Fixed` /
   `Removed`.
@@ -38,7 +40,7 @@ A change is not done until the docs that describe it are updated in the same com
 dotnet build Codai.slnx -warnaserror
 dotnet test Codai.slnx
 
-cd docs && npm ci && npm run check && npm run build   # only when docs/ changed
+cd docs && npm ci && npm test && npm run check && npm run build   # only when docs/ changed
 ```
 
 CI builds with `-warnaserror`. Style rules live in `.editorconfig` and `Directory.Build.props`;

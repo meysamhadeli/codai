@@ -235,6 +235,7 @@ public class CodeSessionTests
         harness.FileSystem.FileExists(@"C:\project\src\Foo.cs").Should().BeTrue();
         harness.History.Turns.Should().HaveCount(2);
         harness.Chat.Requests[1].AllowedTools.Should().Contain("write_file");
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
         (await harness.TaskStore.LoadAsync(harness.Root))!.Status.Should().Be(AgentTaskStatus.Completed);
     }
     [Fact]
@@ -250,6 +251,8 @@ public class CodeSessionTests
         harness.Chat.Requests.Should().ContainSingle();
         harness.History.Turns.Should().ContainSingle().Which.UserRequest.Should().Be("single request");
         harness.Ui.ReadRequests.Should().BeEmpty();
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
+        harness.Ui.ProgressLabels.Should().NotContain("Loading Context...");
         (await harness.SessionStore.LoadAsync(harness.Root)).Should().ContainSingle();
     }
 
@@ -269,6 +272,7 @@ public class CodeSessionTests
 
         harness.History.Turns.Should().HaveCount(2);
         harness.Chat.Requests[1].SystemPrompt.Should().Contain("1. Inspect Foo.");
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
     }
 
     [Theory]
@@ -426,20 +430,22 @@ public class CodeSessionTests
     }
 
     [Fact]
-    public async Task Scans_the_project_once_before_the_first_request()
+    public async Task Answers_multiple_requests_without_scanning_the_project()
     {
         var harness = new SessionHarness();
         harness.Chat.Enqueue("ok");
-        harness.QueueInputs("hi");
+        harness.Chat.Enqueue("done");
+        harness.QueueInputs("hi", "follow up");
 
         await harness.Build().RunAsync();
 
-        harness.Scanner.ScannedRoots.Should().ContainSingle().Which.Should().Be(harness.Root);
-        harness.Ui.ProgressLabels.Should().Contain("Loading Context...");
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
+        harness.Ui.ProgressLabels.Should().NotContain("Loading Context...");
+        harness.Chat.Requests.Should().HaveCount(2);
     }
 
     [Fact]
-    public async Task Sends_the_project_context_in_the_system_prompt()
+    public async Task Offers_file_tools_without_an_automatic_project_summary()
     {
         var harness = new SessionHarness();
         harness.Chat.Enqueue("ok");
@@ -448,9 +454,58 @@ public class CodeSessionTests
         await harness.Build().RunAsync();
 
         var request = harness.Chat.Requests.Should().ContainSingle().Subject;
-        request.SystemPrompt.Should().Contain("**File: Program.cs**");
-        request.SystemPrompt.Should().Contain("## Here is the summary of context of project");
+        request.SystemPrompt.Should().NotContain("**File: Program.cs**");
+        request.AllowedTools.Should().Contain("read_file");
         request.UserMessage.Should().Be("## Here is user request\nhi");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Opening_and_exiting_or_using_local_commands_does_not_load_project_guidance(bool localCommands)
+    {
+        var instructions = new FakeProjectInstructionsProvider("Project instructions.");
+        var harness = new SessionHarness { InstructionsProvider = instructions };
+        harness.QueueInputs(localCommands ? [":help", ":mode plan", ":exit"] : []);
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        harness.Ui.ReadRequests.Should().NotBeEmpty();
+        instructions.LoadCount.Should().Be(0);
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
+        harness.Ui.ProgressLabels.Should().NotContain("Loading Context...");
+        harness.Chat.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Loads_project_guidance_once_for_the_first_model_request()
+    {
+        var instructions = new FakeProjectInstructionsProvider("Always write a test.");
+        var harness = new SessionHarness { InstructionsProvider = instructions };
+        harness.Chat.Enqueue("first");
+        harness.Chat.Enqueue("second");
+        harness.QueueInputs(":help", "first request", "second request");
+
+        await harness.Build().RunAsync();
+
+        instructions.LoadCount.Should().Be(1);
+        harness.Chat.Requests.Should().HaveCount(2).And.OnlyContain(
+            request => request.SystemPrompt.Contains("Always write a test.", StringComparison.Ordinal));
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Deep_planning_loads_guidance_without_scanning()
+    {
+        var harness = new SessionHarness { Instructions = "Always write a test." };
+        harness.Chat.Enqueue("1. Inspect the relevant files.");
+        harness.QueueInputs(":deep-plan investigate startup", ":exit");
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        harness.Chat.Requests.Should().ContainSingle().Which.SystemPrompt.Should().Contain("Always write a test.");
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
+        harness.Mode.Mode.Should().Be(AgentMode.Plan);
     }
 
     [Fact]
@@ -654,7 +709,7 @@ public class CodeSessionTests
     }
 
     [Fact]
-    public async Task Reports_a_scan_failure_but_still_answers()
+    public async Task Session_does_not_depend_on_project_scanner_availability()
     {
         var harness = new SessionHarness();
         harness.Scanner.Failure = new DirectoryNotFoundException("Project directory was not found.");
@@ -663,8 +718,23 @@ public class CodeSessionTests
 
         await harness.Build().RunAsync();
 
-        harness.Ui.Errors.Should().Contain("Project directory was not found.");
+        harness.Ui.Errors.Should().BeEmpty();
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
         harness.Chat.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Explicit_project_scans_remain_available_and_report_failures()
+    {
+        var harness = new SessionHarness();
+        var loader = new ProjectContextLoader(harness.Options, harness.Scanner, harness.Ui);
+
+        (await loader.LoadAsync()).Should().BeSameAs(harness.Scanner.Result);
+        harness.Scanner.Failure = new DirectoryNotFoundException("Project directory was not found.");
+        (await loader.LoadAsync()).Should().BeSameAs(Codai.Core.Projects.ProjectContext.Empty);
+
+        harness.Scanner.ScannedRoots.Should().HaveCount(2);
+        harness.Ui.Errors.Should().Contain("Project directory was not found.");
     }
 
     [Fact]

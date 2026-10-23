@@ -7,13 +7,12 @@ using Codai.Core.Projects;
 namespace Codai.Application;
 
 /// <summary>
-/// The interactive coding session: it scans the project once, then answers user
-/// requests in a loop, applying accepted file changes.
+/// The interactive coding session: it discovers project files on demand through tools
+/// and answers user requests in a loop, applying accepted file changes.
 /// </summary>
 /// <remarks>
 /// This type only owns the loop and the session's lifecycle. The work of each step is
 /// delegated to a dedicated collaborator:
-/// <see cref="ProjectContextLoader"/> (scanning),
 /// <see cref="ProjectGuidanceLoader"/> (instructions and skills),
 /// <see cref="ChatExchangeService"/> (prompting, streaming, history),
 /// <see cref="ChangeApplicator"/> (proposed file edits),
@@ -24,7 +23,6 @@ public sealed class CodeSession
 {
     private readonly SessionOptions _options;
     private readonly IUserInterface _ui;
-    private readonly ProjectContextLoader _contextLoader;
     private readonly ProjectGuidanceLoader _guidanceLoader;
     private readonly ChatExchangeService _chatExchange;
     private readonly ChangeApplicator _changeApplicator;
@@ -46,6 +44,10 @@ public sealed class CodeSession
     public const int MaxPlanChars = 32_768;
 
     /// <summary>Creates the session from its collaborators.</summary>
+    /// <remarks>
+    /// The context loader parameter is retained for constructor compatibility. Sessions
+    /// no longer invoke it; hosts can explicitly use it when they need a project scan.
+    /// </remarks>
     public CodeSession(
         SessionOptions options,
         IUserInterface ui,
@@ -80,7 +82,6 @@ public sealed class CodeSession
 
         _options = options;
         _ui = ui;
-        _contextLoader = contextLoader;
         _guidanceLoader = guidanceLoader;
         _chatExchange = chatExchange;
         _changeApplicator = changeApplicator;
@@ -108,8 +109,8 @@ public sealed class CodeSession
     /// <returns>The process exit code.</returns>
     public async Task<int> RunAsync(CancellationToken cancellationToken = default)
     {
-        var context = await _contextLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var guidance = await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var context = ProjectContext.Empty;
+        ProjectGuidance? guidance = null;
 
         if (_options.ResumePreviousSession)
         {
@@ -159,6 +160,7 @@ public sealed class CodeSession
 
                     if (command == SlashCommand.Act)
                     {
+                        guidance ??= await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
                         var result = await ExecutePlanCoreAsync(context, guidance, arguments, cancellationToken).ConfigureAwait(false);
                         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
                         if (result == AgentTaskStatus.Cancelled && cancellationToken.IsCancellationRequested)
@@ -178,6 +180,7 @@ public sealed class CodeSession
                         }
 
                         _mode.Mode = AgentMode.Plan;
+                        guidance ??= await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
                         var deepPlanRequest =
                             "Create a deep implementation plan for this request. Explore the repository first. " +
                             "Return: current-state findings, numbered implementation steps with file paths, " +
@@ -201,6 +204,7 @@ public sealed class CodeSession
                         }
                         else
                         {
+                            guidance ??= await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
                             await _repairWorkflow.RunAsync(context, guidance, cancellationToken: cancellationToken)
                                 .ConfigureAwait(false);
                         }
@@ -231,6 +235,7 @@ public sealed class CodeSession
                 request = expansion.Request;
             }
 
+            guidance ??= await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
             if (await HandleRequestAsync(context, request, guidance, null, cancellationToken).ConfigureAwait(false)
                 == AgentTaskStatus.Cancelled && cancellationToken.IsCancellationRequested)
             {
@@ -250,7 +255,7 @@ public sealed class CodeSession
 
         try
         {
-            var context = await _contextLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var context = ProjectContext.Empty;
             var guidance = await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
             if (_options.ResumePreviousSession)
             {
@@ -303,7 +308,7 @@ public sealed class CodeSession
         ArgumentNullException.ThrowIfNull(instructions);
         try
         {
-            var context = await _contextLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var context = ProjectContext.Empty;
             var guidance = await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
             var status = await ExecutePlanCoreAsync(context, guidance, instructions, cancellationToken).ConfigureAwait(false);
             await PersistAsync(CancellationToken.None).ConfigureAwait(false);

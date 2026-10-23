@@ -3,12 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Documentation site for Codai, published to GitHub Pages.",
+  "description": "Codai documentation powered by Mintlify.",
   "scripts": {
-    "check": "node check.mjs",
-    "build": "node build.mjs"
+    "dev": "mint dev",
+    "test": "node --test check.test.mjs",
+    "check": "node check.mjs && mint broken-links",
+    "build": "mint validate"
   },
   "devDependencies": {
-    "marked": "^15.0.7"
+    "mint": "4.2.1111"
   }
 }

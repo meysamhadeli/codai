@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a Mintlify documentation experience using the `mint` theme, Codai-specific
+  light/dark wordmarks, native cards and steps, and a first-session quickstart.
+  Accents, wordmarks, and favicon matched the app's default blue (`#00AFFF`).
+  Replaced the custom GitHub Pages renderer with Mintlify preview and validation;
+  publishing now requires connecting the repository's `docs/` directory to Mintlify.
+  Existing README URLs were retained pending a verified Mintlify deployment.
+
 - Added a cyan terminal-style SVG wordmark as the README logo.
 
 - **Compact, clickable terminal steps.** Thinking, reasoning, and tool actions started
@@ -251,6 +258,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spending model calls of its own.
 
 ### Changed
+
+- Removed the version line below the terminal welcome wordmark and tightened the header
+  spacing. The installed version remained available through `codai --version`.
+
+- Moved Agent to the left and Plan to the right in the terminal mode selector. Agent
+  remained the default; explicit Plan selection and restored session modes were preserved.
+
+- Changed session context to on-demand file discovery instead of an automatic full-project
+  signature scan, removing the startup `Loading Context...` phase. Interactive prompt
+  guidance loaded only before the first task that needed it, then stayed available for
+  subsequent requests. One-shot and Plan-to-Act execution also stopped automatic scanning;
+  instructions, rules, skills, memory, file mentions, permissions, and checkpoints remained
+  intact. Explicit SDK scanning and prompt-building APIs remained available.
 
 - Simplified CI to one Ubuntu build job with warnings treated as errors. Removed CI
   tests, test artifacts, Windows matrix, and publish/package verification jobs while

@@ -1,10 +1,47 @@
 {
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
   "name": "Codai",
+  "description": "The open source coding agent for your terminal.",
+  "colors": {
+    "primary": "#00AFFF",
+    "light": "#00AFFF",
+    "dark": "#00AFFF"
+  },
+  "logo": {
+    "light": "/assets/logo-light.svg",
+    "dark": "/assets/logo-dark.svg",
+    "href": "/"
+  },
+  "favicon": "/assets/favicon.svg",
+  "background": {
+    "color": { "light": "#FAFAF9", "dark": "#0F0F0F" }
+  },
+  "appearance": { "default": "system", "strict": false },
+  "fonts": { "family": "Geist Sans" },
+  "styling": { "eyebrows": "breadcrumbs", "codeblocks": "system" },
+  "navbar": {
+    "links": [
+      { "label": "GitHub", "icon": "github", "href": "https://github.com/meysamhadeli/codai" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get started",
+      "href": "/getting-started/quickstart"
+    }
+  },
+  "footer": {
+    "socials": { "github": "https://github.com/meysamhadeli/codai" }
+  },
   "navigation": {
     "groups": [
       {
+        "group": "Getting started",
+        "pages": ["index", "getting-started/quickstart"]
+      },
+      {
         "group": "Agent mode",
-        "pages": ["agent-mode", "agent-mode-roadmap", "acp-compatibility"]
+        "pages": ["agent-mode"]
       },
       {
         "group": "Customization",
@@ -12,7 +49,11 @@
       },
       {
         "group": "Integrations",
-        "pages": ["mcp"]
+        "pages": ["mcp", "acp-compatibility"]
+      },
+      {
+        "group": "Resources",
+        "pages": ["agent-mode-roadmap"]
       }
     ]
   }
