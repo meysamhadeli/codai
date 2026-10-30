@@ -73,9 +73,7 @@ public sealed class CliApplication
             return 0;
         }
 
-        var authentication = args.Length == 0
-            ? _uiOverride is not null || !_input.IsRedirected
-            : args[0].Equals("auth", StringComparison.OrdinalIgnoreCase);
+        var authentication = args.Length > 0 && args[0].Equals("auth", StringComparison.OrdinalIgnoreCase);
         var parsed = CommandLineParser.Parse(authentication ? ["code", .. args.Skip(1)] : args);
         if (parsed.Acp && !authentication)
         {
@@ -126,24 +124,34 @@ public sealed class CliApplication
 
     private async Task<int> RunAuthenticationAsync(CommandLineParseResult parsed, IConsoleOutput output, CancellationToken cancellationToken)
     {
+        var result = await RunConnectionSetupAsync(parsed, output, firstRun: false, cancellationToken).ConfigureAwait(false);
+        return result.ExitCode;
+    }
+
+    private async Task<(int ExitCode, bool Saved)> RunConnectionSetupAsync(
+        CommandLineParseResult parsed, IConsoleOutput output, bool firstRun, CancellationToken cancellationToken)
+    {
         if (parsed.Acp || parsed.JsonOutput || parsed.Prompt is not null ||
             _uiOverride is null && (_input.IsRedirected || Console.IsOutputRedirected))
         {
             output.WriteError("Connection setup requires an interactive terminal. Use 'codai auth [options]' or configure provider flags for scripted runs.");
-            return 1;
+            return (1, false);
         }
         if (!TryResolveRunPaths(parsed, output, out var paths))
         {
-            return 1;
+            return (1, false);
         }
         var ui = _uiOverride ?? new SpectreUserInterface(input: _input, projectRoot: paths.WorkingDirectory) { ConnectionSetup = true };
         using var terminal = ui as SpectreUserInterface;
         try
         {
-            var file = paths.ConfigPath ?? CodaiConfigurationLoader.FindDefaultConfigFile(paths.ConfigurationDirectory)
-                ?? Path.Combine(paths.ConfigurationDirectory, CodaiOptions.FileName + ".json");
+            var configurationDirectory = firstRun && paths.ConfigPath is null &&
+                CodaiConfigurationLoader.FindDefaultConfigFile(paths.ConfigurationDirectory) is null
+                ? paths.GlobalConfigurationDirectory : paths.ConfigurationDirectory;
+            var file = paths.ConfigPath ?? CodaiConfigurationLoader.FindDefaultConfigFile(configurationDirectory)
+                ?? Path.Combine(configurationDirectory, CodaiOptions.FileName + ".json");
             var options = File.Exists(file)
-                ? CodaiConfigurationLoader.Load(new(paths.ConfigurationDirectory, file), _environment)
+                ? CodaiConfigurationLoader.Load(new(configurationDirectory, file), _environment)
                 : new CodaiOptions();
             using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
             {
@@ -152,21 +160,42 @@ public sealed class CliApplication
             };
             var discovery = new ProviderModelDiscovery(http, options.AiProviderConfig.ApiVersion);
             var manager = new CodaiConfigurationManager(new PhysicalFileSystem());
-            var accounts = new AccountConnectionWorkflow(ui, manager, file, paths.ConfigurationDirectory,
+            if (firstRun && options.Theme is not ("graphite" or "forest" or "ember"))
+            {
+                var theme = await ui.ChooseAsync("Codai / Appearance",
+                [
+                    new("Graphite", "Cool blue selection", "graphite"),
+                    new("Forest", "Soft green selection", "forest"),
+                    new("Ember", "Warm gold selection", "ember"),
+                ], cancellationToken).ConfigureAwait(false);
+                if (theme is not ("graphite" or "forest" or "ember"))
+                {
+                    return (0, false);
+                }
+
+                Directory.CreateDirectory(configurationDirectory);
+                await manager.SetValueAsync(file, "theme", theme, configurationDirectory, cancellationToken).ConfigureAwait(false);
+                ui.SetTheme(theme);
+            }
+            else
+            {
+                ui.SetTheme(options.Theme);
+            }
+            var accounts = new AccountConnectionWorkflow(ui, manager, file, configurationDirectory,
                 new AccountCredentialStore(), new AccountAuthorizationClient(http));
-            await new ConnectionSetupWorkflow(ui, manager, file,
-                paths.ConfigurationDirectory, options.AiProviderConfig, _modelDiscovery ?? discovery.ListAsync, accounts.RunAsync)
+            var saved = await new ConnectionSetupWorkflow(ui, manager, file,
+                configurationDirectory, options.AiProviderConfig, _modelDiscovery ?? discovery.ListAsync, accounts.RunAsync)
                 .RunAsync(cancellationToken).ConfigureAwait(false);
-            return 0;
+            return (0, saved);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return 130;
+            return (130, false);
         }
         catch (Exception exception) when (exception is CodaiConfigurationException or IOException or UnauthorizedAccessException)
         {
             output.WriteError("Connection setup could not save configuration. Check the file format and directory permissions.");
-            return 1;
+            return (1, false);
         }
     }
 
@@ -276,6 +305,16 @@ public sealed class CliApplication
         {
             output.WriteError(ex.Message);
             return 1;
+        }
+
+        var connection = ResolvedProviderOptions.From(options.AiProviderConfig);
+        if (args.Length == 0 && (_uiOverride is not null || !_input.IsRedirected) &&
+            (options.LoadedFrom is null || connection.RequiresApiKey && connection.ApiKey is null && connection.Account is null))
+        {
+            var setup = await RunConnectionSetupAsync(parsed, output, firstRun: true, runToken).ConfigureAwait(false);
+            return setup.ExitCode != 0 || !setup.Saved
+                ? setup.ExitCode
+                : await RunConfiguredAsync([CodeCommand], parsed, output, jsonUi, runToken).ConfigureAwait(false);
         }
 
         var services = new ServiceCollection();
@@ -659,8 +698,15 @@ public sealed class CliApplication
             }
 
             var globalConfig = configOption is null
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codai")
+                ? Path.Combine(_environment.GetVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME") ??
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codai")
                 : configurationDirectory;
+            if (configOption is null && configPath is null &&
+                CodaiConfigurationLoader.FindDefaultConfigFile(configurationDirectory) is null &&
+                CodaiConfigurationLoader.FindDefaultConfigFile(globalConfig) is not null)
+            {
+                configurationDirectory = globalConfig;
+            }
             var hookDirectories = new List<string>();
             if (!parsed.DisableHooks)
             {

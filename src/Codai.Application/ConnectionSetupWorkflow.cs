@@ -22,6 +22,7 @@ public sealed class ConnectionSetupWorkflow(
         var credential = string.Empty;
         var model = string.Empty;
         List<string>? models = null;
+        var discovered = false;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -131,6 +132,7 @@ public sealed class ConnectionSetupWorkflow(
                     if (models is null)
                     {
                         models = [];
+                        discovered = false;
                         if (discoverModels is not null)
                         {
                             try
@@ -138,21 +140,27 @@ public sealed class ConnectionSetupWorkflow(
                                 var available = await ui.RunWithProgressAsync("Loading models...",
                                     token => discoverModels(provider!, endpoint, credential, token), cancellationToken).ConfigureAwait(false);
                                 models.AddRange(available.Where(IsModelIdentifier));
+                                discovered = models.Count > 0;
                             }
                             catch (Exception exception) when (exception is HttpRequestException or JsonException ||
                                 exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
                             {
-                                ui.WriteInfo("Model listing unavailable. A default or custom model can still be selected.");
+                                ui.WriteInfo("Model listing unavailable. Suggestions are not verified for this account; a custom model can still be selected.");
                             }
+                        }
+                        if (!discovered && provider!.WireFormat != ProviderWireFormat.AzureOpenAi)
+                        {
+                            models.Add(provider.DefaultModel);
+                            models.AddRange(provider.SuggestedModels);
                         }
                         if (provider!.Name == current.Provider && IsModelIdentifier(current.Model))
                         {
                             models.Add(current.Model);
                         }
-                        models.Add(provider!.DefaultModel);
                         models = models.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
                     }
-                    var choices = models.Select(item => new SessionMenuItem(item, item == provider!.DefaultModel ? "Provider default" : "Available model", "model:" + item))
+                    var choices = models.Select(item => new SessionMenuItem(item, item == current.Model && provider!.Name == current.Provider
+                            ? "Saved model" : discovered ? "Available model" : "Suggested model", "model:" + item))
                         .Append(new SessionMenuItem("Custom model ID", "Use a model or deployment identifier", "manual")).ToArray();
                     var choice = await ui.ChooseAsync("Codai / Model", choices, cancellationToken).ConfigureAwait(false);
                     if (choice == "manual")
@@ -209,7 +217,7 @@ public sealed class ConnectionSetupWorkflow(
                         ["ai_provider_config.account"] = string.Empty,
                         ["ai_provider_config.model"] = model,
                     }, configurationDirectory, cancellationToken).ConfigureAwait(false);
-                    ui.WriteSuccess("Connection settings saved. Run 'codai code' to open your workspace.");
+                    ui.WriteSuccess("Connection settings saved.");
                     return true;
             }
         }

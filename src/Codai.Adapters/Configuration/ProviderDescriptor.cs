@@ -14,4 +14,11 @@ public sealed record ProviderDescriptor(
     string DefaultBaseUrl,
     string DefaultModel,
     ProviderWireFormat WireFormat,
-    bool RequiresApiKey = true);
+    bool RequiresApiKey = true)
+{
+    /// <summary>
+    /// Additional model IDs suggested when live discovery is unavailable. These
+    /// are not a guarantee of account access, installation, or tool support.
+    /// </summary>
+    public IReadOnlyList<string> SuggestedModels { get; init; } = [];
+}

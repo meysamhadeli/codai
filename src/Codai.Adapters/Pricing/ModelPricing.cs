@@ -25,9 +25,29 @@ public sealed class ModelPricing
     [JsonPropertyName("cache_read_input_token_cost")]
     public double CacheReadInputTokenCost { get; set; }
 
+    /// <summary>Higher prompt-length tiers, applied to all tokens in a request.</summary>
+    [JsonPropertyName("input_token_tiers")]
+    public IReadOnlyList<ModelPricingTier> InputTokenTiers { get; set; } = [];
+
     [JsonPropertyName("mode")]
     public string? Mode { get; set; }
 
     [JsonPropertyName("supports_function_calling")]
     public bool SupportsFunctionCalling { get; set; }
+}
+
+/// <summary>Input and output rates for requests at or above a prompt-length threshold.</summary>
+public sealed class ModelPricingTier
+{
+    /// <summary>Inclusive minimum input-token count for this tier.</summary>
+    [JsonPropertyName("min_input_tokens")]
+    public int MinInputTokens { get; set; }
+
+    /// <summary>USD per input token for the entire request.</summary>
+    [JsonPropertyName("input_cost_per_token")]
+    public double InputCostPerToken { get; set; }
+
+    /// <summary>USD per output token for the entire request.</summary>
+    [JsonPropertyName("output_cost_per_token")]
+    public double OutputCostPerToken { get; set; }
 }
