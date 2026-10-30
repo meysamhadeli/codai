@@ -31,15 +31,22 @@ Run Codai from the directory containing your project so it can discover project 
 cd your-project
 ```
 
-### Connect a model
+### Set up and start Codai
 
 ```bash
-codai auth
+codai
 ```
 
+On the first unconfigured run, choose **Graphite**, **Forest**, or **Ember**.
+Codai saves the theme, then opens connection setup.
 Choose **Use your own provider** for a hosted provider or local server, or
 **Continue with ChatGPT** for an eligible account. Select a model and confirm before
-saving. Escape returns to the previous step.
+saving. Chat starts immediately after saving. Escape returns to the previous step;
+exiting connection setup preserves your saved theme for the next run.
+
+Without an existing project configuration, settings are saved in
+`~/.codai/codai-config.json` and reused across projects automatically. An existing
+project configuration or explicit configuration directory keeps its own settings.
 
 <Callout type="warning">
   Own-provider credentials are stored as plaintext in the selected configuration file.
@@ -47,11 +54,15 @@ saving. Escape returns to the previous step.
   loopback servers may use HTTP.
 </Callout>
 
-### Start a session
+### Return later
 
 ```bash
-codai code
+codai
 ```
+
+The saved theme, provider, and model are reused without setup prompts. Run
+`codai auth` only to change the connection, or `:preferences theme` within a session
+to change appearance. `codai code` also starts a session with the saved settings.
 
 Describe a concrete task. Review proposed file changes and commands before approving
 them. Use `:help` to list session commands and `@src/Foo.cs` to attach a file.

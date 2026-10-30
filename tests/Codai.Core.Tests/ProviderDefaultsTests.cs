@@ -38,9 +38,22 @@ public class ProviderDefaultsTests
     }
 
     [Fact]
-    public void OpenAi_defaults_to_gpt_4o()
+    public void OpenAi_defaults_to_chat_compatible_coding_model()
     {
-        ProviderDefaults.ResolveModel("openai", null).Should().Be("gpt-4o");
+        ProviderDefaults.ResolveModel("openai", null).Should().Be("gpt-5.4-mini");
+    }
+
+    [Fact]
+    public void Hosted_provider_fallbacks_have_valid_unique_model_ids()
+    {
+        foreach (var provider in ProviderCatalog.All.Where(item => item.RequiresApiKey && item.WireFormat != ProviderWireFormat.AzureOpenAi))
+        {
+            provider.SuggestedModels.Should().NotBeEmpty();
+            var models = provider.SuggestedModels.Prepend(provider.DefaultModel).ToArray();
+            models.Should().OnlyHaveUniqueItems();
+            models.Should().OnlyContain(model => model.Length <= 512 && !string.IsNullOrWhiteSpace(model) &&
+                !model.Any(character => char.IsWhiteSpace(character) || char.IsControl(character)));
+        }
     }
 
     [Fact]

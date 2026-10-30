@@ -46,8 +46,10 @@ public sealed class EmbeddedPricingCatalog : IPricingCatalog
             return 0m;
         }
 
-        var cost = (usage.InputTokens * pricing.InputCostPerToken) +
-                   (usage.OutputTokens * pricing.OutputCostPerToken);
+        var tier = pricing.InputTokenTiers.Where(item => usage.InputTokens >= item.MinInputTokens)
+            .MaxBy(item => item.MinInputTokens);
+        var cost = (usage.InputTokens * (tier?.InputCostPerToken ?? pricing.InputCostPerToken)) +
+                   (usage.OutputTokens * (tier?.OutputCostPerToken ?? pricing.OutputCostPerToken));
 
         return (decimal)cost;
     }
@@ -58,17 +60,17 @@ public sealed class EmbeddedPricingCatalog : IPricingCatalog
 
     private static IEnumerable<string> CandidateKeys(string provider, string model)
     {
-        // Azure deployments are keyed as "azure/<model>" in the data file.
-        if (provider.StartsWith("azure", StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(provider))
         {
-            yield return $"azure/{model}";
+            yield return model;
+            yield break;
         }
 
-        yield return model;
-
-        if (!string.IsNullOrEmpty(provider))
+        var prefix = provider == "azure-openai" ? "azure" : provider;
+        yield return $"{prefix}/{model}";
+        if (model.StartsWith(prefix + "/", StringComparison.Ordinal))
         {
-            yield return $"{provider}/{model}";
+            yield return model;
         }
     }
 
@@ -92,6 +94,52 @@ public sealed class EmbeddedPricingCatalog : IPricingCatalog
                 var pricing = property.Value.Deserialize(PricingJsonContext.Default.ModelPricing);
                 if (pricing is not null)
                 {
+                    result[property.Name] = pricing;
+                    if (!property.Name.Contains('/', StringComparison.Ordinal) &&
+                        property.Value.TryGetProperty("litellm_provider", out var owner) && owner.ValueKind == JsonValueKind.String)
+                    {
+                        result.TryAdd($"{owner.GetString()}/{property.Name}", pricing);
+                    }
+                }
+            }
+        }
+
+        if (document.RootElement.TryGetProperty("current_models", out var currentModels) &&
+            currentModels.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in currentModels.EnumerateObject())
+            {
+                var pricing = property.Value.Deserialize(PricingJsonContext.Default.ModelPricing);
+                if (pricing is not null)
+                {
+                    if (result.TryGetValue(property.Name, out var historical))
+                    {
+                        if (!property.Value.TryGetProperty("max_tokens", out _))
+                        {
+                            pricing.MaxTokens = historical.MaxTokens;
+                        }
+
+                        if (!property.Value.TryGetProperty("max_input_tokens", out _))
+                        {
+                            pricing.MaxInputTokens = historical.MaxInputTokens;
+                        }
+
+                        if (!property.Value.TryGetProperty("max_output_tokens", out _))
+                        {
+                            pricing.MaxOutputTokens = historical.MaxOutputTokens;
+                        }
+
+                        if (!property.Value.TryGetProperty("mode", out _))
+                        {
+                            pricing.Mode = historical.Mode;
+                        }
+
+                        if (!property.Value.TryGetProperty("supports_function_calling", out _))
+                        {
+                            pricing.SupportsFunctionCalling = historical.SupportsFunctionCalling;
+                        }
+                    }
+
                     result[property.Name] = pricing;
                 }
             }

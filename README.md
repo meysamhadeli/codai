@@ -6,10 +6,6 @@
 The open source coding agent for your terminal.
 </p>
 
-<p align="center">
-Your terminal. Your models. Your project, with you in control.
-</p>
-
 <div align="center">
 <table>
 <tbody>
@@ -53,9 +49,12 @@ dotnet tool install --global Codai
 Run from your project directory:
 
 ```bash
-codai auth  # Connect a provider and select a model
-codai code  # Start a coding session
+codai       # First run: choose theme, provider, and model; later runs open chat
+codai auth  # Change the connection or selected model
 ```
+
+New setups save user-wide defaults in `~/.codai/codai-config.json` when no project
+configuration exists. See [first-run setup](https://meysamhadeli.github.io/codai/agent-mode#connection-setup).
 
 ## What it does
 
@@ -76,23 +75,27 @@ codai code  # Start a coding session
 Connect through `codai auth`, or select a provider with `--provider` and a model with
 `--model`.
 
-| Provider | `--provider` | Hosting |
-| --- | --- | --- |
-| OpenAI | `openai` | Cloud |
-| Azure OpenAI | `azure-openai` | Cloud |
-| Anthropic | `anthropic` | Cloud |
-| Google Gemini | `gemini` | Cloud |
-| Ollama | `ollama` | Local |
-| DeepSeek | `deepseek` | Cloud |
-| OpenRouter | `openrouter` | Cloud |
-| Qwen (DashScope) | `qwen` | Cloud |
-| Mistral | `mistral` | Cloud |
-| Grok (xAI) | `grok` | Cloud |
+| Provider | `--provider` | Hosting | Default model |
+| --- | --- | --- | --- |
+| OpenAI | `openai` | Cloud | `gpt-5.4-mini` |
+| Azure OpenAI | `azure-openai` | Cloud | Your deployment ID |
+| Anthropic | `anthropic` | Cloud | `claude-sonnet-4-6` |
+| Google Gemini | `gemini` | Cloud | `gemini-3.8-flash` |
+| Ollama | `ollama` | Local | `qwen3-coder` |
+| DeepSeek | `deepseek` | Cloud | `deepseek-flash` |
+| OpenRouter | `openrouter` | Cloud | `openai/gpt-5.4-mini` |
+| Qwen (DashScope) | `qwen` | Cloud | `qwen3.7-plus` |
+| Mistral | `mistral` | Cloud | `mistral-medium-3-5` |
+| Grok (xAI) | `grok` | Cloud | `grok-4.7` |
 
 Hosted providers require API credentials. Local Ollama does not require an API key.
 OpenAI also supports **Continue with ChatGPT** for eligible accounts through `codai auth`;
 account-plan access and API credentials are separate connections.
 Model availability and coding-tool support depend on the selected provider and model.
+Setup fetches live model catalogs, with bundled suggestions when discovery is unavailable.
+See [model selection and compatibility](https://meysamhadeli.github.io/codai/agent-mode#provider-models).
+Bundled model choices include provider-specific USD estimates and prompt-length tiers;
+see [pricing coverage and limitations](https://meysamhadeli.github.io/codai/agent-mode#api-cost-estimates).
 
 ## Documentation
 

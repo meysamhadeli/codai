@@ -7,9 +7,9 @@ namespace Codai.Core.Tests;
 /// <summary>
 /// Guards the relationship between the embedded pricing catalog and the original Go
 /// snapshot (frozen into <c>Golden/model_pricing.json</c>). The snapshot is the
-/// baseline: every model it defines must be present in the C# catalog with identical
-/// rates. Additions are allowed (to cover models the snapshot predates) but must be
-/// declared here so drift stays intentional.
+/// baseline: every model it defines must remain in the historical models section
+/// with identical rates. Reviewed current_models override runtime prices separately.
+/// Historical additions must be declared here so drift stays intentional.
 /// </summary>
 public class PricingParityTests
 {
@@ -24,14 +24,16 @@ public class PricingParityTests
     };
 
     [Fact]
-    public void Embedded_catalog_contains_every_model_from_the_go_snapshot_with_identical_rates()
+    public void Historical_catalog_contains_every_model_from_the_go_snapshot_with_identical_rates()
     {
         // Frozen copy of the Go snapshot, embedded in this project so the assertion
         // survives removal of the Go sources; a missing golden is a hard failure.
         using var go = JsonDocument.Parse(GoldenFiles.ReadPricingCatalog());
         var goModels = go.RootElement.GetProperty("models");
 
-        var catalog = EmbeddedPricingCatalog.Instance;
+        using var stream = typeof(EmbeddedPricingCatalog).Assembly.GetManifestResourceStream("Codai.Pricing.Data.model_pricing.json")!;
+        using var catalog = JsonDocument.Parse(stream);
+        var historicalModels = catalog.RootElement.GetProperty("models");
 
         var mismatches = new List<string>();
 
@@ -49,24 +51,22 @@ public class PricingParityTests
             var inputCost = inputElement.GetDouble();
             var outputCost = outputElement.GetDouble();
 
-            var provider = key.Contains('/', StringComparison.Ordinal) ? key.Split('/')[0] : string.Empty;
-            var model = key;
-
-            var pricing = catalog.Find(provider, model);
-            if (pricing is null)
+            if (!historicalModels.TryGetProperty(key, out var pricing))
             {
                 mismatches.Add($"missing model '{key}'");
                 continue;
             }
 
-            if (Math.Abs(pricing.InputCostPerToken - inputCost) > double.Epsilon)
+            var actualInput = pricing.GetProperty("input_cost_per_token").GetDouble();
+            var actualOutput = pricing.GetProperty("output_cost_per_token").GetDouble();
+            if (Math.Abs(actualInput - inputCost) > double.Epsilon)
             {
-                mismatches.Add($"{key}: input {pricing.InputCostPerToken} != {inputCost}");
+                mismatches.Add($"{key}: input {actualInput} != {inputCost}");
             }
 
-            if (Math.Abs(pricing.OutputCostPerToken - outputCost) > double.Epsilon)
+            if (Math.Abs(actualOutput - outputCost) > double.Epsilon)
             {
-                mismatches.Add($"{key}: output {pricing.OutputCostPerToken} != {outputCost}");
+                mismatches.Add($"{key}: output {actualOutput} != {outputCost}");
             }
         }
 

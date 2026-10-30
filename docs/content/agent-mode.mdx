@@ -50,21 +50,37 @@ continue supplying their own `ProjectContext`.
 
 ### Connection Setup
 
-Running `codai` without arguments in a terminal, or running `codai auth`, opens a
-searchable setup flow rather than starting a coding session. The first screen has two
+On the first unconfigured `codai` run in a terminal, choose **Graphite**, **Forest**,
+or **Ember**. The appearance is saved immediately and applied before connection setup.
+Next choose a provider or account connection and a model, then confirm saving.
+Codai opens the coding session immediately; there is no second command to run.
+Later `codai` runs reuse the saved theme, provider, endpoint, credential or account
+reference, and model without showing those setup screens again. Already-configured
+saved connections also skip onboarding. With no saved configuration, onboarding
+runs even if environment variables provide credentials. For an existing configuration,
+connection setup opens only when the effective connection requires credentials and has neither an API key nor
+an account reference. Local providers and compatible loopback servers can start without
+a credential. Run `codai auth` explicitly to reopen the searchable setup flow even when
+a connection is already configured; this does not repeat appearance selection.
+Change appearance later with `:preferences theme`. The connection screen has two
 choices, in order: **Use your own provider**, then **Continue with ChatGPT**.
 Own-provider setup lists **Hosted provider** first and **Local server** second, without a
 separate Custom endpoint option. Provider selection shows provider names only; models
 are chosen later. Select a provider, enter its server address and masked credential,
 then select a model or enter a custom model ID. The server address remains editable for
 the selected provider. Escape returns to the previous step;
-Escape on the first screen discards setup. Ctrl+C exits.
+Escape on the appearance screen exits without saving. Escape on the connection
+screen leaves any saved appearance intact; the next unconfigured run resumes
+connection setup without asking for appearance again. Ctrl+C exits.
 
-Provider choices come from Codai's supported-provider catalog. Model suggestions use
-the endpoint's model-list API where available and the provider's configured default.
-Unavailable model discovery does not block manual entry; deployment-based endpoints
-may require a custom deployment identifier. Listing models is not a chat request and
-does not guarantee that a selected model supports every coding tool.
+Provider choices come from Codai's supported-provider catalog. Model choices use
+the endpoint's live model-list API where available. Successful discovery is not padded
+with bundled models that might be unavailable to the account; the current configured
+selection is retained as **Saved model**. Failed or empty discovery falls back to
+**Suggested model** entries, which do not verify account access or installation.
+Unavailable model discovery does not block manual entry. Azure OpenAI requires your
+deployment identifier, not a public model name; setup does not guess deployment names.
+Listing models is not a chat request and does not guarantee coding-tool support.
 
 Saving requires explicit confirmation. Provider, endpoint, credential, and model are
 written together, preserving unrelated settings. Credentials are stored as plaintext
@@ -78,24 +94,126 @@ the account's eligibility and granted permissions; API credentials and subscript
 access are separate connections. Declining consent, cancelling, or discarding setup
 does not replace the existing connection.
 
-Only an opaque account reference and the selected model are saved in project
+Only an opaque account reference and the selected model are saved in the selected
 configuration. Account tokens live separately under the current user's local application
 data directory in `Codai/accounts`: encrypted for the current Windows user, or in
 owner-only files on Unix. Refreshes are serialized across processes and rotating tokens
 are replaced atomically. Saved account registrations can be reauthorized or signed out
 from `codai auth`; sign-out clears local tokens and attempts remote revocation, warning
-when remote revocation could not be confirmed. Register another workspace separately.
+when remote revocation could not be confirmed. A user-wide saved connection can be
+reused across workspaces; explicit configurations can keep separate connections.
 
 Account requests use streaming inference with server-side response storage disabled.
 Interrupted and incomplete streams are not treated as successful responses. The terminal
 shows the account-plan indicator instead of an estimated API dollar charge; its link
 opens the account's usage settings. Plan limits and credits remain managed by the provider.
 
-Setup updates the file selected by `--config`, or an existing configuration under
-`--config-dir`/`CODAI_CONFIG_DIR`, or the current working directory. Without an existing
-file it creates `codai-config.json`. Environment variables and command-line flags still
-override saved values. Use `codai code` afterward; positional and piped tasks retain
-their existing noninteractive behavior.
+First-run onboarding updates an existing project configuration when present;
+otherwise it creates `~/.codai/codai-config.json` for user-wide defaults. Projects
+without their own configuration automatically reuse that user-wide file. An existing
+project configuration takes precedence over the user-wide fallback, rather than
+merging with it. An explicit `--config` or `--config-dir`/`CODAI_CONFIG_DIR` continues
+to select an isolated configuration scope. Environment variables and command-line
+flags still override saved values.
+
+`codai auth` edits the selected or discovered configuration; when none exists it
+creates `codai-config.json` in the selected configuration directory or current
+working directory. It saves the connection without starting a session. Positional
+tasks, piped tasks, JSON output, configuration inspection, and ACP retain their
+noninteractive behavior and do not open onboarding dialogs.
+
+### Provider Models
+
+Live discovery is the source for current model IDs, including models released after
+Codai was installed. OpenAI-compatible providers use `/models`, Anthropic follows
+`has_more` / `last_id` cursors, Gemini follows `nextPageToken`, and Ollama uses installed
+models from `/api/tags`. Discovery removes duplicate and invalid IDs, excludes Gemini
+entries explicitly lacking `generateContent`, retired entries, models explicitly lacking
+chat completion capability, and OpenRouter batch-only or non-text-output entries.
+Requests are bounded to 100 pages and 10,000 catalog entries. Exceeding those limits,
+repeated cursors, or missing continuation cursors fail discovery instead of silently
+claiming a complete list. You can always enter a custom model ID.
+
+Bundled defaults and fallback families are listed below. Suggestions are not an
+exhaustive catalog, may include legacy or preview models, and may vary by account,
+region, endpoint, and provider lifecycle. An explicitly saved model is never replaced
+by an updated default. SDK consumers can inspect `ProviderDescriptor.SuggestedModels`
+for the additional fallback IDs; `DefaultModel` is offered separately.
+
+| Provider | Default | Additional fallback families |
+| --- | --- | --- |
+| [OpenAI](https://developers.openai.com/api/docs/models) | `gpt-5.4-mini` | GPT-6 Astra, Sol, Terra, Luna; GPT-5.5, 5.4, 5.2, 5.1, 5, and GPT-4.1 variants |
+| [Azure OpenAI](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure) | Enter your deployment ID | No guessed deployments; the noninteractive default `gpt-5.4-mini` works only if your deployment has that name |
+| [Anthropic](https://platform.claude.com/docs/en/models/overview) | `claude-sonnet-4-6` | Sonnet/Opus/Haiku 5.5, Fable 5.1, Sonnet/Opus/Fable 5, Opus 4.8/4.7/4.6/4.5, Haiku 4.5 |
+| [Gemini](https://ai.google.dev/gemini-api/docs/models) | `gemini-3.8-flash` | Gemini 4 Argon; 3.6 Flash; 3.5/3.1 Flash Lite; 3.1 Pro and 3 Flash previews; 2.5 legacy variants |
+| [Ollama](https://ollama.com/library/qwen3-coder) | `qwen3-coder` | Installed model IDs from the local server; install a model before selecting it |
+| [DeepSeek](https://api-docs.deepseek.com/quick_start/pricing) | `deepseek-flash` | `deepseek-v4-pro` |
+| [OpenRouter](https://openrouter.ai/models) | `openai/gpt-5.4-mini` | Current OpenAI, Claude, Gemini, DeepSeek, Qwen, Mistral, and Grok families using OpenRouter IDs |
+| [Qwen](https://www.alibabacloud.com/help/en/model-studio/getting-started/models) | `qwen3.7-plus` | Qwen3.8 Max/Flash/Omni Flash, Qwen3 Coder Plus/Flash, Qwen Plus/Max/Flash aliases |
+| [Mistral](https://docs.mistral.ai/getting-started/models) | `mistral-medium-3-5` | Large 4, Small 4, Large/Small/Codestral aliases, Ministral 3B/8B/14B |
+| [Grok](https://docs.x.ai/developers/models) | `grok-4.7` | Grok 4.6/4.5/4.3, 4.20 reasoning/non-reasoning, Grok Build 0.1 |
+
+Defaults favor Codai's existing chat/tool transports over the newest model name.
+Direct OpenAI GPT-6 tool calling requires the Responses API; Codai's own-provider
+OpenAI connection uses Chat Completions. Native Anthropic models requiring thinking
+signature replay are not supported for multi-turn tool use by the current adapter.
+Use the compatible defaults for coding tools. Being listed or selectable does not
+remove these transport limitations. ChatGPT account-plan model choices come from the
+authorized account instead of this API-key fallback catalog.
+
+### API Cost Estimates
+
+The embedded USD pricing snapshot was reviewed on **October 30, 2026**. It covers
+every bundled default and fallback model choice across the ten providers. Model
+discovery can return additional models whose prices are not bundled. Historical
+entries remain available, but are not all newly verified. Prices are estimates,
+not an invoice or a guaranteed billing cap.
+
+Provider-specific lookup keeps direct-provider and OpenRouter prices separate.
+For supported prompt-length tiers, the request's input-token count selects rates
+for **all input and output tokens**, not just tokens above the threshold. For
+example, Grok switches at 200,000 input tokens, while direct Gemini Pro switches
+above 200,000. OpenRouter uses its published `min_prompt_tokens` boundaries.
+
+- **Azure OpenAI:** Global Standard reference rates apply only to deployment names
+   matching known model IDs. Custom deployment names cannot identify the underlying
+   model; region, deployment type, and negotiated pricing are not inferred.
+- **Qwen:** Estimates use international standard list prices, even when the endpoint
+   is mainland China. Regional rates and temporary promotions can differ. `qwen-plus`
+   uses the higher thinking-mode output rate because usage does not identify that mode.
+- **DeepSeek:** Estimates use peak prices without off-peak or holiday discounts,
+   including DeepSeek models routed through OpenRouter.
+- **Gemini:** Estimates use paid standard text rates, not free-tier allowances.
+   Argon's introductory price ends November 30, 2026; Flash 3.8/3.6 introductory
+   prices end December 31, 2026. The snapshot does not automatically apply future
+   price changes; update it before relying on estimates after these dates.
+- **Ollama:** The bundled local `qwen3-coder` entry has no hosted token tariff.
+   Hardware, electricity, hosting, and cloud subscriptions are excluded. Other local
+   or cloud model IDs do not inherit another provider's prices.
+
+Usage currently reports input/output totals without cache-read or cache-write token
+breakdowns. Calculations therefore use uncached input rates; stored cache prices
+are metadata only. Tool fees, tax, residency, batch discounts, premium-speed modes,
+and routing-specific adjustments are excluded. Unknown prices return no catalog
+entry and contribute zero to numeric cost totals, **not proof that usage is free**;
+cost budgets cannot account for those charges.
+
+SDK hosts can inspect `EmbeddedPricingCatalog.Find(provider, model)` for missing
+prices. `ModelPricing.InputTokenTiers` contains `ModelPricingTier` entries with an
+inclusive `MinInputTokens` threshold and per-token USD input/output rates;
+`Calculate` selects the highest applicable threshold. `PricingDocument.CurrentModels`
+represents the reviewed provider-qualified overrides; omitted context and capability
+metadata is preserved from historical entries when the embedded catalog is loaded.
+
+Snapshot sources: [OpenAI](https://developers.openai.com/api/docs/pricing),
+[Azure](https://azure.microsoft.com/en-us/pricing/details/azure-openai/),
+[Anthropic](https://platform.claude.com/docs/en/about-claude/pricing),
+[Gemini](https://ai.google.dev/gemini-api/docs/pricing),
+[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing),
+[Qwen](https://www.alibabacloud.com/help/en/model-studio/model-pricing),
+[Mistral](https://docs.mistral.ai/models), [xAI](https://docs.x.ai/developers/models),
+[OpenRouter](https://openrouter.ai/api/v1/models), and
+[Ollama](https://docs.ollama.com/faq).
 
 ### Composer
 

@@ -7,8 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Isolated model-price lookup by provider instead of borrowing another provider's
+  unqualified model price. Kept unknown Azure deployments and unpriced models from
+  inheriting unrelated tariffs, and preserved context/capability metadata when
+  applying reviewed rate overrides.
+- Reused saved provider credentials or account references and model selections on bare
+  `codai` startup instead of reopening connection setup every time. Kept explicit
+  `codai auth`, first-time setup, environment overrides, and selected configuration
+  directories working independently.
+- Followed Anthropic and Gemini model-list pagination and removed the silent
+  2,000-entry truncation. Bounded requests and rejected repeated or missing cursors
+  instead of treating partial catalogs as complete. Filtered explicitly retired,
+  non-chat, and OpenRouter batch-only/non-text models where metadata allowed.
+
+### Changed
+
+- Saved fresh first-run defaults under `~/.codai` when no project configuration
+  existed, and automatically reused them across otherwise unconfigured projects.
+  Preserved explicit configuration scopes, project precedence, and environment
+  and command-line overrides.
+- Reviewed USD text-token rates on October 30, 2026 and covered every bundled default
+  and fallback model choice. Kept OpenRouter rates distinct from direct-provider
+  rates, corrected current `o3` pricing, and documented historical-model, regional,
+  promotional, cache, fee, and unknown-price estimation limits.
+- Refreshed provider defaults and expanded hosted-provider fallback model suggestions.
+  Preferred live catalogs and labeled saved models and unverified suggestions
+  separately. Kept Azure deployment names manual and Ollama installed models
+  authoritative; documented current transport limitations and preserved explicit
+  saved model selections.
+
 ### Added
 
+- Added theme-first onboarding for an unconfigured bare `codai` invocation. Saved
+  appearance before provider/account and model setup, opened chat immediately after
+  connection saving, and skipped completed setup on later runs. Resumed interrupted
+  setup without repeating a saved appearance; kept explicit `codai auth` connection-only.
+- Added provider-qualified pricing overrides with source URLs and a review date,
+  plus prompt-length tiers that priced all request tokens at the applicable rate.
+  Exposed tier metadata through `ModelPricing.InputTokenTiers` and reviewed overrides
+  through `PricingDocument.CurrentModels`.
 - Added a Nextra documentation experience with Codai-specific light/dark wordmarks,
   native cards and steps, and a first-session quickstart. Accents, wordmarks, and favicon
   matched the app's default blue (`#00AFFF`). Static Pagefind search worked without a

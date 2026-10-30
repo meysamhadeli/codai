@@ -30,8 +30,12 @@ public class CliApplicationTests
             var store = new AccountCredentialStore(Path.Combine(root.FullName, "private"));
             var session = new AccountSession
             {
-                ClientId = "codai-client", Subject = "codai-user", AccessToken = "codai-access",
-                RefreshToken = "codai-renewal", IdToken = "codai-identity", Scopes = [],
+                ClientId = "codai-client",
+                Subject = "codai-user",
+                AccessToken = "codai-access",
+                RefreshToken = "codai-renewal",
+                IdToken = "codai-identity",
+                Scopes = [],
             };
             await store.SaveAsync(session);
             var ui = new FakeUserInterface();
@@ -77,8 +81,12 @@ public class CliApplicationTests
             ui.EnqueueChoice(save ? "save" : "cancel");
             var session = new AccountSession
             {
-                ClientId = "codai-client", Subject = "codai-user", AccessToken = "codai-access-secret",
-                RefreshToken = "codai-renewal-secret", IdToken = "codai-identity-secret", Scopes = [],
+                ClientId = "codai-client",
+                Subject = "codai-user",
+                AccessToken = "codai-access-secret",
+                RefreshToken = "codai-renewal-secret",
+                IdToken = "codai-identity-secret",
+                Scopes = [],
             };
             var store = new AccountCredentialStore(Path.Combine(root.FullName, "private"));
             using var http = new HttpClient(new AccountModelHandler());
@@ -187,7 +195,25 @@ public class CliApplicationTests
             });
             ui.EnqueueValue("https://models.example.test/v1");
             ui.EnqueueValue("codai-test-credential");
-            ui.EnqueueChoice(manual ? "manual" : "model:codai-listed-model");
+            ui.EnqueueSelection(items =>
+            {
+                if (unavailable)
+                {
+                    items.Should().Contain(item => item.Value == "model:gpt-6.1-sol" && item.Description == "Suggested model");
+                    items.Should().Contain(item => item.Value == "model:gpt-5.4-mini");
+                }
+                else if (providerName == ProviderCatalog.OpenAi)
+                {
+                    items.Select(item => item.Value).Should().Equal("model:codai-listed-model", "model:gpt-5.4-mini", "manual");
+                    items.Should().Contain(item => item.Value == "model:gpt-5.4-mini" && item.Description == "Saved model");
+                    items.Should().NotContain(item => item.Value == "model:gpt-6.1-sol");
+                }
+                else
+                {
+                    items.Select(item => item.Value).Should().Equal("model:codai-listed-model", "manual");
+                }
+                return manual ? "manual" : "model:codai-listed-model";
+            });
             if (manual)
             {
                 ui.EnqueueValue("codai-custom-model");
@@ -259,6 +285,61 @@ public class CliApplicationTests
         }
     }
 
+    [Theory]
+    [InlineData(ProviderCatalog.OpenAi)]
+    [InlineData(ProviderCatalog.AzureOpenAi)]
+    [InlineData(ProviderCatalog.Anthropic)]
+    [InlineData(ProviderCatalog.Gemini)]
+    [InlineData(ProviderCatalog.Ollama)]
+    [InlineData(ProviderCatalog.DeepSeek)]
+    [InlineData(ProviderCatalog.OpenRouter)]
+    [InlineData(ProviderCatalog.Qwen)]
+    [InlineData(ProviderCatalog.Mistral)]
+    [InlineData(ProviderCatalog.Grok)]
+    public async Task Setup_uses_catalog_fallbacks_but_never_guesses_azure_deployment_names(string providerName)
+    {
+        var root = Directory.CreateTempSubdirectory("codai-provider-fallback-");
+        try
+        {
+            var provider = ProviderCatalog.Get(providerName);
+            var deployment = provider.WireFormat == ProviderWireFormat.AzureOpenAi;
+            var ui = new FakeUserInterface();
+            ui.EnqueueChoice("provider");
+            ui.EnqueueChoice(provider.RequiresApiKey ? "hosted" : "local");
+            ui.EnqueueChoice(providerName);
+            ui.EnqueueValue("https://models.example.test/v1");
+            ui.EnqueueValue("codai-test-credential");
+            ui.EnqueueSelection(items =>
+            {
+                var suggestions = deployment ? [] : provider.SuggestedModels.Prepend(provider.DefaultModel).Order(StringComparer.Ordinal).ToArray();
+                items.Select(item => item.Value).Should().Equal(suggestions.Select(model => "model:" + model).Append("manual"));
+                if (!deployment)
+                {
+                    items.Where(item => item.Value != "manual").Should().OnlyContain(item => item.Description == "Suggested model");
+                }
+                return deployment ? "manual" : "model:" + provider.DefaultModel;
+            });
+            if (deployment)
+            {
+                ui.EnqueueValue("codai-custom-deployment");
+            }
+            ui.EnqueueChoice("save");
+            var path = Path.Combine(root.FullName, "codai-config.json");
+            var setup = new ConnectionSetupWorkflow(ui, new CodaiConfigurationManager(new PhysicalFileSystem()),
+                path, root.FullName, new AiProviderOptions(), (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
+
+            (await setup.RunAsync()).Should().BeTrue();
+
+            var loaded = CodaiConfigurationLoader.Load(new(root.FullName), new TestEnvironment(new Dictionary<string, string?>()));
+            loaded.AiProviderConfig.Provider.Should().Be(providerName);
+            loaded.AiProviderConfig.Model.Should().Be(deployment ? "codai-custom-deployment" : provider.DefaultModel);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public async Task Auth_rejects_credentials_over_remote_plain_http_without_discovery_or_save()
     {
@@ -287,12 +368,16 @@ public class CliApplicationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Bare_command_and_auth_save_connection_without_starting_session(bool explicitAuth)
+    public async Task Bare_command_starts_chat_after_setup_while_auth_only_saves_connection(bool explicitAuth)
     {
         var root = Directory.CreateTempSubdirectory("codai-connection-");
         try
         {
             var ui = new FakeUserInterface();
+            if (!explicitAuth)
+            {
+                ui.EnqueueChoice("graphite");
+            }
             ui.EnqueueSelection(items =>
             {
                 items.Select(item => item.Value).Should().Equal("provider", "account");
@@ -306,9 +391,11 @@ public class CliApplicationTests
             ui.EnqueueChoice("manual");
             ui.EnqueueValue("codai-local-model");
             ui.EnqueueChoice("save");
+            var initialSession = new RecordingSession();
             var app = new CliApplication(new RecordingConsole(), () => root.FullName, ui,
-                sessionFactory: _ => throw new InvalidOperationException("Setup must not start a session."),
-                environment: new TestEnvironment(new Dictionary<string, string?>()),
+                input: new TaskInput(),
+                sessionFactory: _ => explicitAuth ? throw new InvalidOperationException("Auth must not start a session.") : initialSession,
+                environment: new TestEnvironment(new Dictionary<string, string?> { ["CODAI_CONFIG_DIR"] = root.FullName }),
                 modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
             (await app.RunAsync(explicitAuth ? ["auth"] : [])).Should().Be(0);
             var options = CodaiConfigurationLoader.Load(new(root.FullName), new TestEnvironment(new Dictionary<string, string?>()));
@@ -316,6 +403,20 @@ public class CliApplicationTests
             options.AiProviderConfig.Model.Should().Be("codai-local-model");
             options.AiProviderConfig.ApiKey.Should().BeNullOrEmpty();
             ui.SecretInputs.Should().Contain(true);
+            initialSession.InteractiveCalls.Should().Be(explicitAuth ? 0 : 1);
+
+            var restartedUi = new FakeUserInterface();
+            var session = new RecordingSession();
+            var restarted = new CliApplication(new RecordingConsole(), () => root.FullName, restartedUi,
+                input: new TaskInput(), sessionFactory: services =>
+                {
+                    services.GetRequiredService<SessionOptions>().Model.Should().Be("codai-local-model");
+                    return session;
+                }, environment: new TestEnvironment(new Dictionary<string, string?>()));
+
+            (await restarted.RunAsync([])).Should().Be(0);
+            restartedUi.Dialogs.Should().BeEmpty();
+            session.InteractiveCalls.Should().Be(1);
         }
         finally
         {
@@ -939,20 +1040,226 @@ public class CliApplicationTests
         output.Lines.Should().ContainSingle(line => line.StartsWith("version:", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task No_arguments_open_connection_setup_without_starting_session()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task First_run_saves_theme_then_connection_starts_chat_and_skips_setup_in_another_project(bool sharedDirectory, bool environmentCredential)
     {
-        var output = new RecordingConsole();
-        var session = new RecordingSession();
-        var ui = new FakeUserInterface();
+        var root = Directory.CreateTempSubdirectory("codai-onboarding-");
+        try
+        {
+            var firstProject = root.CreateSubdirectory("first-project");
+            var secondProject = root.CreateSubdirectory("second-project");
+            var profile = root.CreateSubdirectory("profile");
+            var configurationPath = sharedDirectory ? root.CreateSubdirectory("configuration").FullName : Path.Combine(profile.FullName, ".codai");
+            var variables = new Dictionary<string, string?> { ["USERPROFILE"] = profile.FullName, ["HOME"] = profile.FullName };
+            if (sharedDirectory)
+            {
+                variables["CODAI_CONFIG_DIR"] = configurationPath;
+            }
+            if (environmentCredential)
+            {
+                variables["API_KEY"] = "codai-first-run-environment-credential";
+            }
+            var environment = new TestEnvironment(variables);
+            var ui = new FakeUserInterface();
+            ui.EnqueueSelection(items =>
+            {
+                items.Select(item => item.Value).Should().Equal("graphite", "forest", "ember");
+                return "forest";
+            });
+            ui.EnqueueChoice("provider");
+            ui.EnqueueChoice("local");
+            ui.EnqueueChoice(ProviderCatalog.Ollama);
+            ui.EnqueueValue("http://localhost:11434/api");
+            ui.EnqueueValue(string.Empty);
+            ui.EnqueueChoice("manual");
+            ui.EnqueueValue("codai-onboarding-model");
+            ui.EnqueueChoice("save");
+            var session = new RecordingSession();
+            var app = new CliApplication(new RecordingConsole(), () => firstProject.FullName, ui, input: new TaskInput(),
+                environment: environment, sessionFactory: services =>
+                {
+                    services.GetRequiredService<SessionOptions>().Model.Should().Be("codai-onboarding-model");
+                    return session;
+                }, modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
 
-        var exitCode = await new CliApplication(
-            output, Directory.GetCurrentDirectory, ui, input: new TaskInput(), sessionFactory: _ => session).RunAsync([]);
+            (await app.RunAsync([])).Should().Be(0);
 
-        exitCode.Should().Be(0);
-        ui.Dialogs.Should().Contain("Codai / Connect a model");
-        session.InteractiveCalls.Should().Be(0);
-        session.Requests.Should().BeEmpty();
+            ui.Dialogs.First().Should().Be("Codai / Appearance");
+            ui.Themes.Should().Contain("forest");
+            ui.Successes.Should().Contain("Connection settings saved.");
+            session.InteractiveCalls.Should().Be(1);
+            var path = Path.Combine(configurationPath, "codai-config.json");
+            var saved = await File.ReadAllTextAsync(path);
+            var options = CodaiConfigurationLoader.Load(new(configurationPath), environment);
+            options.Theme.Should().Be("forest");
+            options.AiProviderConfig.Model.Should().Be("codai-onboarding-model");
+
+            var restartedUi = new FakeUserInterface();
+            var restartedSession = new RecordingSession();
+            var restarted = new CliApplication(new RecordingConsole(), () => secondProject.FullName, restartedUi,
+                input: new TaskInput(), environment: environment, sessionFactory: _ => restartedSession);
+            (await restarted.RunAsync([])).Should().Be(0);
+            restartedUi.Dialogs.Should().BeEmpty();
+            restartedSession.InteractiveCalls.Should().Be(1);
+            (await File.ReadAllTextAsync(path)).Should().Be(saved);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Interrupted_onboarding_resumes_connection_without_repeating_saved_appearance()
+    {
+        var root = Directory.CreateTempSubdirectory("codai-onboarding-resume-");
+        try
+        {
+            var environment = new TestEnvironment(new Dictionary<string, string?>
+            {
+                ["USERPROFILE"] = root.FullName,
+                ["HOME"] = root.FullName,
+            });
+            var firstUi = new FakeUserInterface();
+            firstUi.EnqueueChoice("ember");
+            firstUi.EnqueueChoice(null);
+            var firstSession = new RecordingSession();
+            var first = new CliApplication(new RecordingConsole(), () => root.FullName, firstUi,
+                input: new TaskInput(), environment: environment, sessionFactory: _ => firstSession);
+
+            (await first.RunAsync([])).Should().Be(0);
+            firstSession.InteractiveCalls.Should().Be(0);
+            firstUi.Dialogs.Should().Equal("Codai / Appearance", "Codai / Connect a model");
+            var path = Path.Combine(root.FullName, ".codai", "codai-config.json");
+            using (var document = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
+            {
+                document.RootElement.GetProperty("theme").GetString().Should().Be("ember");
+                document.RootElement.TryGetProperty("ai_provider_config", out _).Should().BeFalse();
+            }
+
+            var resumedUi = new FakeUserInterface();
+            resumedUi.EnqueueChoice("provider");
+            resumedUi.EnqueueChoice("local");
+            resumedUi.EnqueueChoice(ProviderCatalog.Ollama);
+            resumedUi.EnqueueValue("http://localhost:11434/api");
+            resumedUi.EnqueueValue(string.Empty);
+            resumedUi.EnqueueChoice("model:qwen3-coder");
+            resumedUi.EnqueueChoice("save");
+            var resumedSession = new RecordingSession();
+            var resumed = new CliApplication(new RecordingConsole(), () => root.FullName, resumedUi,
+                input: new TaskInput(), environment: environment, sessionFactory: _ => resumedSession,
+                modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
+
+            (await resumed.RunAsync([])).Should().Be(0);
+            resumedUi.Dialogs.Should().NotContain("Codai / Appearance");
+            resumedUi.Themes.Should().Contain("ember");
+            resumedSession.InteractiveCalls.Should().Be(1);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Cancelling_first_run_appearance_does_not_open_connection_setup_or_start_session()
+    {
+        var root = Directory.CreateTempSubdirectory("codai-first-connection-");
+        try
+        {
+            var output = new RecordingConsole();
+            var session = new RecordingSession();
+            var ui = new FakeUserInterface();
+
+            var exitCode = await new CliApplication(
+                output, () => root.FullName, ui, input: new TaskInput(), sessionFactory: _ => session,
+                environment: new TestEnvironment(new Dictionary<string, string?>())).RunAsync([]);
+
+            exitCode.Should().Be(0);
+            ui.Dialogs.Should().Equal("Codai / Appearance");
+            session.InteractiveCalls.Should().Be(0);
+            session.Requests.Should().BeEmpty();
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, false, true)]
+    [InlineData(true, true, false, true)]
+    public async Task Saved_hosted_or_account_connections_start_session_unless_auth_explicitly_requested(bool account, bool shared, bool overrideModel, bool explicitAuth)
+    {
+        var root = Directory.CreateTempSubdirectory("codai-saved-connection-");
+        try
+        {
+            var project = root.CreateSubdirectory("project");
+            var configuration = shared ? root.CreateSubdirectory("configuration") : project;
+            var path = Path.Combine(configuration.FullName, "codai-config.json");
+            var original = JsonSerializer.Serialize(new
+            {
+                ai_provider_config = new
+                {
+                    provider = "openai",
+                    model = "codai-saved-model",
+                    api_key = account ? "" : "codai-saved-credential",
+                    account = account ? new string('a', 64) : "",
+                    base_url = account ? AccountAuthorizationClient.Resource : "https://api.openai.com/v1",
+                },
+            });
+            await File.WriteAllTextAsync(path, original);
+            var profile = root.CreateSubdirectory("profile");
+            var global = profile.CreateSubdirectory(".codai");
+            await File.WriteAllTextAsync(Path.Combine(global.FullName, "codai-config.json"),
+                """{"theme":"ember","ai_provider_config":{"provider":"ollama","model":"global-model-must-not-replace-project"}}""");
+            var variables = new Dictionary<string, string?>
+            {
+                ["USERPROFILE"] = profile.FullName,
+                ["HOME"] = profile.FullName,
+            };
+            if (shared)
+            {
+                variables["CODAI_CONFIG_DIR"] = configuration.FullName;
+            }
+            if (overrideModel)
+            {
+                variables["MODEL"] = "codai-environment-model";
+            }
+            var ui = new FakeUserInterface();
+            var session = new RecordingSession();
+            var app = new CliApplication(new RecordingConsole(), () => project.FullName, ui, input: new TaskInput(),
+                environment: new TestEnvironment(variables), sessionFactory: services =>
+                {
+                    services.GetRequiredService<SessionOptions>().Model.Should().Be(overrideModel ? "codai-environment-model" : "codai-saved-model");
+                    return session;
+                });
+
+            (await app.RunAsync(explicitAuth ? ["auth"] : [])).Should().Be(0);
+
+            session.InteractiveCalls.Should().Be(explicitAuth ? 0 : 1);
+            if (explicitAuth)
+            {
+                ui.Dialogs.Should().Contain("Codai / Connect a model");
+            }
+            else
+            {
+                ui.Dialogs.Should().BeEmpty();
+            }
+            (await File.ReadAllTextAsync(path)).Should().Be(original);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
     }
 
     [Fact]
@@ -1379,7 +1686,10 @@ public class CliApplicationTests
 
     private sealed class TestEnvironment(IReadOnlyDictionary<string, string?> variables) : IEnvironmentReader
     {
-        public string? GetVariable(string name) => variables.GetValueOrDefault(name);
+        private readonly string _profile = Path.Combine(Path.GetTempPath(), "codai-test-profile-" + Guid.NewGuid().ToString("N"));
+
+        public string? GetVariable(string name) => variables.GetValueOrDefault(name) ??
+            (name is "USERPROFILE" or "HOME" ? _profile : null);
 
         public IReadOnlyDictionary<string, string?> All() => variables;
     }
