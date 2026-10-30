@@ -1,3 +1,4 @@
+using Codai.Core;
 using Codai.Core.Tools;
 using Spectre.Console;
 
@@ -115,7 +116,7 @@ internal sealed class ApprovalPanel : IOverlay
         var width = Math.Min(84, Math.Max(24, console.Profile.Width - 4));
         var inner = Math.Max(8, width - 4);
         var left = Math.Max(1, (console.Profile.Width - width) / 2 + 1);
-        var highlight = theme switch { "forest" => "black on green", "ember" => "black on yellow", _ => "black on skyblue1" };
+        var highlight = TerminalThemes.Find(theme).Highlight;
         var lines = Content(inner);
         var top = Math.Max(minimumTop, (console.Profile.Height - lines.Count - 2) / 2 + 1);
 

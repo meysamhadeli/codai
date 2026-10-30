@@ -1,0 +1,129 @@
+---
+title: "Configuration"
+description: "Choose a configuration scope, inspect effective values, and distinguish saved settings from session-only changes."
+---
+
+import { Callout } from "nextra/components";
+
+# Configuration
+
+Codai accepts YAML or JSON configuration, environment variables, and command-line
+overrides. Use the settings palette for common edits and configuration inspection
+when you need to understand which value is actually active.
+
+## Find the active configuration
+
+```bash
+codai config paths
+codai config settings
+```
+
+Inside a session, use `:config paths` and `:config settings`.
+Inspection omits credential values and does not load plugin assemblies or start MCP servers.
+`:settings` is an inspection alias, not the configuration editor.
+
+## File discovery
+
+Codai searches the selected directory in this order:
+
+1. `codai-config.yml`
+2. `codai-config.yaml`
+3. `codai-config.json`
+
+An existing project configuration takes precedence over user-wide
+`~/.codai/codai-config.json`; the files are not merged.
+First-run onboarding creates user-wide defaults when no project configuration exists.
+
+| Option | Selects |
+| --- | --- |
+| `--config <path>` | An explicit configuration file |
+| `--config-dir <path>` / `CODAI_CONFIG_DIR` | Configuration discovery scope |
+| `--cwd <path>` | The project working directory |
+| `--data-dir <path>` | Isolated conversation, task, and transcript state |
+
+Selecting a configuration directory does not move your project.
+
+## Override order
+
+From lowest to highest priority:
+
+1. Built-in defaults.
+2. Selected configuration file.
+3. Mapped environment variables.
+4. Command-line flags.
+
+Common environment overrides include `PROVIDER`, `MODEL`, `BASE_URL`, `API_KEY`,
+`TEMPERATURE`, `MAX_TOKENS`, `THEME`, `CHECKPOINTS_ENABLED`, and `CHECKPOINT_RETENTION`.
+Mode-specific overrides include `PLAN_PROVIDER`, `PLAN_MODEL`, `AGENT_PROVIDER`,
+and `AGENT_MODEL`.
+
+A saved value may not become effective while an environment variable or flag overrides it.
+
+## Example
+
+```yaml
+theme: graphite
+ai_provider_config:
+  provider: ollama
+  model: qwen3-coder
+  base_url: http://localhost:11434/api
+  stream: true
+checkpoints_enabled: true
+checkpoint_retention: 10
+disabled_tools:
+  - fetch_web
+```
+
+<Callout type="warning">
+  Credentials saved by own-provider setup are plaintext. Do not commit secret-bearing
+  configuration. Use environment-based credentials or a private configuration scope.
+</Callout>
+
+## Edit interactively
+
+Open settings with Ctrl+P or F1, or enter:
+
+```text
+:preferences
+:preferences provider
+:preferences theme
+:preferences mcp
+:preferences plugins
+```
+
+Choose a field, enter its value, then select **Save** or **Cancel**.
+Edits validate values, preserve unrelated YAML/JSON fields, and use atomic writes.
+If no file exists, the editor creates `codai-config.json` in the configuration directory.
+
+| Setting | Save behavior |
+| --- | --- |
+| Provider, endpoint, credential, default model | Persisted for next startup |
+| Theme | Persisted, then applied to this session and future sessions |
+| MCP / plugin availability | Persisted; restart to rebuild connections |
+| Session model, mode, approval toggle | Immediate session-only change; not a saved configuration edit |
+
+Theme choices are **Graphite**, **Ocean**, **Azure**, **Violet**, **Magenta**,
+**Forest**, **Mint**, **Ember**, **Sunset**, and **Coral**. Selecting one does not
+preview it. Cancel, Escape, or failed persistence keeps the active theme unchanged.
+First-run theme onboarding is different: choosing a theme saves it before connection setup.
+
+The session model selector applies immediately on Enter and has no Save confirmation.
+Use `:preferences provider` or `codai auth` when you want a saved model default.
+
+## Manage integrations
+
+```bash
+codai config mcp disable local-tools
+codai config mcp enable local-tools
+codai config plugin disable path/to/ProjectPlugin.dll
+```
+
+Enable, disable, and remove mutate only entries in an existing configuration.
+They do not install packages, delete plugin binaries, or restart external services.
+See [MCP](/mcp) and [Plugins](/plugins) for setup and trust boundaries.
+
+## Organize project guidance
+
+Configuration controls runtime settings. [Project instructions](/customization/instructions),
+[skills](/skills), and [custom commands](/customization/commands) describe how Codai
+should work; none of them grants permissions blocked by runtime policy.

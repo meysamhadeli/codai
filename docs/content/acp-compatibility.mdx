@@ -1,12 +1,23 @@
 ---
-title: "ACP Compatibility"
+title: "ACP compatibility"
 description: "Drive Codai through its optional stdin/stdout JSON-lines host adapter."
 ---
 
-# ACP Compatibility
+import { Callout, Steps } from "nextra/components";
 
-Codai includes a host-neutral compatibility subset for editor integrations. Start it
-with:
+# ACP compatibility
+
+Use this adapter when building an editor or host integration around Codai.
+For terminal scripting, use the [CLI's JSON output](/resources/cli) instead.
+
+<Callout type="warning">
+  This is a compatibility subset, not a complete Agent Client Protocol implementation.
+  Do not assume compatibility with an arbitrary ACP client.
+</Callout>
+
+## Start the adapter
+
+Codai includes a host-neutral stdin/stdout JSON-lines host. Start it with:
 
 ```text
 codai --acp
@@ -30,10 +41,17 @@ Then send a prompt:
 {"type":"prompt","sessionId":"demo","text":"Inspect the project"}
 ```
 
-Supported commands are `initialize`, `new_session`, `prompt`, `set_mode`, `cancel`, and
-`permission_response`. Events include `session_created`, `mode_changed`,
-`permission_request`, `progress`, `text`, `usage`, `prompt_complete`, and structured
-`error` objects.
+| Message | Purpose |
+| --- | --- |
+| `initialize` | Initialize the compatibility host |
+| `new_session` | Create or resume a session with selected settings |
+| `prompt` | Submit work to a session |
+| `set_mode` | Change Plan / Agent policy |
+| `cancel` | Cancel active work |
+| `permission_response` | Respond to a permission request |
+
+Events include `session_created`, `mode_changed`, `permission_request`, `progress`,
+`text`, `usage`, `prompt_complete`, and structured `error` objects.
 
 Session modes are `plan` and `agent` (the default). Both `new_session` and `set_mode`
 reject the removed `ask` mode.
@@ -45,3 +63,32 @@ request IDs, capability negotiation, authentication, binary/image content, separ
 terminal resources, or changing provider/model in an existing session. Create another
 session when provider or model selection changes. The application layer still owns
 configuration, permission policy, cancellation, and session/task persistence.
+
+## Integration checklist
+
+<Steps>
+
+### Keep the channel structured
+
+Write one JSON object per line and parse stdout as events, not human-readable
+terminal output. Associate work with the intended session ID.
+
+### Handle permission requests
+
+Surface requests to the user rather than assuming consent. Model and mode choices
+do not remove application-layer policy.
+
+### Handle completion and cancellation
+
+Process `prompt_complete` and structured errors. A cancellation is not a rollback
+of files already written.
+
+### Recreate sessions for connection changes
+
+Start another session when changing provider/model. This adapter does not mutate
+an existing session's connection.
+
+</Steps>
+
+See [Permissions](/usage/permissions) and [Sessions and recovery](/usage/sessions)
+for behavior shared with the terminal host.

@@ -6,25 +6,6 @@
 The open source coding agent for your terminal.
 </p>
 
-<div align="center">
-<table>
-<tbody>
-<td align="center">
-<a href="https://meysamhadeli.github.io/codai" target="_blank"><strong>Docs</strong></a>
-</td>
-<td align="center">
-<a href="https://github.com/meysamhadeli/codai/discussions" target="_blank"><strong>Discussions</strong></a>
-</td>
-<td align="center">
-<a href="https://github.com/meysamhadeli/codai/issues" target="_blank"><strong>Issues</strong></a>
-</td>
-<td align="center">
-<a href="CONTRIBUTION.md" target="_blank"><strong>Contributing</strong></a>
-</td>
-</tbody>
-</table>
-</div>
-
 <br>
 
 <p align="center">
@@ -33,28 +14,14 @@ The open source coding agent for your terminal.
 
 ---
 
-Explore a codebase, plan a change, and work across files with explicit approval for writes
-and commands. Start read-only in Plan mode, then switch to Agent when you are ready to build.
-
 ## Installation
 
-Requires the [.NET SDK 10.0](https://dotnet.microsoft.com/download) or later.
-
 ```bash
-dotnet tool install --global Codai
+dotnet tool install --global codai
 ```
 
-## Usage
-
-Run from your project directory:
-
-```bash
-codai       # First run: choose theme, provider, and model; later runs open chat
-codai auth  # Change the connection or selected model
-```
-
-New setups save user-wide defaults in `~/.codai/codai-config.json` when no project
-configuration exists. See [first-run setup](https://meysamhadeli.github.io/codai/agent-mode#connection-setup).
+## Documentation
+For full instructions on how to use Codai, see the [docs](https://meysamhadeli.github.io/codai).
 
 ## What it does
 
@@ -93,9 +60,9 @@ OpenAI also supports **Continue with ChatGPT** for eligible accounts through `co
 account-plan access and API credentials are separate connections.
 Model availability and coding-tool support depend on the selected provider and model.
 Setup fetches live model catalogs, with bundled suggestions when discovery is unavailable.
-See [model selection and compatibility](https://meysamhadeli.github.io/codai/agent-mode#provider-models).
+See [model selection and compatibility](https://meysamhadeli.github.io/codai/providers/models).
 Bundled model choices include provider-specific USD estimates and prompt-length tiers;
-see [pricing coverage and limitations](https://meysamhadeli.github.io/codai/agent-mode#api-cost-estimates).
+see [pricing coverage and limitations](https://meysamhadeli.github.io/codai/providers/pricing).
 
 ## Documentation
 
@@ -108,7 +75,16 @@ required. See [documentation development](CONTRIBUTION.md#documentation) for loc
 | --- | --- |
 | [Overview](https://meysamhadeli.github.io/codai) | Introduction to Codai |
 | [Quickstart](https://meysamhadeli.github.io/codai/getting-started/quickstart) | Installation, model connection, and your first session |
-| [Agent mode](https://meysamhadeli.github.io/codai/agent-mode) | Modes, approval policy, terminal controls, and session recovery |
+| [Plan and Agent](https://meysamhadeli.github.io/codai/agent-mode) | Read-only investigation and deliberate implementation |
+| [Tools](https://meysamhadeli.github.io/codai/usage/tools) | Built-in capabilities, limits, and tool access |
+| [Terminal](https://meysamhadeli.github.io/codai/usage/terminal) | Composer, shortcuts, action steps, and diffs |
+| [Permissions](https://meysamhadeli.github.io/codai/usage/permissions) | Approval policy and unattended execution |
+| [Sessions and recovery](https://meysamhadeli.github.io/codai/usage/sessions) | Saved conversations, tasks, and checkpoints |
+| [Providers and models](https://meysamhadeli.github.io/codai/providers) | Connections, model selection, usage, and pricing |
+| [Configuration](https://meysamhadeli.github.io/codai/customization/configuration) | Saved settings, scopes, and overrides |
+| [Project instructions](https://meysamhadeli.github.io/codai/customization/instructions) | Repository conventions, rules, and memory |
+| [CLI reference](https://meysamhadeli.github.io/codai/resources/cli) | Entry points, flags, and exit codes |
+| [Troubleshooting](https://meysamhadeli.github.io/codai/resources/troubleshooting) | Setup, models, permissions, and terminal issues |
 | [Skills](https://meysamhadeli.github.io/codai/skills) | Project and global skills |
 | [Plugins](https://meysamhadeli.github.io/codai/plugins) | Custom tools and lifecycle hooks |
 | [MCP integrations](https://meysamhadeli.github.io/codai/mcp) | External tool servers |

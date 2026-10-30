@@ -1,0 +1,134 @@
+---
+title: "CLI reference"
+description: "Start interactive or scripted work, control capabilities, inspect configuration, and interpret exit codes."
+---
+
+import { Callout } from "nextra/components";
+
+# CLI reference
+
+Run `codai --help` for the installed version's full option list and `:help` for
+session commands. Flags also accept legacy snake_case spellings such as `--base_url`.
+
+## Entry points
+
+| Command | Purpose |
+| --- | --- |
+| `codai` | Onboard when needed, otherwise open chat with the saved connection |
+| `codai code` | Open a coding session with selected settings |
+| `codai auth` | Save or change a provider/account connection without opening chat |
+| `codai "prompt"` | Run one task and exit |
+| `codai --json "prompt"` | Emit JSON Lines events and a final result |
+| `codai config [target]` | Inspect configuration without starting external tools |
+| `codai --acp` | Start the [ACP compatibility adapter](/acp-compatibility) |
+| `codai --version` | Print the installed version |
+
+```bash
+codai --mode plan "Explain the request pipeline"
+codai code --continue
+codai config model --json
+```
+
+Pipe task text to Codai, or use `--` before literal prompt text beginning with a dash.
+Piped input and positional prompt text are combined into one task.
+
+## Project and configuration
+
+| Option | Purpose |
+| --- | --- |
+| `--cwd <path>` | Select the project root without changing the host directory |
+| `-c, --config <path>` | Use an explicit YAML/JSON configuration file |
+| `--config-dir <path>` | Select configuration discovery scope |
+| `--data-dir <path>` | Isolate conversation, task, and transcript state |
+| `--continue` | Continue conversation stored for this project |
+
+See [Configuration](/customization/configuration) for discovery and override order.
+
+## Provider and response
+
+| Option | Purpose |
+| --- | --- |
+| `--provider <name>` | Select a supported provider |
+| `--model <id>` | Override the model for this invocation |
+| `--base-url <url>` | Override the provider endpoint |
+| `--temperature <n>` | Set sampling temperature from 0 to 2 |
+| `--max-tokens <n>` | Set maximum generated tokens |
+| `--reasoning-effort <level>` | Request `low`, `medium`, or `high` effort |
+| `--stream <bool>` | Enable/disable streaming; default true |
+| `--api-version <version>` | Override provider version metadata |
+
+Prefer the `API_KEY` environment variable over `--api-key`, which can expose a
+secret through command history or process arguments.
+Provider support for sampling and reasoning options varies.
+
+## Permissions and execution
+
+| Option | Purpose |
+| --- | --- |
+| `--mode plan` / `--mode agent` | Choose capability policy; default Agent |
+| `--no-shell` | Remove command, build, and test tools |
+| `--no-sub-agents` | Disable delegation |
+| `--disable-tool <name>` | Hide and block a tool; repeatable |
+| `--auto-approve <bool>` | Explicitly approve writes/commands; default false |
+| `--no-hooks` | Disable lifecycle hooks |
+| `--hooks-dir <path>` | Add a hooks configuration directory |
+| `-t, --timeout <seconds>` | Bound the whole run, including input and tools; 0 disables |
+| `--retries <n>` | Limit consecutive tool failures; default 3 |
+
+<Callout type="warning">
+  One-shot/piped runs do not read approval input. Writes and commands are denied
+  unless `--auto-approve true` is supplied. This flag does not bypass mode restrictions.
+</Callout>
+
+## Context and recovery
+
+| Option | Purpose |
+| --- | --- |
+| `--execute-plan` | Execute the latest completed Plan after explicit consent |
+| `--compaction agentic\|basic\|off` | Choose automatic compaction strategy; default agentic |
+| `--no-auto-compact` | Disable automatic summarization |
+| `--no-checkpoints` | Disable new workspace snapshot capture |
+| `-s, --system <prompt>` | Replace the default prompt template, not enforced policy |
+
+## Configuration inspection
+
+Targets are `all`, `settings`, `paths`, `model`, `session`, `tools`, `rules`,
+`skills`, `commands`, `hooks`, `mcp`, and `plugins`. Omitted target means `all`.
+
+```bash
+codai config paths
+codai config tools --json
+codai config mcp disable local-tools
+```
+
+The mutation form is `codai config mcp|plugin enable|disable|remove <name-or-path>`.
+It changes configuration entries only, not plugin binaries or active connections.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Request completed |
+| `1` | Error |
+| `124` | Run timed out |
+| `130` | Cancelled |
+
+Completion does not prove that edits were applied or tests passed.
+For automation, inspect the reported outcome and verification results as well.
+
+## Interactive commands
+
+| Task | Commands |
+| --- | --- |
+| Change mode or model | `:mode`, `:model`, `:act`, `:deep-plan` |
+| Inspect/edit settings | `:config`, `:preferences` |
+| Manage context | `:compact`, `:new-task`, `:clear-history` |
+| Work with saved state | `:session`, `:task history`, `:task checkpoints`, `:task restore` |
+| Investigate in parallel | `:task start`, `:task list`, `:team start`, `:team list` |
+| Inspect usage | `:token`, `:clear-token` |
+| Diagnose | `:repair`, `:report-bug` |
+| Exit or get help | `:exit`, `:help` |
+
+Both `:` and `/` prefixes work.
+See [Terminal](/usage/terminal), [Sessions](/usage/sessions), and
+[Context](/usage/context) for complete workflows rather than isolated command names.

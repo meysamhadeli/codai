@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Kept the active theme unchanged until Save succeeded. Cancel, Escape, and failed
+  saves no longer applied an unsaved theme to terminal controls.
 - Isolated model-price lookup by provider instead of borrowing another provider's
   unqualified model price. Kept unknown Azure deployments and unpriced models from
   inheriting unrelated tariffs, and preserved context/capability metadata when
@@ -24,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Reorganized documentation into task-focused guides for terminal use, tools,
+  permissions, recovery, providers, configuration, and troubleshooting. Refined the
+  landing page and navigation, expanded integration guides, and preserved the
+  existing Agent Mode route and section links.
+- Renamed Appearance to Theme in settings and setup, and standardized configuration,
+  provider/account connection, and integration confirmation actions as Save and Cancel.
+- Expanded the theme palette to ten selectable themes — Graphite, Ocean, Azure, Violet,
+  Magenta, Forest, Mint, Ember, Sunset, and Coral — from a shared registry, and aligned
+  the default theme across runtime, configuration, and inspection.
 - Saved fresh first-run defaults under `~/.codai` when no project configuration
   existed, and automatically reused them across otherwise unconfigured projects.
   Preserved explicit configuration scopes, project precedence, and environment

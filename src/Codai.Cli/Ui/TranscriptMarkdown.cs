@@ -11,12 +11,13 @@ public static class TranscriptMarkdown
 {
     private static readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder().UsePipeTables().Build();
 
-    public static IRenderable Render(string markdown) => new Rows(Blocks(Markdown.Parse(Clean(markdown), _pipeline)));
+    public static IRenderable Render(string markdown, string accent = "deepskyblue1") =>
+        new Rows(Blocks(Markdown.Parse(Clean(markdown), _pipeline), accent));
 
     public static string Clean(string text) => new(text.Replace("\t", "    ", StringComparison.Ordinal)
         .Where(character => !char.IsControl(character) || character == '\n').ToArray());
 
-    public static IRenderable Code(string content, string language = "", bool numbered = true, int? width = null)
+    public static IRenderable Code(string content, string language = "", bool numbered = true, int? width = null, string accent = "deepskyblue1")
     {
         List<IRenderable> rows = [];
         if (!string.IsNullOrWhiteSpace(language))
@@ -29,8 +30,8 @@ public static class TranscriptMarkdown
         {
             var line = lines[index];
             var prefix = numbered ? (index + 1).ToString(CultureInfo.InvariantCulture).PadLeft(digits) + "  " : "  ";
-            var style = line.StartsWith('+') ? "green on #153d24"
-                : line.StartsWith('-') ? "red on #482022" : "silver on grey11";
+            var style = line.StartsWith('+') ? $"{accent} on grey11"
+                : line.StartsWith('-') ? $"dim {accent} on grey11" : "silver on grey11";
             var display = prefix + line;
             if (width is { } columns)
             {
@@ -41,7 +42,7 @@ public static class TranscriptMarkdown
         return new Rows(rows);
     }
 
-    private static IEnumerable<IRenderable> Blocks(ContainerBlock container)
+    private static IEnumerable<IRenderable> Blocks(ContainerBlock container, string accent)
     {
         foreach (var block in container)
         {
@@ -56,20 +57,20 @@ public static class TranscriptMarkdown
                     }
                     foreach (var cell in tableRows[0].OfType<Markdig.Extensions.Tables.TableCell>())
                     {
-                        display.AddColumn(new TableColumn(new Markup("[bold deepskyblue1]" + Cell(cell) + "[/]")));
+                        display.AddColumn(new TableColumn(new Markup($"[bold {accent}]" + Cell(cell, accent) + "[/]")));
                     }
                     foreach (var row in tableRows.Skip(1))
                     {
-                        display.AddRow(row.OfType<Markdig.Extensions.Tables.TableCell>().Select(cell => (IRenderable)new Markup(Cell(cell))).ToArray());
+                        display.AddRow(row.OfType<Markdig.Extensions.Tables.TableCell>().Select(cell => (IRenderable)new Markup(Cell(cell, accent))).ToArray());
                     }
                     yield return display;
                     break;
                 case HeadingBlock heading:
-                    yield return new Markup("[bold deepskyblue1]" + Inline(heading.Inline) + "[/]");
+                    yield return new Markup($"[bold {accent}]" + Inline(heading.Inline, accent) + "[/]");
                     yield return new Text(" ");
                     break;
                 case CodeBlock code:
-                    yield return Code(code.Lines.ToString(), code is FencedCodeBlock fenced ? fenced.Info ?? string.Empty : string.Empty);
+                    yield return Code(code.Lines.ToString(), code is FencedCodeBlock fenced ? fenced.Info ?? string.Empty : string.Empty, accent: accent);
                     yield return new Text(" ");
                     break;
                 case ListBlock list:
@@ -77,17 +78,17 @@ public static class TranscriptMarkdown
                     foreach (var item in list.OfType<ListItemBlock>())
                     {
                         var label = list.IsOrdered ? (itemNumber++).ToString(CultureInfo.InvariantCulture) + ". " : "- ";
-                        var itemRows = Blocks(item).ToArray();
+                        var itemRows = Blocks(item, accent).ToArray();
                         var grid = new Grid().AddColumn(new GridColumn().Width(label.Length)).AddColumn();
-                        grid.AddRow(new Text(label, Style.Parse("deepskyblue1")), new Rows(itemRows));
+                        grid.AddRow(new Text(label, Style.Parse(accent)), new Rows(itemRows));
                         yield return grid;
                     }
                     break;
                 case QuoteBlock quote:
-                    yield return new Padder(new Rows(Blocks(quote)), new Padding(2, 0, 0, 0));
+                    yield return new Padder(new Rows(Blocks(quote, accent)), new Padding(2, 0, 0, 0));
                     break;
                 case ParagraphBlock paragraph:
-                    yield return new Markup(Inline(paragraph.Inline));
+                    yield return new Markup(Inline(paragraph.Inline, accent));
                     yield return new Text(" ");
                     break;
                 case ThematicBreakBlock:
@@ -97,7 +98,7 @@ public static class TranscriptMarkdown
                     yield return new Text(leaf.Lines.ToString());
                     break;
                 case ContainerBlock nested:
-                    foreach (var child in Blocks(nested))
+                    foreach (var child in Blocks(nested, accent))
                     {
                         yield return child;
                     }
@@ -106,10 +107,10 @@ public static class TranscriptMarkdown
         }
     }
 
-    private static string Cell(Markdig.Extensions.Tables.TableCell cell) =>
-        string.Join(" ", cell.OfType<ParagraphBlock>().Select(paragraph => Inline(paragraph.Inline)));
+    private static string Cell(Markdig.Extensions.Tables.TableCell cell, string accent) =>
+        string.Join(" ", cell.OfType<ParagraphBlock>().Select(paragraph => Inline(paragraph.Inline, accent)));
 
-    private static string Inline(ContainerInline? container)
+    private static string Inline(ContainerInline? container, string accent)
     {
         if (container is null)
         {
@@ -118,13 +119,13 @@ public static class TranscriptMarkdown
         return string.Concat(container.Select(inline => inline switch
         {
             LiteralInline literal => Markup.Escape(literal.Content.ToString()),
-            CodeInline code => "[green]" + Markup.Escape(code.Content) + "[/]",
-            EmphasisInline emphasis => "[" + (emphasis.DelimiterCount >= 2 ? "bold" : "italic") + "]" + Inline(emphasis) + "[/]",
-            LinkInline link => "[deepskyblue1]" + Inline(link) + "[/]",
-            AutolinkInline link => "[deepskyblue1]" + Markup.Escape(link.Url) + "[/]",
+            CodeInline code => $"[{accent}]" + Markup.Escape(code.Content) + "[/]",
+            EmphasisInline emphasis => "[" + (emphasis.DelimiterCount >= 2 ? "bold" : "italic") + "]" + Inline(emphasis, accent) + "[/]",
+            LinkInline link => $"[{accent}]" + Inline(link, accent) + "[/]",
+            AutolinkInline link => $"[{accent}]" + Markup.Escape(link.Url) + "[/]",
             LineBreakInline => "\n",
             HtmlInline html => Markup.Escape(html.Tag),
-            ContainerInline nested => Inline(nested),
+            ContainerInline nested => Inline(nested, accent),
             _ => Markup.Escape(inline.ToString() ?? string.Empty),
         }));
     }

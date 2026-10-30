@@ -1,5 +1,14 @@
 :root {
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --codai-muted: #526070;
+  --codai-border: #dde4eb;
+  --codai-surface: #f0f5f9;
+}
+
+.dark {
+  --codai-muted: #a3b1c2;
+  --codai-border: #29333d;
+  --codai-surface: #151c23;
 }
 
 .codai-logo {
@@ -30,15 +39,105 @@
   filter: brightness(1.08);
 }
 
-.codai-lead {
-  margin: 1rem 0 1.5rem;
-  font-size: 1.35rem;
-  line-height: 1.65;
-  color: #526070;
+.codai-nav-link {
+  font-size: 0.875rem;
+  color: var(--codai-muted);
+  white-space: nowrap;
 }
 
-.dark .codai-lead {
-  color: #a3b1c2;
+.codai-nav-link:hover {
+  color: var(--codai-blue);
+}
+
+.codai-lead {
+  margin: 1rem 0 1.5rem;
+  font-size: 1.2rem;
+  line-height: 1.65;
+  color: var(--codai-muted);
+  max-width: 62ch;
+}
+
+.codai-hero {
+  clear: both;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.75rem;
+  margin: 1.25rem 0 2rem;
+}
+
+.codai-eyebrow {
+  color: var(--codai-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.codai-hero h1 {
+  margin: 0.9rem 0 1rem;
+  font-size: clamp(2.15rem, 4vw, 3.25rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+}
+
+.codai-hero .codai-lead {
+  margin-bottom: 0;
+  font-size: 1.05rem;
+}
+
+.codai-terminal {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--codai-border);
+  border-radius: 0.9rem;
+  background: var(--codai-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 5%);
+}
+
+.codai-terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--codai-border);
+}
+
+.codai-terminal-header > span {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--codai-muted);
+  opacity: 0.45;
+}
+
+.codai-terminal-header small {
+  margin-left: 0.35rem;
+  color: var(--codai-muted);
+  font-size: 0.75rem;
+}
+
+.codai-terminal pre {
+  margin: 0;
+  padding: 1.25rem;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  line-height: 1.9;
+}
+
+.codai-terminal code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+}
+
+.codai-terminal > p {
+  margin: 0;
+  padding: 0 1.25rem 1rem;
+  color: var(--codai-muted);
+  font-size: 0.75rem;
 }
 
 .nextra-card {
@@ -52,6 +151,26 @@
   order: -1;
   padding: 0;
   font-size: 1rem;
+}
+
+.nextra-card:hover {
+  border-color: var(--codai-blue);
+}
+
+@media (min-width: 1280px) {
+  .codai-hero {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .codai-nav-link {
+    display: none;
+  }
+
+  .codai-lead {
+    font-size: 1.05rem;
+  }
 }
 
 @media (max-width: 480px) {

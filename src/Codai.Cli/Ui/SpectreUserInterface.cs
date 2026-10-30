@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Codai.Core;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Context;
@@ -53,8 +54,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private bool _restorePaletteBackground;
     private bool _draggingScrollbar;
     private TaskCompletionSource<string?>? _dialogResult;
-    private string _theme = "graphite";
-    private string Accent => _theme switch { "forest" => "green", "ember" => "yellow", _ => "deepskyblue1" };
+    private string _theme = TerminalThemes.Default.Id;
+    private string Accent => TerminalThemes.Find(_theme).Accent;
     internal bool ConnectionSetup { get; init; }
     public bool UsesAccountPlan { get; init; }
     private IOverlay? _setupPaintedPalette;
@@ -67,7 +68,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 
     private Markup RenderActivity(string activity, int width, ActivitySnapshot? snapshot = null)
     {
-        var glyphColor = snapshot?.Stalled == true ? "yellow" : Accent;
+        var glyphColor = Accent;
         var parts = new List<string>();
         if (snapshot is { ShowMetrics: true, Tokens: > 0 })
         {
@@ -135,6 +136,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     public void SetTheme(string name)
     {
         _theme = name;
+        _transcript.Accent = Accent;
+        _transcript.Invalidate();
         _restorePaletteBackground = true;
         RefreshComposer();
     }
@@ -236,6 +239,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         _approvalState = approvalState ?? new ApprovalState(autoApprove);
         _projectRoot = projectRoot;
         _theme = theme;
+        _transcript.Accent = Accent;
         if (_input is SystemConsoleInput systemInput)
         {
             systemInput.KeyHandler = HandleShortcut;
@@ -347,14 +351,14 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 
         _state.Activity = "waiting for approval";
         _waitingForResponse = true;
-        Present(question + " [y/N]", "yellow");
+        Present(question + " [y/N]", Accent);
         MoveToTranscriptEnd();
         try
         {
             var answer = await _input.ReadResponseAsync(cancellationToken).ConfigureAwait(false);
             var accepted = string.Equals(answer?.Trim(), "y", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(answer?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
-            Present(accepted ? "Approved" : "Declined", accepted ? "green" : "yellow");
+            Present(accepted ? "Approved" : "Declined", Accent);
             return accepted;
         }
         finally
@@ -419,7 +423,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         lock (_renderLock)
         {
             _transcript.CompleteActivity("failed");
-            Present("! " + message, "red");
+            Present("! " + message, Accent);
         }
     }
 
@@ -427,7 +431,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     public void WriteSuccess(string message)
     {
         _state.Activity = "ready";
-        Present(message, "green");
+        Present(message, Accent);
     }
 
     /// <inheritdoc />
@@ -702,7 +706,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             if (stopped && !cancellationToken.IsCancellationRequested)
             {
-                Present("Request stopped. Session remains open.", "yellow");
+                Present("Request stopped. Session remains open.", Accent);
             }
             RefreshComposer();
         }
@@ -1250,13 +1254,13 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         var activeLabel = $"[{mode}]";
         var activeStart = modeLabel.IndexOf(activeLabel, StringComparison.Ordinal);
         _console.Write(new Text(modeLabel[..activeStart], Style.Parse("grey")));
-        _console.Write(new Text(ComposerLayout.Clip(activeLabel, width), Style.Parse("deepskyblue1")));
+        _console.Write(new Text(ComposerLayout.Clip(activeLabel, width), Style.Parse(Accent)));
         _console.Write(new Text(modeLabel[(activeStart + activeLabel.Length)..], Style.Parse("grey")));
         _console.WriteLine();
         StatusLine(string.IsNullOrWhiteSpace(_projectRoot) ? "current workspace" : _projectRoot);
         var approvalLabel = ComposerLayout.Clip(_approvalState.AutoApprove ? "Auto-approval ON" : "Approval required", width);
         _console.Write(new string(' ', indent));
-        _console.Write(new Text(approvalLabel, Style.Parse(_approvalState.AutoApprove ? "green" : "grey")));
+        _console.Write(new Text(approvalLabel, Style.Parse(_approvalState.AutoApprove ? Accent : "grey")));
         _console.Write(new Text(ComposerLayout.Clip("  (Shift+Tab)", Math.Max(0, width - approvalLabel.GetCellWidth())), Style.Parse("grey")));
     }
 
@@ -1435,7 +1439,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                     }
                     else
                     {
-                        Present("Request queue is full. Try the setting after this response.", "yellow");
+                        Present("Request queue is full. Try the setting after this response.", Accent);
                     }
                 }
                 else

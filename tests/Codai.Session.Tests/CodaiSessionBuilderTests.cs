@@ -27,7 +27,11 @@ public class CodaiSessionBuilderTests
         fileSystem.AddFile(path, "{}");
         var ui = new Fakes.FakeUserInterface();
         ui.EnqueueChoice("ai_provider_config.api_key");
-        ui.EnqueueChoice(confirm ? "confirm" : "cancel");
+        ui.EnqueueSelection(items =>
+        {
+            items.Select(item => item.Label).Should().Equal("Save", "Cancel");
+            return confirm ? "confirm" : "cancel";
+        });
         ui.EnqueueValue("codai-test-key");
         var options = OptionsFor("ollama");
         options.LoadedFrom = path;
@@ -53,7 +57,11 @@ public class CodaiSessionBuilderTests
         var ui = new Fakes.FakeUserInterface();
         ui.EnqueueChoice("local-tools");
         ui.EnqueueChoice("disable");
-        ui.EnqueueChoice("confirm");
+        ui.EnqueueSelection(items =>
+        {
+            items.Select(item => item.Label).Should().Equal("Save", "Cancel");
+            return "confirm";
+        });
         var options = OptionsFor("ollama");
         options.LoadedFrom = path;
         var services = new ServiceCollection();
@@ -67,8 +75,37 @@ public class CodaiSessionBuilderTests
         ui.Successes.Should().Contain(message => message.Contains("Restart Codai", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("cancel")]
+    [InlineData(null)]
+    public async Task Theme_picker_keeps_current_theme_and_configuration_when_save_is_declined(string? action)
+    {
+        const string root = @"C:\project";
+        var path = Path.Combine(root, "codai-config.json");
+        const string original = """{"theme":"ember"}""";
+        var fileSystem = new Fakes.InMemoryFileSystem(root);
+        fileSystem.AddFile(path, original);
+        var ui = new Fakes.FakeUserInterface();
+        ui.EnqueueChoice("forest");
+        ui.EnqueueSelection(items =>
+        {
+            ui.Themes.Should().BeEmpty();
+            items.Select(item => item.Label).Should().Equal("Save", "Cancel");
+            return action;
+        });
+        var services = new ServiceCollection();
+        services.AddSingleton<IUserInterface>(ui);
+        services.AddCodaiApplication(OptionsFor("ollama"), root);
+        services.Replace(ServiceDescriptor.Singleton<IFileSystem>(fileSystem));
+        using var provider = services.BuildServiceProvider();
+        await provider.GetRequiredService<SessionSettingsWorkflow>().RunAsync("theme");
+        ui.Themes.Should().BeEmpty();
+        (await fileSystem.ReadAllTextAsync(path)).Should().Be(original);
+        ui.Dialogs.First().Should().Be("Codai / Theme");
+    }
+
     [Fact]
-    public async Task Appearance_picker_applies_session_theme_without_writing_when_save_is_declined()
+    public async Task Theme_picker_cancel_does_not_create_configuration_or_apply_theme()
     {
         const string root = @"C:\project";
         var fileSystem = new Fakes.InMemoryFileSystem(root);
@@ -81,8 +118,65 @@ public class CodaiSessionBuilderTests
         services.Replace(ServiceDescriptor.Singleton<IFileSystem>(fileSystem));
         using var provider = services.BuildServiceProvider();
         await provider.GetRequiredService<SessionSettingsWorkflow>().RunAsync("theme");
-        ui.Themes.Should().Equal("forest");
+        ui.Themes.Should().BeEmpty();
         fileSystem.FileExists(Path.Combine(root, "codai-config.json")).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("graphite")]
+    [InlineData("ocean")]
+    [InlineData("azure")]
+    [InlineData("violet")]
+    [InlineData("magenta")]
+    [InlineData("forest")]
+    [InlineData("mint")]
+    [InlineData("ember")]
+    [InlineData("sunset")]
+    [InlineData("coral")]
+    public async Task Theme_picker_applies_and_persists_theme_only_after_save(string theme)
+    {
+        const string root = @"C:\project";
+        var path = Path.Combine(root, "codai-config.json");
+        var fileSystem = new Fakes.InMemoryFileSystem(root);
+        var ui = new Fakes.FakeUserInterface();
+        ui.EnqueueChoice(theme);
+        ui.EnqueueSelection(items =>
+        {
+            ui.Themes.Should().BeEmpty();
+            fileSystem.FileExists(path).Should().BeFalse();
+            return items.Single(item => item.Label == "Save").Value;
+        });
+        var services = new ServiceCollection();
+        services.AddSingleton<IUserInterface>(ui);
+        services.AddCodaiApplication(OptionsFor("ollama"), root);
+        services.Replace(ServiceDescriptor.Singleton<IFileSystem>(fileSystem));
+        using var provider = services.BuildServiceProvider();
+        await provider.GetRequiredService<SessionSettingsWorkflow>().RunAsync("theme");
+        ui.Themes.Should().Equal(theme);
+        using var saved = JsonDocument.Parse(await fileSystem.ReadAllTextAsync(path));
+        saved.RootElement.GetProperty("theme").GetString().Should().Be(theme);
+    }
+
+    [Fact]
+    public async Task Theme_picker_keeps_current_theme_when_configuration_cannot_be_saved()
+    {
+        const string root = @"C:\project";
+        var path = Path.Combine(root, "codai-config.json");
+        const string original = "{invalid json";
+        var fileSystem = new Fakes.InMemoryFileSystem(root);
+        fileSystem.AddFile(path, original);
+        var ui = new Fakes.FakeUserInterface();
+        ui.EnqueueChoice("forest");
+        ui.EnqueueChoice("confirm");
+        var services = new ServiceCollection();
+        services.AddSingleton<IUserInterface>(ui);
+        services.AddCodaiApplication(OptionsFor("ollama"), root);
+        services.Replace(ServiceDescriptor.Singleton<IFileSystem>(fileSystem));
+        using var provider = services.BuildServiceProvider();
+        await provider.GetRequiredService<SessionSettingsWorkflow>().RunAsync("theme");
+        ui.Themes.Should().BeEmpty();
+        (await fileSystem.ReadAllTextAsync(path)).Should().Be(original);
+        ui.Errors.Should().ContainSingle();
     }
 
     [Fact]

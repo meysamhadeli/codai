@@ -1,88 +1,109 @@
 ---
-title: "Build with Codai"
-description: "Your terminal. Your models. A coding agent that works with your project and keeps you in control."
+title: "Codai documentation"
+description: "Install, configure, and work with the open source terminal coding agent. Practical guides for tools, models, permissions, and recovery."
 ---
 
 import { Cards, Callout, Steps } from "nextra/components";
 
-# Build with Codai
-
-<div className="codai-lead">
-Your terminal. Your models. A coding agent that keeps you in control.
+<div className="codai-hero">
+  <div>
+    <p className="codai-eyebrow">CODAI DOCUMENTATION</p>
+    <h1>Your project.<br />Your terminal.<br />Your next change.</h1>
+    <div className="codai-lead">
+      Explore code, plan a change, and build with an open source coding agent.
+      Choose your model. Review the actions. Keep control.
+    </div>
+  </div>
+  <div className="codai-terminal">
+    <div className="codai-terminal-header"><span /> <span /> <span /> <small>Start in your project</small></div>
+    <pre><code>{"dotnet tool install --global Codai\n\ncd your-project\ncodai\n\n# Explore without changing files\ncodai --mode plan"}</code></pre>
+    <p>Plan to understand. Agent to implement.</p>
+  </div>
 </div>
 
-Codai is an open source coding agent for your terminal. Explore a codebase, plan a change,
-and work across files with explicit approval for writes and commands.
-
 <Cards num={2}>
-  <Cards.Card title="Start your first session" href="/getting-started/quickstart" arrow>
-    Install Codai, connect a model, and open your project.
+  <Cards.Card title="Get started" href="/getting-started/quickstart" arrow>
+    Install Codai, connect a model, and complete your first task.
   </Cards.Card>
-  <Cards.Card title="Plan before you act" href="/agent-mode" arrow>
-    Explore read-only, then switch to Agent when you are ready to make changes.
+  <Cards.Card title="Understand Plan and Agent" href="/agent-mode" arrow>
+    Investigate read-only, then review and execute a proposal.
   </Cards.Card>
 </Cards>
 
-## From idea to working code
+## Start with a clear workflow
 
 <Steps>
 
-### Install
+### Open your project
 
-Use the .NET SDK 10.0 or later to install the terminal tool.
+Run `codai` from your repository. First-run setup saves a theme and connection;
+later runs open chat with those settings.
 
-```bash
-dotnet tool install --global Codai
+### Describe the outcome
+
+Name the behavior, constraints, and checks that matter. Attach a file with `@path`
+when you know where the work belongs.
+
+```text
+Find why empty configuration values pass validation.
+Add a regression test, fix the parser, and run the relevant checks.
 ```
 
-### Connect
+### Review the work
 
-Choose your provider and model through the guided setup.
-
-```bash
-codai auth
-```
-
-### Build
-
-Start a session from your project directory.
-
-```bash
-codai code
-```
+Inspect proposed commands and edits before approval. Expand action steps to read
+results and diffs. Continue, refine, or restore deliberately.
 
 </Steps>
 
-<Callout type="info">
-  Start with `codai --mode plan "Explain this project"` to explore without changing files
-  or running shell commands.
-</Callout>
+## Work with Codai
 
-## Make it your own
-
-<Cards num={2}>
-  <Cards.Card title="Skills" href="/skills" arrow>
-    Give Codai reusable instructions for your team's workflows.
+<Cards num={3}>
+  <Cards.Card title="Terminal" href="/usage/terminal" arrow>
+    Composer, shortcuts, command completion, and action steps.
   </Cards.Card>
-  <Cards.Card title="MCP servers" href="/mcp" arrow>
-    Connect external tools through the same approval policy.
+  <Cards.Card title="Tools" href="/usage/tools" arrow>
+    Files, search, edits, commands, and capability limits.
   </Cards.Card>
-  <Cards.Card title="Plugins" href="/plugins" arrow>
-    Extend tools and lifecycle hooks with .NET plugins.
+  <Cards.Card title="Permissions" href="/usage/permissions" arrow>
+    Approval choices, shell access, and unattended runs.
   </Cards.Card>
-  <Cards.Card title="Editor integration" href="/acp-compatibility" arrow>
-    Check supported ACP behavior and current compatibility limits.
+  <Cards.Card title="Sessions" href="/usage/sessions" arrow>
+    Continue, branch, and restore saved work.
+  </Cards.Card>
+  <Cards.Card title="Context" href="/usage/context" arrow>
+    On-demand discovery, compaction, and read-only delegation.
+  </Cards.Card>
+  <Cards.Card title="Models" href="/providers/models" arrow>
+    Live discovery, saved defaults, and session switching.
   </Cards.Card>
 </Cards>
 
-## Stay in control
+<Callout type="info">
+  New to the repository? Start with `codai --mode plan`. Plan reads and searches
+  without editing files or running shell commands.
+</Callout>
 
-Plan mode reads and searches without writing files or running commands. Agent mode can
-edit files and, when shell access is enabled, run commands under your approval policy.
-Long sessions compact context; `codai code --continue` resumes a previous session.
+## Make it fit your project
 
-Sessions discover project files on demand instead of building a full-project index at
-startup. Project guidance still reaches the model before it starts work.
+<Cards num={2}>
+  <Cards.Card title="Configuration" href="/customization/configuration" arrow>
+    Understand saved settings, overrides, and configuration scopes.
+  </Cards.Card>
+  <Cards.Card title="Project instructions" href="/customization/instructions" arrow>
+    Set repository conventions, conditional rules, and memory.
+  </Cards.Card>
+  <Cards.Card title="Skills and workflows" href="/skills" arrow>
+    Package reusable instructions for repeatable work.
+  </Cards.Card>
+  <Cards.Card title="MCP and external tools" href="/mcp" arrow>
+    Connect local or remote capabilities under the same tool policy.
+  </Cards.Card>
+</Cards>
 
-Read the [Agent mode guide](/agent-mode) for permissions, terminal controls, recovery,
-and session commands. See the [roadmap](/agent-mode-roadmap) for work still in progress.
+## Find an answer
+
+Use search for a tool, command, or setting. The [CLI reference](/resources/cli)
+collects entry points and exit codes; [Troubleshooting](/resources/troubleshooting)
+covers setup, models, permissions, and terminal issues.
+The [roadmap](/agent-mode-roadmap) separates planned work from current capabilities.

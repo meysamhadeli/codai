@@ -196,9 +196,9 @@ public sealed class ConnectionSetupWorkflow(
                 case Step.Save:
                     var action = await ui.ChooseAsync("Codai / Save connection",
                     [
-                        new("Save " + model, credential.Length > 0 ? "Credential will be stored locally as plaintext" : "Save provider and model settings", "save"),
+                        new("Save", model + (credential.Length > 0 ? ": Credential will be stored locally as plaintext" : ": Save provider and model settings"), "save"),
                         new("Change model", "Return to model selection", "back"),
-                        new("Discard setup", "Keep existing configuration unchanged", "cancel"),
+                        new("Cancel", "Keep existing configuration unchanged", "cancel"),
                     ], cancellationToken).ConfigureAwait(false);
                     if (action is null or "back")
                     {

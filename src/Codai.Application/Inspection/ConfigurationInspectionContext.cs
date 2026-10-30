@@ -34,8 +34,8 @@ public sealed record ConfigurationInspectionContext
     /// <summary>Resolved model identifier.</summary>
     public required string Model { get; init; }
 
-    /// <summary>Markdown render theme.</summary>
-    public string Theme { get; init; } = "dracula";
+    /// <summary>Terminal colour theme.</summary>
+    public string Theme { get; init; } = "graphite";
 
     /// <summary>True when a conversation that outgrows the context window is summarised.</summary>
     public bool AutoCompact { get; init; } = true;

@@ -1,0 +1,103 @@
+---
+title: "Troubleshooting"
+description: "Resolve common setup, model, approval, terminal, and saved-state issues using inspectable configuration."
+---
+
+import { Callout } from "nextra/components";
+
+# Troubleshooting
+
+Start with the installed version and selected paths:
+
+```bash
+codai --version
+codai config paths
+codai config model
+```
+
+Configuration inspection omits credential values and does not start external tools.
+Review any report before sharing it; do not include configuration secrets or tokens.
+
+## Setup keeps opening
+
+Later runs should reuse a valid saved connection. Check that you are using the
+same configuration scope and that a project file is not taking precedence over
+user-wide defaults.
+
+An unconfigured run still onboards even when environment variables provide credentials.
+For an existing configuration, a provider that requires a credential needs either
+an API key or an account reference. Use `codai auth` to repair the saved connection.
+
+## Model selection fails
+
+1. Check provider and endpoint with `codai config model`.
+2. Retry discovery or enter a custom ID in `codai auth`.
+3. Use your Azure deployment ID, not a public model name.
+4. For Ollama, verify the model is installed on the selected server.
+5. Check [transport compatibility](/providers/models#compatibility-boundaries).
+
+Suggested models do not verify account access. A model appearing in discovery does
+not prove support for multi-turn coding tools.
+
+## Saved settings do not take effect
+
+Environment variables and flags override saved values. Inspect settings and paths
+before saving repeatedly. Provider, default model, and integration changes generally
+apply at next startup.
+
+**Theme** is applied after a successful Save. Cancel and failed saves leave the active
+theme unchanged. The session-only model selector is different: Enter applies it
+immediately, without changing saved defaults.
+
+## Files or commands are refused
+
+| Check | What to do |
+| --- | --- |
+| Plan mode | Switch to Agent only when you intend to change the project |
+| Shell disabled | Restart without `--no-shell` when command access is intended |
+| Tool explicitly disabled | Inspect `disabled_tools` and `--disable-tool` |
+| One-shot or piped task | Approval input is unavailable; writes are denied by default |
+| File unreadable/oversized | Narrow the task; do not bypass the read-before-write requirement |
+
+<Callout type="warning">
+  Do not enable automatic approval merely to suppress an unexplained refusal.
+  Identify the capability or policy responsible first.
+</Callout>
+
+## A key does something unexpected
+
+- Ctrl+M may arrive as Enter. Use Ctrl+P or F1 for settings.
+- Tab accepts a visible completion before it toggles mode.
+- Hold Shift for terminal text selection when mouse reporting intercepts dragging.
+- Mode/approval shortcuts do not change state while answering a confirmation.
+
+See [Terminal and shortcuts](/usage/terminal) for expected behavior.
+
+## Streaming or output looks stuck
+
+Streaming needs provider support and `stream: true`. Early responses do not
+display elapsed time or output-token counters until two seconds have passed.
+Reasoning steps display status, not private reasoning.
+
+Escape stops the current request while keeping the session open. It does not roll
+back file changes. Inspect the transcript and working tree before trying again.
+
+## Saved work seems missing
+
+Check the project root and `--data-dir`. Use `:session history` or `:task history`
+to locate saved work. Continuing a chat does not restore checkpoint files.
+See [Sessions and recovery](/usage/sessions) before restoring anything.
+
+## MCP or plugin changes are not active
+
+Configuration changes apply on restart; inspection does not reload live tools.
+Check the configured name/path, enabled state, transport, and timeout.
+See [MCP](/mcp) or [Plugins](/plugins). Never mark an unknown remote tool read-only
+just to make it available in Plan.
+
+## Report a reproducible issue
+
+Use `:report-bug <summary>` to save a local diagnostic report under `.codai/reports`
+after confirmation. Include the version, exact command, expected behavior, and
+smallest safe reproduction when filing an issue.
+Reports are local; creating one does not automatically publish it.

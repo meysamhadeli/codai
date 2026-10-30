@@ -24,7 +24,17 @@ public sealed class ChatTranscript
 
     public int ScrollOffset { get; private set; }
 
+    /// <summary>Theme accent colour used for headings, links, and step headers.</summary>
+    public string Accent { get; set; } = "deepskyblue1";
+
     public void InvalidateDisplay() => _paintedRows = [];
+
+    /// <summary>Forces a full re-render so a new accent colour is applied to already-painted lines.</summary>
+    public void Invalidate()
+    {
+        _version++;
+        _paintedRows = [];
+    }
 
     public void Add(string text, string style = "default")
     {
@@ -305,7 +315,7 @@ public sealed class ChatTranscript
 
     private static string Limit(string value) => value.Length <= 60000 ? value : value[..59960] + "\n[Preview limit reached]";
 
-    private static IRenderable Render(Entry entry, int width)
+    private IRenderable Render(Entry entry, int width)
     {
         if (entry.User)
         {
@@ -314,11 +324,11 @@ public sealed class ChatTranscript
         }
         if (entry.Markdown)
         {
-            return TranscriptMarkdown.Render(entry.Text);
+            return TranscriptMarkdown.Render(entry.Text, Accent);
         }
         if (entry.IsStep)
         {
-            var color = entry.Status == "failed" ? "red" : entry.Status == "stopped" ? "yellow" : "deepskyblue1";
+            var color = Accent;
             var title = entry.Activity is { } activity
                 ? (entry.Status == "done" ? "Finished " + activity.ToLowerInvariant() : activity)
                 : entry.AddedLines.HasValue ? "Edited" : entry.Tool switch
@@ -336,7 +346,7 @@ public sealed class ChatTranscript
             var header = $"[{color} bold]{Markup.Escape(label)}[/]";
             if (entry.AddedLines is { } additions)
             {
-                header += $" [green]+{additions}[/] [red]-{entry.RemovedLines}[/]";
+                header += $" [{Accent}]+{additions}[/] [dim {Accent}]-{entry.RemovedLines}[/]";
             }
             header += $" [grey]({Markup.Escape(entry.StatusLabel)})[/]";
             List<IRenderable> content =

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { basePath } from "./site.config.mjs";
-import { checkDocumentation, htmlAssetUrls, pageRoute } from "./check.mjs";
+import { checkDocumentation, hasInvalidParagraphNesting, htmlAssetUrls, pageRoute } from "./check.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const output = path.join(root, "out");
@@ -16,6 +16,9 @@ for (const page of pages) {
     continue;
   }
   const html = fs.readFileSync(file, "utf8");
+  if (hasInvalidParagraphNesting(html)) {
+    errors.push(`${page}: a paragraph contains a block element, which can break hydration.`);
+  }
   for (const url of htmlAssetUrls(html)) {
     if (!url.startsWith("/") || url.startsWith("//")) continue;
     const pathname = decodeURIComponent(url.split(/[?#]/)[0]);

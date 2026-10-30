@@ -1,0 +1,98 @@
+---
+title: "Project instructions"
+description: "Give Codai repository conventions, file-scoped rules, and durable project knowledge without overloading every request."
+---
+
+import { Callout } from "nextra/components";
+
+# Project instructions
+
+Keep stable repository knowledge in files rather than repeating it in every prompt.
+Use instructions for broad conventions, rules for specific paths, skills for
+workflows, and memory for durable project facts.
+
+## Repository instructions
+
+Codai uses the first nonempty readable instruction file from the project root:
+
+1. `AGENTS.md`
+2. `CLAUDE.md`
+3. `CODAI.md`
+4. `.codai/instructions.md`
+5. `.github/copilot-instructions.md`
+
+Files are not concatenated. Keep the chosen file focused; content beyond 32 KB
+is truncated.
+
+````markdown filename="AGENTS.md"
+# Working in this repository
+
+- Keep changes limited to the requested behavior.
+- Follow the existing public error-response format.
+- Add a regression test for bug fixes.
+- Run `dotnet test` before reporting completion.
+````
+
+Document commands that actually work in your repository. Guidance is most useful
+when it states constraints and verification, not a long history of the project.
+
+## Conditional rules
+
+Place Markdown files in `.codai/rules`. Optional `applyTo` frontmatter narrows
+when a rule is relevant:
+
+```markdown filename=".codai/rules/api.md"
+---
+applyTo: "src/Api/**/*.cs"
+---
+
+Preserve the existing error envelope.
+Add endpoint tests when changing response status or shape.
+```
+
+Rules without patterns always apply. Patterns may be comma-, semicolon-, or
+whitespace-separated. Global rules live under `rules` in the selected global
+configuration directory; project rules with the same relative path take precedence.
+
+Rule loading is bounded to 100 rules, 8 KB per rule, and 32 patterns per rule.
+Keep rules small and scoped rather than treating them as source-file attachments.
+
+## Durable project memory
+
+Use Markdown under `.codai/memory` for facts worth keeping between sessions:
+
+```markdown filename=".codai/memory/auth.md"
+# Authentication
+
+The web app uses session cookies. API clients use bearer tokens.
+Keep the two error-response formats distinct.
+```
+
+Memory loading is bounded to 12 documents, 12 KB per document, and 48 KB total.
+Store stable knowledge, not secrets, raw logs, or transient task state.
+
+## Inspect what Codai sees
+
+```bash
+codai config rules
+codai config skills
+codai config commands
+```
+
+Inside a session, use the same targets with `:config`.
+Inspect configuration paths when global content is not being found.
+
+<Callout type="info">
+  Instructions are model guidance, not executable policy. They cannot enable a
+  disabled tool, bypass Plan mode, or approve a write.
+</Callout>
+
+## Choose the right mechanism
+
+| Need | Use |
+| --- | --- |
+| Repository-wide conventions | An instruction file |
+| Conventions for matching paths | Conditional rules |
+| A reusable multi-step workflow | [Skills](/skills) |
+| A short prompt invoked by name | [Custom commands](/customization/commands) |
+| Facts that should survive a session | Project memory |

@@ -9,7 +9,7 @@ import "./globals.css";
 export const metadata = {
   metadataBase: new URL(`${siteUrl}/`),
   title: { default: "Codai documentation", template: "%s - Codai" },
-  description: "The open source coding agent for your terminal.",
+  description: "Practical guides for Codai: terminal workflows, tools, providers, permissions, and recovery.",
   icons: { icon: `${basePath}/assets/favicon.svg` },
 };
 
@@ -23,6 +23,7 @@ const navbar = (
     }
     projectLink="https://github.com/meysamhadeli/codai"
   >
+    <Link className="codai-nav-link" href="/usage/tools">Tool reference</Link>
     <Link className="codai-start" href="/getting-started/quickstart">Get started</Link>
   </Navbar>
 );
@@ -37,7 +38,7 @@ export default async function RootLayout({ children }) {
           pageMap={await getPageMap()}
           docsRepositoryBase="https://github.com/meysamhadeli/codai/tree/main/docs/content"
           sidebar={{ defaultMenuCollapseLevel: 2 }}
-          footer={<Footer>Codai. Open source. Built for your terminal.</Footer>}
+          footer={<Footer>Codai documentation. Open source. Built for your terminal.</Footer>}
         >
           {children}
         </Layout>

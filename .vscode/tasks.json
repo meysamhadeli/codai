@@ -1,0 +1,20 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "codai first-run",
+			"type": "shell",
+			"command": "dotnet run --project C:\\Users\\Pc\\Desktop\\codai\\src\\Codai.Cli",
+			"options": {
+				"cwd": "C:\\Users\\Pc\\AppData\\Local\\Temp\\codai-firstrun-project",
+				"env": {
+					"CODAI_CONFIG_DIR": "C:\\Users\\Pc\\AppData\\Local\\Temp\\codai-firstrun"
+				},
+				"shell": {
+					"executable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+					"args": ["-NoProfile", "-NoLogo", "-Command"]
+				}
+			}
+		}
+	]
+}
