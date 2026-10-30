@@ -21,8 +21,8 @@ public sealed class SessionOptions
     /// <summary>Active model identifier, e.g. <c>deepseek-flash</c>.</summary>
     public required string Model { get; init; }
 
-    /// <summary>Colour theme used when rendering markdown.</summary>
-    public string Theme { get; init; } = "dracula";
+    /// <summary>Terminal colour theme applied to selections and accents.</summary>
+    public string Theme { get; init; } = "graphite";
 
     /// <summary>
     /// When true, a response that asks for more project files triggers a second

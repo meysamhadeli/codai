@@ -1,0 +1,130 @@
+---
+title: "Connect a provider"
+description: "Connect hosted APIs, local model servers, or an eligible ChatGPT account and save a reusable connection."
+---
+
+import { Callout, Cards, Steps } from "nextra/components";
+
+# Connect a provider
+
+Codai supports hosted APIs and local model servers. You can also connect an
+eligible ChatGPT account; account-plan access and API credentials are separate
+connection types.
+
+## Guided setup
+
+Run `codai` for first-run onboarding, or reopen connection setup explicitly:
+
+```bash
+codai auth
+```
+
+`codai auth` saves a connection and exits. First-run `codai` saves the connection
+and starts chat immediately.
+
+<Steps>
+
+### Choose the connection
+
+Select **Use your own provider**, then **Hosted provider** or **Local server**.
+Choose a supported provider; its server address remains editable.
+
+### Enter the endpoint and credential
+
+Hosted APIs normally require a credential. Local Ollama can run without one.
+Credentials are masked while typing. Remote credentials require HTTPS;
+loopback servers may use HTTP.
+
+### Select a model
+
+Choose a discovered model or enter a custom ID. Azure OpenAI requires your
+deployment identifier. See [Choose a model](/providers/models) for fallback behavior
+and transport compatibility.
+
+### Save the connection
+
+**Save** writes provider, endpoint, credential, and model together, preserving
+unrelated settings. **Cancel** leaves the existing connection unchanged.
+**Change model** returns to model selection; Escape generally returns one step.
+
+</Steps>
+
+<Callout type="warning">
+  Own-provider credentials are stored as plaintext in the selected configuration
+  file. Keep that file private and out of version control. Prefer environment-based
+  credentials when storing a secret in project configuration is inappropriate.
+</Callout>
+
+## Supported providers
+
+| Provider | Identifier | Connection | Default |
+| --- | --- | --- | --- |
+| OpenAI | `openai` | Hosted API | `gpt-5.4-mini` |
+| Azure OpenAI | `azure-openai` | Hosted deployment | Your deployment ID |
+| Anthropic | `anthropic` | Hosted API | `claude-sonnet-4-6` |
+| Google Gemini | `gemini` | Hosted API | `gemini-3.8-flash` |
+| Ollama | `ollama` | Local server | `qwen3-coder` |
+| DeepSeek | `deepseek` | Hosted API | `deepseek-flash` |
+| OpenRouter | `openrouter` | Hosted router | `openai/gpt-5.4-mini` |
+| Qwen / DashScope | `qwen` | Hosted API | `qwen3.7-plus` |
+| Mistral | `mistral` | Hosted API | `mistral-medium-3-5` |
+| Grok / xAI | `grok` | Hosted API | `grok-4.7` |
+
+Defaults favor Codai's existing transports. A newer or discovered model is not
+necessarily compatible with multi-turn coding tools.
+
+## Local models
+
+Install and start a model on your Ollama server before selecting it. Discovery uses
+installed models from `/api/tags`, not a list of models you could download.
+
+```bash
+codai --provider ollama --model qwen3-coder
+```
+
+For another compatible server, select the appropriate provider transport and an
+editable base URL. Compatibility depends on the endpoint's API, not its branding.
+
+## ChatGPT account connection
+
+Choose **Continue with ChatGPT** in `codai auth`. Codai opens the system browser
+for public-client authorization and lists models available to the authorized account.
+Access depends on account eligibility and granted permissions.
+
+- **Save** stores an opaque account reference and selected model in configuration.
+- Tokens are stored separately in `Codai/accounts` under the user's local app data.
+- Windows encrypts tokens for the current user; Unix token files are owner-only.
+- Refreshes are serialized across processes and rotating tokens are replaced atomically.
+- Reauthorize or sign out a saved registration through `codai auth`.
+
+Sign-out clears local tokens and attempts remote revocation, with a warning if
+revocation cannot be confirmed. Cancelling authorization or setup does not replace
+the current connection.
+
+Account requests use streaming inference with server-side response storage disabled.
+Interrupted or incomplete streams are not accepted as successful responses.
+The terminal shows a plan indicator and usage-settings link instead of API dollar estimates.
+
+## Where settings are saved
+
+First-run onboarding updates an existing project configuration; otherwise it creates
+`~/.codai/codai-config.json` for user-wide defaults. Other unconfigured projects reuse
+that file. A project configuration takes precedence rather than merging with it.
+
+Explicit `--config`, `--config-dir`, or `CODAI_CONFIG_DIR` keeps a separate scope.
+Without an existing file or explicit scope, `codai auth` creates configuration in the
+current configuration directory, not necessarily the first-run global location.
+
+Later `codai` runs reuse a valid saved connection. With no saved configuration,
+onboarding still runs even if environment variables provide credentials.
+An existing effective connection opens setup only when it needs credentials and
+has neither an API key nor an account reference.
+
+<Cards num={2}>
+  <Cards.Card title="Choose the right model" href="/providers/models" arrow>
+    Live discovery, saved defaults, and session-only switching.
+  </Cards.Card>
+  <Cards.Card title="Understand configuration" href="/customization/configuration" arrow>
+    File discovery, overrides, and Save / Cancel behavior.
+  </Cards.Card>
+</Cards>

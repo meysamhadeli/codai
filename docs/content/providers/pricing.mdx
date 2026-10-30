@@ -1,0 +1,97 @@
+---
+title: "Usage and pricing"
+description: "Read token totals, understand provider-specific cost estimates, and recognize what the bundled pricing snapshot excludes."
+---
+
+import { Callout } from "nextra/components";
+
+# Usage and pricing
+
+The terminal reports token usage and an estimated API cost after responses.
+Use `:token` for session usage. Account-plan connections display a plan indicator
+instead of an estimated API charge; plan limits and credits remain provider-managed.
+
+## Read the numbers
+
+| Display | Meaning |
+| --- | --- |
+| Context bar | Latest reported request input/output against the built-in context estimate |
+| Session tokens | Accumulated usage, including delegated model work |
+| API cost | Estimate from the bundled provider/model pricing catalog |
+| Account-plan indicator | Account usage link, not an API billing estimate |
+
+Unknown models use a 128,000-token context estimate.
+The context display is not a live guarantee of the provider's actual window.
+
+<Callout type="warning">
+  Unknown prices contribute zero to numeric cost totals. Zero means "not priced,"
+  not "free." Cost budgets cannot account for charges missing from the catalog.
+  Estimates are neither invoices nor guaranteed billing caps.
+</Callout>
+
+## Snapshot coverage
+
+The embedded USD text-token snapshot was reviewed on **October 30, 2026** and
+covers every bundled default and fallback model choice across ten providers.
+Discovery can return newer or additional models without bundled prices.
+Historical entries remain available but are not all newly verified.
+
+Lookup is provider-specific: a direct-provider model does not inherit OpenRouter's
+rate, and an unknown Azure deployment does not inherit a public model tariff.
+
+## Prompt-length tiers
+
+For supported tiers, the request's input-token count selects rates for **all input
+and output tokens**, not only the tokens above a threshold.
+
+- Grok switches at 200,000 input tokens.
+- Direct Gemini Pro switches above 200,000.
+- OpenRouter uses its published `min_prompt_tokens` boundaries.
+
+## Provider-specific assumptions
+
+| Provider | Estimate basis and limits |
+| --- | --- |
+| Azure OpenAI | Global Standard reference rates for deployments named like known model IDs; no inference of region, deployment type, or negotiated rates |
+| Qwen | International standard list prices, not mainland-China regional or promotional prices; `qwen-plus` uses the higher thinking-mode output rate |
+| DeepSeek | Peak prices, excluding off-peak and holiday discounts, including routed OpenRouter entries |
+| Gemini | Paid standard text rates, excluding free tiers |
+| Ollama | Bundled local `qwen3-coder` has no hosted token tariff; hardware, power, hosting, and subscriptions are excluded |
+
+Gemini Argon's introductory price ends November 30, 2026; Flash 3.8 / 3.6
+introductory prices end December 31, 2026. The snapshot does not automatically
+change on those dates; update it before relying on later estimates.
+
+Other local or cloud IDs do not inherit another provider's price.
+
+## Excluded charges
+
+Usage reports input/output totals without cache-read/write breakdowns.
+Calculations therefore use uncached input rates; stored cache prices are metadata.
+Tool fees, tax, residency, batch discounts, premium-speed modes, and routing
+adjustments are not included.
+
+For billing decisions, compare Codai's estimates with your provider dashboard.
+
+## For SDK hosts
+
+`EmbeddedPricingCatalog.Find(provider, model)` returns no entry for unknown prices.
+`ModelPricing.InputTokenTiers` exposes `ModelPricingTier` entries with inclusive
+`MinInputTokens` thresholds and per-token USD input/output rates.
+`Calculate` selects the highest applicable threshold.
+
+`PricingDocument.CurrentModels` exposes the reviewed provider-qualified overrides.
+Loading overrides preserves historical context and capability metadata when not replaced.
+
+## Pricing sources
+
+[OpenAI](https://developers.openai.com/api/docs/pricing) ·
+[Azure](https://azure.microsoft.com/en-us/pricing/details/azure-openai/) ·
+[Anthropic](https://platform.claude.com/docs/en/about-claude/pricing) ·
+[Gemini](https://ai.google.dev/gemini-api/docs/pricing) ·
+[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing) ·
+[Qwen](https://www.alibabacloud.com/help/en/model-studio/model-pricing) ·
+[Mistral](https://docs.mistral.ai/models) ·
+[xAI](https://docs.x.ai/developers/models) ·
+[OpenRouter](https://openrouter.ai/api/v1/models) ·
+[Ollama](https://docs.ollama.com/faq).

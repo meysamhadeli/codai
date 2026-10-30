@@ -1,0 +1,112 @@
+---
+title: "Terminal and shortcuts"
+description: "Compose requests, browse action steps, inspect diffs, and navigate Codai without losing your draft."
+---
+
+import { Callout } from "nextra/components";
+
+# Terminal and shortcuts
+
+The terminal keeps your conversation above a pinned composer. Model, mode, usage,
+and approval state remain visible while you read an answer or browse earlier steps.
+
+## Write a request
+
+Give Codai a concrete outcome and a way to verify it:
+
+```text
+In @src/Parser.cs, reject empty identifiers without changing valid input.
+Add a regression test and run the parser tests.
+```
+
+Type `@` to complete workspace paths. Mentions currently use whitespace-delimited
+paths; filenames containing spaces are not offered by completion.
+Type `/` to find commands; the `:` prefix works too.
+
+Command suggestions use a six-row window. Arrows select, Tab inserts, and Enter
+completes and runs the command. Completion stays available while a response runs.
+
+## Read the transcript
+
+- Scroll with the mouse wheel or PageUp / PageDown without moving the composer.
+- Click or drag the right-side scrollbar to jump through the conversation.
+- Click a step header to expand that action, or press Ctrl+O for the selected/latest step.
+- Expand edit steps for bounded red/green diffs and actual added/removed line counts.
+- Expand command steps for live output and the final outcome.
+
+Thinking and reasoning steps show status and timing, not private reasoning text.
+Normal assistant commentary and answers remain visible.
+
+ANSI interactive terminals use an alternate screen. Exiting restores the previous
+shell screen; saved task history is independent of terminal scrollback.
+Some terminals require holding Shift while selecting text when mouse reporting is active.
+
+## Draft while Codai works
+
+You can keep typing while a response runs. Enter queues your draft for the next turn;
+up to eight requests can wait. Escape interrupts the current request and keeps
+the session open. It does not undo changes already written.
+
+The status row names the active work and shows the interrupt shortcut. Elapsed
+time and streamed output-token counts appear after two seconds; narrow terminals
+hide secondary information first.
+
+## Keyboard reference
+
+| Key | Action |
+| --- | --- |
+| Enter | Send, run the selected command, or queue input during a response |
+| Alt+Enter / Shift+Enter | Insert a newline when supported by the terminal |
+| Up / Down | Browse history, move between input lines, or select a completion |
+| Home / End | Move to the start/end of the current line |
+| Ctrl+Home / Ctrl+End | Move to the start/end of the request |
+| Ctrl+Left / Ctrl+Right | Move by word |
+| Ctrl+W | Delete the preceding word |
+| Ctrl+U | Clear the draft |
+| Tab | Accept a completion; otherwise toggle Plan / Agent |
+| Shift+Tab | Toggle automatic approval |
+| PageUp / PageDown | Scroll the transcript |
+| Ctrl+O | Toggle the last selected step, or the latest step |
+| Escape | Interrupt a response, dismiss completion, or decline confirmation |
+| Ctrl+M / Ctrl+P / F1 | Open or close settings |
+| Ctrl+D | Exit when the draft is empty |
+| Ctrl+C | Cancel the CLI |
+
+<Callout type="info">
+  Some terminals send Ctrl+M as Enter. Use Ctrl+P or F1 to open settings there.
+  Mode and approval shortcuts are disabled while answering a confirmation.
+</Callout>
+
+## Settings
+
+Search the palette, select with arrows, and press Enter. Escape closes it without
+discarding the draft. Actions chosen during a response wait until it finishes.
+
+| Action | Behavior |
+| --- | --- |
+| Theme | Choose from ten color themes; apply only after Save |
+| Provider configuration | Save provider fields for next startup |
+| Select model | Change the current mode's session model immediately on Enter |
+| MCP / plugin configuration | Save next-startup integration availability |
+| Skills and workflows | Insert a command without sending it |
+| Conversation / checkpoints | Open saved-session or recovery controls |
+
+See [Configuration](/customization/configuration) for Save / Cancel behavior and
+[Choose a model](/providers/models) for session-only versus saved selections.
+
+## Usage display
+
+The footer shows the selected model, current mode, and approval state.
+The context bar uses the latest reported request's input and output tokens against
+the built-in model estimate; unknown models use 128,000 tokens.
+Parenthesized tokens and API cost are session totals, updated after responses.
+Narrow terminals shorten model labels and hide the bar.
+
+Account-plan connections display a plan indicator instead of estimated API dollars.
+Read [Usage and pricing](/providers/pricing) before treating totals as a spending limit.
+
+## Display troubleshooting
+
+Use `codai --version` for the installed version. The welcome screen does not show it.
+Streaming depends on provider support and the `stream` setting.
+See [Troubleshooting](/resources/troubleshooting) for missing output or terminal key issues.

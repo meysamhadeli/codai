@@ -4,6 +4,7 @@ using Codai.Application.Acp;
 using Codai.Application.Inspection;
 using Codai.Cli.Ui;
 using Codai.Configuration;
+using Codai.Core;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.IO;
@@ -160,22 +161,21 @@ public sealed class CliApplication
             };
             var discovery = new ProviderModelDiscovery(http, options.AiProviderConfig.ApiVersion);
             var manager = new CodaiConfigurationManager(new PhysicalFileSystem());
-            if (firstRun && options.Theme is not ("graphite" or "forest" or "ember"))
+            if (firstRun && options.LoadedFrom is null)
             {
-                var theme = await ui.ChooseAsync("Codai / Appearance",
-                [
-                    new("Graphite", "Cool blue selection", "graphite"),
-                    new("Forest", "Soft green selection", "forest"),
-                    new("Ember", "Warm gold selection", "ember"),
-                ], cancellationToken).ConfigureAwait(false);
-                if (theme is not ("graphite" or "forest" or "ember"))
+                var theme = await ui.ChooseAsync("Codai / Theme",
+                    TerminalThemes.All
+                        .Select(item => new SessionMenuItem(item.Title, item.Description, item.Id))
+                        .ToArray(),
+                    cancellationToken).ConfigureAwait(false);
+                if (!TerminalThemes.IsKnown(theme))
                 {
                     return (0, false);
                 }
 
                 Directory.CreateDirectory(configurationDirectory);
-                await manager.SetValueAsync(file, "theme", theme, configurationDirectory, cancellationToken).ConfigureAwait(false);
-                ui.SetTheme(theme);
+                await manager.SetValueAsync(file, "theme", theme!, configurationDirectory, cancellationToken).ConfigureAwait(false);
+                ui.SetTheme(theme!);
             }
             else
             {

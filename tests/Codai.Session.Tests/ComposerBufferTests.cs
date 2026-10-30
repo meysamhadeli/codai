@@ -341,7 +341,7 @@ public class ComposerBufferTests
         using var ui = new SpectreUserInterface(console, input, mode: mode, autoApprove: autoApprove);
         input.ComposerRedrawHandler!(string.Empty, 0, [], 0);
         var output = writer.ToString();
-        output.Should().Contain(autoApprove ? "\u001b[38;5;2mAuto-approval ON" : "\u001b[38;5;8mApproval required")
+        output.Should().Contain(autoApprove ? "\u001b[38;5;39mAuto-approval ON" : "\u001b[38;5;8mApproval required")
             .And.Contain($"\u001b[38;5;39m[{mode}]")
             .And.Contain("\u001b[38;5;8m  (Shift+Tab)")
             .And.NotContain(": change");
@@ -738,6 +738,27 @@ public class ComposerBufferTests
         palette.HandleKey(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false));
         palette.Closed.Should().BeTrue();
         palette.Command.Should().Be(":preferences");
+    }
+
+    [Fact]
+    public void Settings_palette_labels_theme_action_and_selects_it()
+    {
+        var palette = new SettingsPalette();
+        foreach (var character in "theme")
+        {
+            palette.HandleKey(new ConsoleKeyInfo(character, ConsoleKey.T, false, false, false));
+        }
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes,
+        });
+        console.Profile.Width = 80;
+        console.Profile.Height = 24;
+        palette.Draw(console);
+        writer.ToString().Should().Contain("Theme").And.NotContain("Appearance");
+        palette.HandleKey(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false));
+        palette.Command.Should().Be(":preferences theme");
     }
 
     [Fact]

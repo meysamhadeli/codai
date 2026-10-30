@@ -1,0 +1,119 @@
+---
+title: "Sessions and recovery"
+description: "Continue conversations, branch work, inspect saved tasks, and restore checkpoints with explicit consent."
+---
+
+import { Callout, Steps } from "nextra/components";
+
+# Sessions and recovery
+
+Conversation history, saved task metadata, and workspace files are different
+things. Continuing a chat does not mean restoring files, and stopping a response
+does not undo completed edits.
+
+## Continue your latest conversation
+
+From the same project:
+
+```bash
+codai code --continue
+```
+
+Use `--data-dir <path>` when you need an isolated state directory.
+Changing `--config-dir` selects configuration, not the project root or state directory.
+
+## Branch or start fresh
+
+| Command | Result |
+| --- | --- |
+| `:session fork` | Archive history and create an independent conversation branch |
+| `:session new` | Archive history and clear conversation and active token counters |
+| `:session history` | Browse up to 100 recent saved tasks |
+| `:session restore` | Choose a saved task, checkpoint, and restore scope |
+
+Fork and new require explicit consent. Starting fresh does not change workspace
+files or the session's tool policy.
+
+Continuing a task from history creates a new branch without overwriting the saved
+source. The terminal restores the latest 20 turns for display; full saved history
+remains available to the conversation.
+
+## Find a saved task
+
+```text
+:task history parser
+:task show <task-id>
+:task resume <task-id>
+```
+
+Resuming a task conversation and restoring checkpoint files are separate actions.
+Inspect the task and current working tree before choosing a recovery scope.
+
+## Checkpoints
+
+Codai takes a workspace snapshot before each task and after its changes.
+Snapshots exclude `.codai` state and are stored with the task.
+
+<Callout type="warning">
+  Current checkpoints are text snapshots, not a full shadow-Git or binary backup.
+  Restore can replace project files. Commit or separately back up important work,
+  inspect the checkpoint, and review the restore scope before confirming.
+</Callout>
+
+<Steps>
+
+### List snapshots
+
+```text
+:task checkpoints <task-id>
+```
+
+### Choose the scope
+
+```text
+:task restore <task-id> <checkpoint-id> files-only
+```
+
+| Scope | Workspace files | Captured task metadata |
+| --- | --- | --- |
+| `files-only` | Restored | Unchanged |
+| `task-only` | Unchanged | Restored |
+| `files-and-task` | Restored | Restored |
+
+Older checkpoints without captured task metadata support `files-only` only.
+
+### Confirm the restore
+
+Restore requires explicit confirmation, even with automatic tool approval enabled.
+File-only restore keeps the current conversation. Conversation restore through
+`:session restore` continues in an independent branch.
+
+</Steps>
+
+## Control snapshot overhead
+
+Checkpoints are enabled by default, with a default retention of ten.
+Use `checkpoints_enabled: false`, `CHECKPOINTS_ENABLED=false`, or `--no-checkpoints`
+to stop new capture. Existing checkpoints are not deleted.
+
+```text
+:task storage
+```
+
+Inspect retained checkpoint count and storage size without printing checkpoint contents.
+
+## Export metadata
+
+```text
+:task export <task-id> <path>
+:task import <path>
+```
+
+Export/import covers task metadata only. It does not transfer conversation history
+or restore workspace files. Do not treat it as a complete session backup.
+
+## Related guides
+
+- [Plan and Agent](/agent-mode#plan-and-act): resume work from a completed proposal.
+- [Context and delegation](/usage/context): understand transcript archives and compaction.
+- [Troubleshooting](/resources/troubleshooting): diagnose missing state or interrupted work.

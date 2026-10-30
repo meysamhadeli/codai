@@ -7,11 +7,14 @@ import { Cards, Callout, Steps } from "nextra/components";
 
 # Quickstart
 
+Install the tool, connect a model, and start with a small task. No project-wide
+indexing step is required before the composer opens.
+
 ## Prerequisites
 
 - [.NET SDK 10.0 or later](https://dotnet.microsoft.com/download).
 - A project directory to work in.
-- Access to a supported model provider, or a local model server.
+- A model provider, or a local model server such as Ollama.
 
 <Steps>
 
@@ -21,37 +24,27 @@ import { Cards, Callout, Steps } from "nextra/components";
 dotnet tool install --global Codai
 ```
 
-Already installed? Update with `dotnet tool update --global Codai`.
+Update later with `dotnet tool update --global Codai`.
 
 ### Open your project
-
-Run Codai from the directory containing your project so it can discover project guidance.
 
 ```bash
 cd your-project
 ```
 
-### Set up and start Codai
+### Start Codai
 
 ```bash
 codai
 ```
 
-On the first unconfigured run, choose **Graphite**, **Forest**, or **Ember**.
-Codai saves the theme, then opens connection setup.
-Choose **Use your own provider** for a hosted provider or local server, or
-**Continue with ChatGPT** for an eligible account. Select a model and confirm before
-saving. Chat starts immediately after saving. Escape returns to the previous step;
-exiting connection setup preserves your saved theme for the next run.
-
-Without an existing project configuration, settings are saved in
-`~/.codai/codai-config.json` and reused across projects automatically. An existing
-project configuration or explicit configuration directory keeps its own settings.
+The first unconfigured run asks for a theme, a provider, and a model, then **Save** or
+**Cancel**. After saving, chat starts immediately. Settings are written to
+`~/.codai/codai-config.json` and reused across projects.
 
 <Callout type="warning">
-  Own-provider credentials are stored as plaintext in the selected configuration file.
-  Keep that file private and out of version control. Remote credentials require HTTPS;
-  loopback servers may use HTTP.
+  Own-provider credentials are stored as plaintext in the configuration file.
+  Keep that file private and out of version control.
 </Callout>
 
 ### Return later
@@ -60,25 +53,25 @@ project configuration or explicit configuration directory keeps its own settings
 codai
 ```
 
-The saved theme, provider, and model are reused without setup prompts. Run
-`codai auth` only to change the connection, or `:preferences theme` within a session
-to change appearance. `codai code` also starts a session with the saved settings.
-
-Describe a concrete task. Review proposed file changes and commands before approving
-them. Use `:help` to list session commands and `@src/Foo.cs` to attach a file.
+The saved theme, provider, and model are reused without prompts. Use `codai auth` to
+change the connection, or `:preferences theme` in a session to change the theme.
 
 </Steps>
 
 ## Explore before editing
 
-Plan mode reads and searches without writing files or executing shell commands.
+Plan mode reads and searches without writing files or running commands.
 
 ```bash
 codai --mode plan "Explain this project and propose a small improvement"
 ```
 
-Agent is the default mode. In an interactive session, use `:mode` to change modes.
-See [Agent mode](/agent-mode) for shell permissions and approval controls.
+Agent is the default mode. Change modes in a session with `:mode plan` or `:mode agent`.
+
+## Complete a small task
+
+Start with a change whose behavior you can check, review each proposed file change and
+command before approving, and expand action steps to read diffs and test output.
 
 ## Pick up where you left off
 
@@ -91,6 +84,12 @@ codai code --continue
 <Cards num={2}>
   <Cards.Card title="Learn agent mode" href="/agent-mode" arrow>
     Understand permissions, session controls, and recovery.
+  </Cards.Card>
+  <Cards.Card title="Know your tools" href="/usage/tools" arrow>
+    Understand file access, edits, commands, and verification.
+  </Cards.Card>
+  <Cards.Card title="Configure your model" href="/providers" arrow>
+    Connect a provider and distinguish saved from session-only settings.
   </Cards.Card>
   <Cards.Card title="Add skills" href="/skills" arrow>
     Give Codai repeatable project-specific workflows.

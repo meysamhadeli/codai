@@ -83,8 +83,8 @@ public sealed class AccountConnectionWorkflow(
                 }
                 var save = await ui.ChooseAsync("Codai / Save account connection",
                 [
-                    new("Save " + model.DisplayName, "Use account plan; credentials stay in protected user storage", "save"),
-                    new("Discard setup", "Keep existing connection unchanged", "cancel"),
+                    new("Save", model.DisplayName + ": Use account plan; credentials stay in protected user storage", "save"),
+                    new("Cancel", "Keep existing connection unchanged", "cancel"),
                 ], cancellationToken).ConfigureAwait(false);
                 if (save is null)
                 {

@@ -1,11 +1,31 @@
 ---
 title: "Agent Mode Roadmap"
-description: "Two-phase roadmap for completing Codai's highest-value agent features."
+description: "Delivery priorities, implemented foundations, and remaining work for Codai's terminal-first agent."
 ---
+
+import { Callout } from "nextra/components";
 
 # Agent mode roadmap
 
-This roadmap prioritizes reliable autonomous coding. Codai remains terminal-first and host-neutral.
+This roadmap prioritizes reliable coding workflows. Codai remains terminal-first
+and host-neutral. Use the guides for current behavior; this page tracks the broader
+delivery scope and acceptance criteria.
+
+<Callout type="info">
+  Some slices below have shipped while broader work remains planned.
+  A roadmap item is not a promise that every listed criterion is implemented.
+</Callout>
+
+## Current foundations
+
+| Available today | Guide | Remaining boundary |
+| --- | --- | --- |
+| Plan / Agent, explicit Act, interactive deep planning | [Modes](/agent-mode) | Further planning and validation hardening |
+| Per-mode model selections | [Models](/providers/models) | Provider transport compatibility still applies |
+| Saved tasks and text checkpoints | [Recovery](/usage/sessions) | Not a complete shadow-Git or binary snapshot store |
+| Read-only background specialists and teams | [Delegation](/usage/context) | No write-capable teammate mode |
+| MCP and plugin configuration management | [MCP](/mcp), [Plugins](/plugins) | No package marketplace or live configuration reload |
+| Optional JSON-lines editor adapter | [ACP](/acp-compatibility) | Not full ACP |
 
 ## Phase 1: Core Reliability
 
@@ -56,11 +76,12 @@ Acceptance criteria:
 
 ### 3. Deep planning
 
-Add a structured planning workflow for complex tasks.
+The interactive `:deep-plan` entry point is available. The broader planning
+workflow continues to target stronger structure, persistence, and validation.
 
 Scope:
 
-- Add a `:deep-plan` command and matching CLI option.
+- Keep the `:deep-plan` command; a dedicated matching CLI option remains future work.
 - Keep planning read-only: no write tools, shell tools, hooks, or prose diff application.
 - Produce a bounded plan containing goal, assumptions, affected files, steps, risks, and validation commands.
 - Persist the plan as task state and optionally as `implementation_plan.md` after explicit approval.
@@ -74,7 +95,8 @@ Acceptance criteria:
 
 ### 4. Separate models for Plan and Agent modes
 
-Add optional provider/model configuration per mode.
+Mode-specific provider/model configuration is available. Keep compatibility
+and credential handling explicit as this workflow evolves.
 
 Scope:
 

@@ -38,6 +38,9 @@ export const pageRoute = (page) => page.replace(/(^|\/)index$/, "").replace(/\/$
 export const htmlAssetUrls = (html) =>
   [...html.matchAll(/\s(?:href|src)="([^"]+)"/g)].map((match) => match[1]);
 
+export const hasInvalidParagraphNesting = (html) =>
+  /<p\b[^>]*>\s*<(?:p|div|h[1-6]|pre|table|ul|ol)\b/i.test(html);
+
 export async function checkDocumentation(root, readme) {
   const content = path.join(root, "content");
   const errors = [];

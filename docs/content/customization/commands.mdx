@@ -1,0 +1,70 @@
+---
+title: "Custom commands"
+description: "Turn repeatable project prompts into named slash or colon commands with arguments."
+---
+
+import { Callout } from "nextra/components";
+
+# Custom commands
+
+A custom command expands a named Markdown prompt inside the current session.
+Use it for short, repeatable requests; use a [skill](/skills) when a workflow needs
+its own instructions and resources.
+
+## Create a command
+
+Add a Markdown file under `.codai/commands`. The filename becomes the command name:
+
+```markdown filename=".codai/commands/review.md"
+Review $ARGUMENTS for correctness and missing tests.
+Read the relevant code before proposing changes.
+Report findings with file paths and verification steps.
+```
+
+Invoke it with either prefix:
+
+```text
+/review src/Parser.cs
+:review src/Parser.cs
+```
+
+`$ARGUMENTS` receives the text after the command name. The prompt runs under the
+current mode and approval policy; a command is not shell execution.
+
+## Share commands across projects
+
+Global commands live in `commands` under the selected global configuration directory.
+Project commands with the same name take precedence over global commands.
+Project commands also take precedence when a command and skill share a name.
+
+Command files are reloaded rather than permanently cached, so a new or edited
+command can be picked up on the next input line.
+
+## Discover commands
+
+Type `/` in the composer, or inspect the catalog:
+
+```bash
+codai config commands
+```
+
+Settings, **Skills and workflows**, inserts a selected command without sending it.
+Review the draft before pressing Enter.
+
+## Keep commands focused
+
+- Describe one outcome and how to verify it.
+- Include `$ARGUMENTS` where the caller's scope belongs.
+- Avoid secrets, hard-coded credentials, or destructive defaults.
+- Keep large reference material in files that can be read when needed.
+
+<Callout type="info">
+  A command can ask Codai to run tests or make edits, but permissions still decide
+  whether those actions are allowed. Plan remains read-only.
+</Callout>
+
+## Built-in commands
+
+Custom workflows sit alongside built-in commands such as `:mode`, `:model`,
+`:preferences`, and `:session`. Use `:help` for the installed command catalog,
+or see the [CLI reference](/resources/cli).

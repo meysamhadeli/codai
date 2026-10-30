@@ -16,8 +16,8 @@ public static class CodaiDefaults
     /// </remarks>
     public static string Version { get; } = ReadAssemblyVersion();
 
-    /// <summary>Colour theme used when rendering markdown.</summary>
-    public const string Theme = "dracula";
+    /// <summary>Terminal colour theme applied to selections and accents.</summary>
+    public const string Theme = "graphite";
 
     /// <summary>Provider used when none is configured.</summary>
     public const string Provider = ProviderCatalog.OpenAi;

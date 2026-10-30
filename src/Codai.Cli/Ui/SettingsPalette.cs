@@ -1,3 +1,4 @@
+using Codai.Core;
 using Codai.Core.Agents;
 using Spectre.Console;
 
@@ -10,7 +11,7 @@ public sealed class SettingsPalette : IOverlay
         ("Session settings", "Edit local configuration with typed values", ":preferences"),
         ("Select model", "Set the model used for future requests", ":model"),
         ("Provider configuration", "Edit provider, endpoint, and masked credentials", ":preferences provider"),
-        ("Appearance", "Choose a live palette color theme", ":preferences theme"),
+        ("Theme", "Choose a color theme to apply after saving", ":preferences theme"),
         ("MCP connections", "Enable, disable, or remove configured servers", ":preferences mcp"),
         ("Plugin configuration", "Enable, disable, or remove plugin entries", ":preferences plugins"),
         ("Skills and workflows", "Choose a command to insert into the composer", ":preferences skills"),
@@ -173,7 +174,7 @@ public sealed class SettingsPalette : IOverlay
                 {
                     break;
                 }
-                var highlight = theme switch { "forest" => "black on green", "ember" => "black on yellow", _ => "black on skyblue1" };
+                var highlight = TerminalThemes.Find(theme).Highlight;
                 var style = index == Selected ? highlight : "white on grey15";
                 lines.AddRange(labels[index].Select(label => (label, style)));
                 if (!_question && matches[index].Detail.Length > 0)

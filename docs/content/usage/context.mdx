@@ -1,0 +1,104 @@
+---
+title: "Context and delegation"
+description: "Understand on-demand project context, compaction, read-only sub-agents, and background investigations."
+---
+
+import { Callout } from "nextra/components";
+
+# Context and delegation
+
+Codai discovers code as needed rather than indexing your entire repository before
+showing the prompt. Keep requests focused and attach important files with `@path`
+when you already know where the work belongs.
+
+## What reaches the model
+
+| Source | Loading behavior |
+| --- | --- |
+| Project instructions | Available before the first request that needs guidance |
+| Conditional rules | Selected per request and before relevant file tools |
+| Skill metadata | Descriptions advertised first; full instructions on invocation |
+| Project memory | Bounded Markdown documents from `.codai/memory` |
+| Mentioned files | Explicit `@path` attachments |
+| Tool results | Files, searches, and command output discovered during the task |
+
+Interactive guidance is loaded lazily and reused. Opening help, changing modes,
+or leaving a session does not force a project scan.
+See [Project instructions](/customization/instructions) for file locations and precedence.
+
+## Automatic compaction
+
+Long conversations compact in tiers, starting with the cheapest:
+
+1. **Trim tool output.** Keep useful beginnings and endings without a model call.
+2. **Summarize older turns.** A background model-written summary carries decisions
+   forward; a summary that is not shorter than its source is rejected.
+3. **Shorten deterministically.** If summarization is unavailable, shorten context
+   without a model rather than leaving an oversized request.
+
+Replaced turns are archived under `.codai/transcripts` before being dropped.
+The summary names the archive so later work can recover details. Recently active
+files are restored into the summary turn to preserve working context.
+
+```text
+:compact Preserve the parser decisions and failing test names.
+:new-task Hand off the remaining validation work.
+```
+
+`:compact` condenses the current conversation. `:new-task` produces a compact
+handoff for a fresh task. Use `--no-auto-compact` or `--compaction off` to disable
+automatic compaction; `--compaction basic` selects the basic strategy.
+
+## Delegate a focused investigation
+
+The `task` tool gives a sub-agent its own context and budget. It returns a concise
+report instead of filling the main conversation with every file it read.
+
+Sub-agents are read-only, cannot run nested delegation, and cannot gain write access
+by receiving instructions in a prompt. Their model usage contributes to session totals.
+Disable delegation with `--no-sub-agents`.
+
+## Background investigations
+
+```text
+:task start Find parser tests | Identify coverage for invalid configuration values.
+:task list
+:task cancel <id>
+```
+
+Use a bounded question with a clear stopping point. Background investigation does
+not grant consent for file edits or shell execution.
+
+## Coordinate specialists
+
+Teams support up to four read-only specialists, a bounded mailbox, and a persisted
+task board:
+
+```text
+:team start Parser review | Check parsing || Tests | Find missing parser cases.
+:team list
+:team add <team-id> Review empty values
+:team message <team-id> coordinator | Focus on existing behavior.
+:team complete <team-id> <item-id>
+:team cancel <team-id>
+```
+
+The optional plan in `:team start` is coordinator context, not an extra model-driven
+planning step. Team members remain read-only; implementation stays with the coordinator.
+Persistence across restarts depends on the host's durable state store.
+
+## For SDK hosts
+
+`IProjectScanner.ScanAsync` and `ProjectContextLoader.LoadAsync` remain available
+when a host explicitly needs a signature-map snapshot. Normal session execution
+does not call them automatically. Direct `IPromptBuilder` consumers can provide
+their own `ProjectContext`.
+
+`ModeModelState` accepts Plan and Agent selections in that order; the former Ask
+selection was removed. Hosts must not rely on a mode/model transition to grant
+additional capabilities.
+
+<Callout type="info">
+  Context is guidance, not authority. Rules, skills, memory, web pages, and
+  delegated reports cannot override enforced tool policy.
+</Callout>

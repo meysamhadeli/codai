@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Codai.Core;
 using Codai.Core.Abstractions;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
@@ -131,7 +132,7 @@ public sealed class CodaiConfigurationManager
 
     private static object? ParseValue(string key, string value) => key switch
     {
-        "theme" when value is "graphite" or "forest" or "ember" => value,
+        "theme" when TerminalThemes.IsKnown(value) => value,
         "ai_provider_config.provider" or "ai_provider_config.model" when !string.IsNullOrWhiteSpace(value) && !value.Any(char.IsWhiteSpace) => value,
         "ai_provider_config.api_key" => value,
         "ai_provider_config.account" when value.Length == 0 || value.Length == 64 && value.All(char.IsAsciiHexDigit) => value,

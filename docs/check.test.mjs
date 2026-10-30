@@ -3,8 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import { checkDocumentation, htmlAssetUrls, pageRoute } from "./check.mjs";
+import { checkDocumentation, hasInvalidParagraphNesting, htmlAssetUrls, pageRoute } from "./check.mjs";
 import { basePath, brandColor, brandTheme } from "./site.config.mjs";
 
 test("validates documentation deployment inputs on pull requests and pushes", () => {
@@ -39,6 +40,51 @@ test("uses terminal blue and GitHub Pages base path", () => {
   for (const asset of ["logo-light.svg", "logo-dark.svg", "favicon.svg"]) {
     const svg = fs.readFileSync(new URL(`./public/assets/${asset}`, import.meta.url), "utf8");
     assert.ok(svg.includes(`fill="${brandColor}"`), `${asset} must use the terminal accent`);
+  }
+});
+
+test("publishes focused guides with valid navigation and README links", async () => {
+  const root = fileURLToPath(new URL(".", import.meta.url));
+  const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const result = await checkDocumentation(root, readme);
+  assert.deepEqual(result.errors, []);
+  const routes = new Set(result.pages.map(pageRoute));
+  for (const route of [
+    "agent-mode", "usage/terminal", "usage/tools", "usage/permissions",
+    "usage/sessions", "usage/context", "providers", "providers/models",
+    "providers/pricing", "customization/configuration", "customization/instructions",
+    "customization/commands", "resources/cli", "resources/troubleshooting",
+  ]) {
+    assert.ok(routes.has(route), `${route} must be reachable through navigation`);
+  }
+});
+
+test("preserves published Agent mode section anchors", () => {
+  const source = fs.readFileSync(new URL("./content/agent-mode.mdx", import.meta.url), "utf8");
+  const anchors = new Set([...source.matchAll(/^#{2,3} (.+)$/gm)]
+    .map(([, heading]) => heading.toLowerCase().replaceAll(" ", "-")));
+  for (const anchor of [
+    "modes", "session-startup-and-context", "terminal-input", "connection-setup",
+    "provider-models", "api-cost-estimates", "composer", "approvals",
+    "configuration-controls", "conversation-controls", "plan-and-act",
+    "checkpoints", "context-and-delegation",
+  ]) {
+    assert.ok(anchors.has(anchor), `published #${anchor} must remain available`);
+  }
+});
+
+test("documents every named built-in tool", () => {
+  const directory = new URL("../src/Codai.Adapters/Tools/Tools/", import.meta.url);
+  const reference = fs.readFileSync(new URL("./content/usage/tools.mdx", import.meta.url), "utf8");
+  const tools = ["task"];
+  for (const name of fs.readdirSync(directory).filter(name => name.endsWith(".cs"))) {
+    const source = fs.readFileSync(new URL(name, directory), "utf8");
+    const match = /public override string Name => "([^"]+)";/.exec(source);
+    if (match) tools.push(match[1]);
+  }
+  assert.ok(tools.length > 1, "the tool source directory must not be empty");
+  for (const name of tools) {
+    assert.ok(reference.includes(`\`${name}\``), `${name} must appear in the tool reference`);
   }
 });
 
@@ -101,4 +147,12 @@ test("checks real exported asset attributes without mistaking Nextra data attrib
     '<button data-href="/getting-started">Start</button><a href="/codai/skills/">Skills</a>' +
     '<img src="/codai/assets/logo-light.svg" data-src="/not-an-asset" />',
   ), ["/codai/skills/", "/codai/assets/logo-light.svg"]);
+});
+
+test("detects block elements nested directly inside MDX paragraph wrappers", () => {
+  for (const tag of ["p", "div", "h2", "pre", "table", "ul", "ol"]) {
+    assert.equal(hasInvalidParagraphNesting(`<p class="lead">\n<${tag}>Content</${tag}></p>`), true);
+  }
+  assert.equal(hasInvalidParagraphNesting('<div class="lead"><p>Valid introduction.</p></div>'), false);
+  assert.equal(hasInvalidParagraphNesting('<p>Text with <code>inline code</code> and <a href="/">a link</a>.</p>'), false);
 });

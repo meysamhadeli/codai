@@ -3,25 +3,46 @@ title: Plugins
 description: Extend Codai with tools, commands, and lifecycle policy.
 ---
 
+import { Callout, Steps } from "nextra/components";
+
 # Plugins
 
 Codai plugins are .NET assemblies that register additional services and tools. Existing agent mode, approval, and budget policies still apply to tools contributed by a plugin.
+
+<Callout type="warning">
+  Install only trusted assemblies. Plugins execute in the host process with your
+  user's privileges; tool approval is not an assembly security sandbox.
+</Callout>
+
+## Choose plugins or MCP
+
+| Need | Use |
+| --- | --- |
+| Register .NET services, tools, or lifecycle hooks inside Codai | A plugin |
+| Connect a separate local process or remote tool service | [MCP](/mcp) |
+| Add a reusable prompt or instructions without code | [Commands](/customization/commands) or [skills](/skills) |
 
 ## Plugin contract
 
 Implement `IToolPlugin` and register the assembly through Codai configuration or the project plugin directory:
 
 ```csharp
+using Codai.Core.Tools;
+using Microsoft.Extensions.DependencyInjection;
+
 public sealed class ProjectPlugin : IToolPlugin
 {
     public string Name => "project-tools";
 
     public void Register(IServiceCollection services)
     {
-        services.AddSingleton<ProjectLookupTool>();
+        services.AddSingleton<ITool, ProjectLookupTool>();
     }
 }
 ```
+
+`ProjectLookupTool` represents your `ITool` implementation. Register tool instances
+as `ITool` so the ordinary registry can discover them.
 
 Plugins may also implement:
 
@@ -34,4 +55,46 @@ Plugin hooks run through the normal hook pipeline. A blocked decision stops the 
 
 Project plugins can be placed in `.codai/plugins`. Additional assemblies can be configured with the `plugins` setting. Plugin paths may be enabled, disabled, or removed through the configuration command.
 
-Only trusted assemblies should be installed. Assembly plugins execute in the host process and are not a security sandbox.
+```yaml
+plugins:
+  - tools/ProjectPlugin.dll
+```
+
+## Inspect and manage
+
+```bash
+codai config plugins
+codai config plugin disable tools/ProjectPlugin.dll
+codai config plugin enable tools/ProjectPlugin.dll
+codai config plugin remove tools/ProjectPlugin.dll
+```
+
+Inspection reports configured/discovered paths without loading assemblies.
+Mutations update an existing configuration document; removing an entry never
+deletes a binary. Codai's configuration manager is not a package installer.
+
+The settings palette also offers `:preferences plugins` with **Save / Cancel**
+confirmation. Restart after changing plugin availability; active DI composition
+is not reloaded by configuration inspection.
+
+## Verify a plugin
+
+<Steps>
+
+### Inspect its origin
+
+Check `codai config plugins` and confirm that the path is the assembly you trust.
+
+### Start a new session
+
+Use the selected configuration so the plugin participates in host composition.
+
+### Exercise one capability
+
+Try a bounded request using the registered tool or command. Review any write or
+command approval as you would for a built-in tool.
+
+</Steps>
+
+See [Tools](/usage/tools) for capability categories and
+[Permissions](/usage/permissions) for controls that also apply to plugin tools.

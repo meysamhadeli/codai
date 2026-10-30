@@ -1,0 +1,102 @@
+---
+title: "Choose a model"
+description: "Select a model through live discovery, change the current session, or save a default for future runs."
+---
+
+import { Callout } from "nextra/components";
+
+# Choose a model
+
+Choose a provider first, then a model offered by its endpoint. The same model
+family can have different identifiers, availability, pricing, and transport
+requirements across providers.
+
+## Saved or session-only?
+
+| Action | When it applies | Saved for later? |
+| --- | --- | --- |
+| `codai auth` model selection, then Save | Next session; first-run setup opens chat | Yes |
+| `:preferences provider`, Default model, then Save | Next startup | Yes |
+| Settings, Select model, then Enter | Future requests in the current mode | No |
+| `:model agent <provider> <model>` | Future Agent requests in this session | No |
+| `--model <id>` | This invocation | No |
+
+<Callout type="info">
+  The session model selector applies immediately on Enter; it does not have a
+  Save / Cancel confirmation. Escape closes it before selection. Provider setup
+  and saved-default edits require Save.
+</Callout>
+
+Inspect or change the mode-specific selection:
+
+```text
+:model
+:model plan ollama qwen3-coder
+:model agent openai gpt-5.4-mini
+```
+
+The compact form `:model agent openai/gpt-5.4-mini` also works.
+Changing the selection does not authorize a new credential or grant tool access.
+
+## Live discovery
+
+Setup asks the selected endpoint for its model catalog where supported.
+It prefers that response to bundled suggestions, including for models released
+after Codai was installed.
+
+| Label | Meaning |
+| --- | --- |
+| Discovered model | Reported by the endpoint; not a guarantee of tool support |
+| Saved model | Current configured selection retained in the picker |
+| Suggested model | Bundled fallback; account access or installation is unverified |
+| Custom model ID | A manually entered identifier |
+
+Successful discovery is not padded with bundled models. Failed or empty discovery
+uses suggestions where appropriate and still allows manual entry.
+
+OpenAI-compatible APIs and Anthropic follow `has_more` / `last_id` pagination;
+Gemini follows `nextPageToken`. Ollama lists installed models.
+Discovery rejects repeated/missing cursors and catalogs beyond 100 pages or
+10,000 entries instead of silently showing an incomplete list.
+
+Duplicate and invalid IDs are removed, along with explicitly retired or non-chat
+entries where metadata supports filtering. Gemini entries must support
+`generateContent`; OpenRouter batch-only and non-text-output entries are excluded.
+Model listing is not a chat or coding-tool test.
+
+## Compatibility boundaries
+
+| Connection | Important limit |
+| --- | --- |
+| OpenAI API-key connection | Uses Chat Completions; direct GPT-6 tool calling requires Responses API |
+| Anthropic native adapter | Multi-turn tool use requiring thinking-signature replay is not supported |
+| Azure OpenAI | Enter a deployment ID, not a public model name; deployments are never guessed |
+| Ollama | Select a model installed on the selected server |
+| ChatGPT account | Uses account-specific models, separate from API-key fallback suggestions |
+
+Use the [supported defaults](/providers#supported-providers) when unsure.
+An explicitly saved model is not replaced when a bundled default changes.
+
+## Bundled fallback families
+
+Fallbacks are convenience suggestions, not an exhaustive catalog. Account, region,
+endpoint, and model lifecycle can change availability.
+
+| Provider | Additional suggestions |
+| --- | --- |
+| OpenAI | GPT-6 variants, GPT-5.5 / 5.4 / 5.2 / 5.1 / 5, GPT-4.1 variants |
+| Anthropic | Sonnet / Opus / Haiku 5.5, Fable 5.1, 5-series and selected 4-series models |
+| Gemini | 4 Argon, 3.6 Flash, 3.5 / 3.1 Flash Lite, Pro / Flash previews, 2.5 legacy models |
+| DeepSeek | `deepseek-v4-pro` |
+| OpenRouter | Provider-qualified OpenAI, Claude, Gemini, DeepSeek, Qwen, Mistral, and Grok families |
+| Qwen | Qwen3.8 Max / Flash / Omni Flash, Qwen3 Coder, Plus / Max / Flash aliases |
+| Mistral | Large 4, Small 4, Codestral and Large / Small aliases, Ministral variants |
+| Grok | 4.6 / 4.5 / 4.3, 4.20 variants, Grok Build 0.1 |
+
+Azure has no guessed deployment suggestions. SDK hosts can inspect
+`ProviderDescriptor.DefaultModel` and `SuggestedModels` for exact bundled IDs.
+
+## Next steps
+
+- [Usage and pricing](/providers/pricing) explains estimates and unknown model prices.
+- [Troubleshooting](/resources/troubleshooting#model-selection-fails) covers discovery and transport failures.

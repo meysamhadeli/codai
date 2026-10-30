@@ -1,0 +1,127 @@
+---
+title: "Tools"
+description: "A practical reference to the tools Codai uses to inspect, edit, verify, and investigate your project."
+---
+
+import { Callout } from "nextra/components";
+
+# Tools
+
+Tools connect a model response to real work: reading a file, applying a patch,
+or running a test. You describe the outcome; Codai selects from the tools allowed
+by the current mode, configuration, and approval policy.
+
+```text
+Find the parser for configuration files, add a regression test for an empty
+model name, and run the relevant tests. Keep unrelated files unchanged.
+```
+
+## Inspect available tools
+
+From your shell:
+
+```bash
+codai config tools
+```
+
+Inside a session:
+
+```text
+:config tools
+```
+
+Configuration inspection does not start MCP processes or load plugin assemblies.
+External tools are discovered separately when needed, so offline inspection is not
+a live inventory of every remote capability.
+
+## Files and search
+
+These tools are read-only and available in Plan and Agent unless disabled.
+
+| Tool | Purpose | When it helps |
+| --- | --- | --- |
+| `list_files` | List project files | Understand a directory before opening files |
+| `glob` | Find paths by glob pattern | Locate test files or a named implementation |
+| `grep` | Search text in project files | Trace a setting, error message, or symbol |
+| `read_file` | Read numbered text, optionally by range | Inspect code and cite exact lines |
+| `git_status` | Inspect working-tree state | Identify existing changes |
+| `git_diff` | Inspect Git differences | Review edits without changing Git state |
+| `git_log` | Read recent history | Understand prior changes |
+
+`read_file` accepts one path or up to 20 paths sharing an output budget. Its default
+is 2,000 lines per file, with a 5,000-line ceiling and a 5 MB file-size limit.
+Large results should be narrowed with paths and line ranges, not repeatedly read in full.
+
+## File changes
+
+| Tool | Purpose | Requirement |
+| --- | --- | --- |
+| `write_file` | Create or replace a text file | Agent and write approval |
+| `edit_file` | Apply a targeted text edit | Agent and write approval |
+| `apply_patch` | Add, update, or delete files through a patch | Agent and write approval |
+
+Existing files must be readable within the 8 MB editing limit before replacement,
+patching, or patch deletion. Failed reads do not authorize an overwrite.
+
+Edit steps show actual added and removed line counts. Expand a step to review
+per-file counts and a bounded diff. If a multi-file patch fails partway through,
+the failed result reports changes that already reached disk; it is not an atomic rollback.
+
+## Commands and verification
+
+| Tool | Purpose | Requirement |
+| --- | --- | --- |
+| `run_command` | Execute a command in the project | Agent, shell access, and approval |
+| `dotnet_build` | Run `dotnet build` and return compiler diagnostics | Agent, shell access, and approval |
+| `dotnet_test` | Run .NET tests and return results | Agent, shell access, and approval |
+
+Builds and tests can write artifacts, so they are not read-only operations.
+Disable all three with `--no-shell`.
+
+<Callout type="warning">
+  Commands run with your user's privileges. Review the exact command and working
+  context before approval. Tool policy is not an operating-system sandbox.
+</Callout>
+
+## Research and interaction
+
+| Tool | Purpose | Boundary |
+| --- | --- | --- |
+| `fetch_web` | Retrieve readable content from a public HTTP(S) page | No private-network URLs, binaries, or embedded credentials |
+| `ask_question` | Ask you for clarification | Requires interactive input; headless runs cannot invent an answer |
+| `task` | Delegate a bounded investigation | Read-only context; no nested delegation |
+| `submit_task` | Return a structured task outcome | Reports an outcome; does not itself edit files |
+
+`fetch_web` is a page reader, not a browser or search engine. It does not execute
+scripts or load page subresources; retrieved text is untrusted data.
+Delegation spends model tokens even though it cannot write files.
+
+## Skills
+
+| Tool | Purpose |
+| --- | --- |
+| `skills` | Discover available skill metadata |
+| `read_skill` | Load a selected skill's instructions |
+| `read_skill_resource` | Read a resource from a skill |
+
+Skill instructions guide a workflow; they do not enable tools blocked by mode or policy.
+See [Skills](/skills) to create and invoke a reusable workflow.
+
+## Limit tool access
+
+Hide and block a named tool for a single run:
+
+```bash
+codai --disable-tool fetch_web --disable-tool run_command
+```
+
+Use `disabled_tools` in [configuration](/customization/configuration) for persistent
+exclusions. `--no-sub-agents` disables delegation; `--no-shell` disables command tools.
+Names must match Codai-facing tool names, including prefixes for [MCP tools](/mcp).
+
+## Extend the tool set
+
+- [MCP servers](/mcp) add capabilities from local processes or remote endpoints.
+- [.NET plugins](/plugins) register tools in the host process.
+- [Permissions](/usage/permissions) still govern external tools; installing a tool
+  does not grant consent to execute it.

@@ -78,7 +78,11 @@ public class CliApplicationTests
             var ui = new FakeUserInterface();
             ui.EnqueueChoice("account");
             ui.EnqueueChoice("codai-plan-model");
-            ui.EnqueueChoice(save ? "save" : "cancel");
+            ui.EnqueueSelection(items =>
+            {
+                items.Select(item => item.Label).Should().Equal("Save", "Cancel");
+                return save ? "save" : "cancel";
+            });
             var session = new AccountSession
             {
                 ClientId = "codai-client",
@@ -323,7 +327,11 @@ public class CliApplicationTests
             {
                 ui.EnqueueValue("codai-custom-deployment");
             }
-            ui.EnqueueChoice("save");
+            ui.EnqueueSelection(items =>
+            {
+                items.Select(item => item.Label).Should().Equal("Save", "Change model", "Cancel");
+                return "save";
+            });
             var path = Path.Combine(root.FullName, "codai-config.json");
             var setup = new ConnectionSetupWorkflow(ui, new CodaiConfigurationManager(new PhysicalFileSystem()),
                 path, root.FullName, new AiProviderOptions(), (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
@@ -1066,7 +1074,8 @@ public class CliApplicationTests
             var ui = new FakeUserInterface();
             ui.EnqueueSelection(items =>
             {
-                items.Select(item => item.Value).Should().Equal("graphite", "forest", "ember");
+                items.Select(item => item.Value).Should().Equal(
+                    "graphite", "ocean", "azure", "violet", "magenta", "forest", "mint", "ember", "sunset", "coral");
                 return "forest";
             });
             ui.EnqueueChoice("provider");
@@ -1087,7 +1096,7 @@ public class CliApplicationTests
 
             (await app.RunAsync([])).Should().Be(0);
 
-            ui.Dialogs.First().Should().Be("Codai / Appearance");
+            ui.Dialogs.First().Should().Be("Codai / Theme");
             ui.Themes.Should().Contain("forest");
             ui.Successes.Should().Contain("Connection settings saved.");
             session.InteractiveCalls.Should().Be(1);
@@ -1132,7 +1141,7 @@ public class CliApplicationTests
 
             (await first.RunAsync([])).Should().Be(0);
             firstSession.InteractiveCalls.Should().Be(0);
-            firstUi.Dialogs.Should().Equal("Codai / Appearance", "Codai / Connect a model");
+            firstUi.Dialogs.Should().Equal("Codai / Theme", "Codai / Connect a model");
             var path = Path.Combine(root.FullName, ".codai", "codai-config.json");
             using (var document = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
             {
@@ -1154,7 +1163,7 @@ public class CliApplicationTests
                 modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
 
             (await resumed.RunAsync([])).Should().Be(0);
-            resumedUi.Dialogs.Should().NotContain("Codai / Appearance");
+            resumedUi.Dialogs.Should().NotContain("Codai / Theme");
             resumedUi.Themes.Should().Contain("ember");
             resumedSession.InteractiveCalls.Should().Be(1);
         }
@@ -1179,7 +1188,7 @@ public class CliApplicationTests
                 environment: new TestEnvironment(new Dictionary<string, string?>())).RunAsync([]);
 
             exitCode.Should().Be(0);
-            ui.Dialogs.Should().Equal("Codai / Appearance");
+            ui.Dialogs.Should().Equal("Codai / Theme");
             session.InteractiveCalls.Should().Be(0);
             session.Requests.Should().BeEmpty();
         }

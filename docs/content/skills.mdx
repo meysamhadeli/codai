@@ -1,33 +1,97 @@
 ---
-title: Skills
-description: Configure and invoke Codai skills.
+title: "Skills"
+description: "Package reusable workflows as progressively loaded instructions with optional reference resources."
 ---
+
+import { Callout, Steps } from "nextra/components";
 
 # Skills
 
-Codai loads skills from project and global skill directories. Skill instructions are loaded progressively: descriptions are advertised first, and full instructions are loaded when a skill is invoked.
+A skill gives Codai a repeatable workflow without adding its full instructions to
+every request. Descriptions are advertised first; instructions and resources load
+when the skill is invoked.
 
-## Disable skills
+Use skills for multi-step reviews, release checks, migrations, or other work that
+benefits from a consistent method. For a short prompt template, use a
+[custom command](/customization/commands).
 
-Create `.codai/skills.json` in a project:
+## Create a project skill
 
-```json
+<Steps>
+
+### Add a skill folder
+
+Create `.codai/skills/review/SKILL.md`. The folder name identifies the skill:
+
+```markdown filename=".codai/skills/review/SKILL.md"
+---
+description: Review a focused change for correctness and missing tests.
+---
+
+# Review a change
+
+1. Read the relevant implementation and tests.
+2. Compare behavior with the requested outcome.
+3. Report concrete bugs with file paths and verification steps.
+4. Do not edit files unless implementation is explicitly requested.
+```
+
+### Invoke the workflow
+
+```text
+/review src/Parser.cs
+```
+
+The `:review src/Parser.cs` form also works. A project command with the same name
+takes precedence over a skill.
+
+### Keep references separate
+
+Put supporting files inside the skill folder. Codai can load them with
+`read_skill_resource` when needed rather than advertising every resource up front.
+
+</Steps>
+
+## Project and global skills
+
+| Scope | Location |
+| --- | --- |
+| Project | `.codai/skills/<name>/SKILL.md` |
+| Global | `skills/<name>/SKILL.md` under the selected global configuration directory |
+
+Project skills take precedence over global skills with the same name.
+Use `codai config paths` to check the selected configuration scope.
+
+## Discover and inspect
+
+```bash
+codai config skills
+```
+
+In a session, type `/` or open **Skills and workflows** in settings.
+The settings browser inserts a command into the composer; it does not send it.
+The `skills` and `read_skill` tools let the model discover and load skill content.
+
+## Disable a skill
+
+```json filename=".codai/skills.json"
 {
   "disabled": ["review", "deploy"]
 }
 ```
 
-Disabled names are excluded from prompt advertisement, direct invocation, and skill tools. Names are case-insensitive. Global configuration can use `skills.json` in the configured Codai global directory. Project and global disabled lists are combined.
-
+Names are case-insensitive. Global configuration can provide `skills.json` in the
+selected global directory; project and global disabled lists are combined.
+Disabled skills are excluded from advertisement, direct invocation, and skill tools.
 Invalid optional settings do not prevent valid skills from loading.
 
-## Invoke a skill
+<Callout type="info">
+  Skills are instructions, not new capabilities. They cannot bypass Plan mode,
+  enable a disabled tool, or grant write/shell approval.
+</Callout>
 
-Use either form in an interactive session:
+## Related guides
 
-```text
-/review src/api
-:review src/api
-```
-
-Project commands take precedence when a command and skill have the same name.
+- [Project instructions](/customization/instructions): conventions that apply without invoking a skill.
+- [Tools](/usage/tools#skills): how the model loads skills and resources.
+- [Permissions](/usage/permissions): what skill-driven actions may actually execute.

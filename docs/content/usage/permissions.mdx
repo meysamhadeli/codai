@@ -1,0 +1,93 @@
+---
+title: "Permissions"
+description: "Control file writes, shell commands, automatic approval, and unattended runs."
+---
+
+import { Callout, Cards } from "nextra/components";
+
+# Permissions
+
+Codai separates **what is available** from **what you approve**.
+Plan removes write and shell capabilities. Agent can expose them, but execution
+still follows tool access policy and approval.
+
+## Review an action
+
+Before a tool changes files or runs a command, the terminal shows the action and
+its command, path, or patch. Long previews retain the first ten lines and report
+the number of hidden lines.
+
+| Choice | Effect |
+| --- | --- |
+| Run once | Approve this tool call only |
+| Remember for this tool | Approve this tool for the rest of the session |
+| Refuse and give guidance | Deny the call and explain what should happen instead |
+
+Use arrows or Tab, then Enter. `Y` / `1`, `A` / `2`, and `N` / `3` choose directly.
+Escape refuses. The decision remains in the transcript.
+
+Remembered approval is per tool and per process. Remembering `write_file` does not
+approve `run_command`, and restarting forgets the choice.
+
+## Remove capabilities
+
+```bash
+codai --mode plan
+codai --no-shell
+codai --no-sub-agents
+codai --disable-tool fetch_web
+codai --no-hooks
+```
+
+| Control | What it prevents |
+| --- | --- |
+| `--mode plan` | File writes, shell tools, and prose-driven file changes |
+| `--no-shell` | Command, build, and test tools |
+| `--no-sub-agents` | Delegated investigations |
+| `--disable-tool <name>` | Advertisement and execution of that tool |
+| `--no-hooks` | Global, project, and injected lifecycle hooks |
+
+These controls are independent. Changing a model or loading a skill never overrides them.
+
+## Automatic approval
+
+**Shift+Tab** toggles automatic approval for the current session.
+`--auto-approve true` explicitly enables it for a run. Configured `auto_approve`
+lists can bypass prompts for exact tool names.
+
+<Callout type="warning">
+  Automatic approval removes a review step for actions running with your user's
+  privileges. Use it only with trusted tools and an appropriate workspace.
+  It does not bypass Plan mode, disabled tools, or explicit checkpoint-restore consent.
+</Callout>
+
+## Noninteractive runs
+
+One-shot and piped tasks cannot stop for approval input. Writes and commands are
+denied unless `--auto-approve true` is explicitly supplied.
+
+```bash
+codai --mode plan "Explain the authentication flow"
+codai --json --mode plan "List likely causes of the failing parser"
+```
+
+Read-only inspection is a better starting point for automation than broad approval.
+For unattended edits, review the workspace and command scope before opting in.
+
+Redirected, non-ANSI, or noninteractive terminal hosts use the plain confirmation
+fallback rather than the interactive overlay. Headless runs still never read approval input.
+
+## Settings are not tool approvals
+
+**Save / Cancel** controls configuration persistence, not permission to run tools.
+A saved provider or theme does not approve future writes. The session model selector
+changes immediately without saving startup configuration.
+
+<Cards num={2}>
+  <Cards.Card title="Inspect tool capabilities" href="/usage/tools" arrow>
+    See which tools read, write, execute, or delegate.
+  </Cards.Card>
+  <Cards.Card title="Restore deliberately" href="/usage/sessions" arrow>
+    Recovery always has its own confirmation.
+  </Cards.Card>
+</Cards>

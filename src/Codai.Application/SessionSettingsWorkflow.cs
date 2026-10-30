@@ -1,6 +1,7 @@
 using System.Globalization;
 using Codai.Application.Inspection;
 using Codai.Configuration;
+using Codai.Core;
 using Codai.Core.Abstractions;
 
 namespace Codai.Application;
@@ -114,20 +115,19 @@ public sealed class SessionSettingsWorkflow(
 
     private async Task PickThemeAsync(CancellationToken cancellationToken)
     {
-        var name = await ui.ChooseAsync("Codai / Appearance",
-        [
-            new("Graphite", "Cool blue selection", "graphite"),
-            new("Forest", "Soft green selection", "forest"),
-            new("Ember", "Warm gold selection", "ember"),
-        ], cancellationToken).ConfigureAwait(false);
-        if (name is not ("graphite" or "forest" or "ember"))
+        var name = await ui.ChooseAsync("Codai / Theme",
+            TerminalThemes.All
+                .Select(theme => new SessionMenuItem(theme.Title, theme.Description, theme.Id))
+                .ToArray(),
+            cancellationToken).ConfigureAwait(false);
+        if (!TerminalThemes.IsKnown(name))
         {
             return;
         }
-        ui.SetTheme(name);
-        if (await ConfirmAsync("Save appearance for future sessions?", cancellationToken).ConfigureAwait(false))
+        if (await ConfirmAsync("Save theme for current and future sessions?", cancellationToken).ConfigureAwait(false))
         {
-            await _manager.SetValueAsync(ConfigurationFile, "theme", name, context.ConfigurationDirectory, cancellationToken).ConfigureAwait(false);
+            await _manager.SetValueAsync(ConfigurationFile, "theme", name!, context.ConfigurationDirectory, cancellationToken).ConfigureAwait(false);
+            ui.SetTheme(name!);
         }
     }
 
@@ -157,7 +157,7 @@ public sealed class SessionSettingsWorkflow(
             [
                 new(selected.Enabled ? "Disable" : "Enable", "Change availability on next startup", selected.Enabled ? "disable" : "enable"),
                 new("Remove configuration entry", "Keep plugin files and external services untouched", "remove"),
-                new("Keep unchanged", "Return to integrations", "cancel"),
+                new("Cancel", "Return to integrations without changes", "cancel"),
             ], cancellationToken).ConfigureAwait(false);
             if (operation is not ("enable" or "disable" or "remove") || !await ConfirmAsync("Apply integration change for next startup?", cancellationToken).ConfigureAwait(false))
             {
@@ -191,7 +191,7 @@ public sealed class SessionSettingsWorkflow(
     private async Task<bool> ConfirmAsync(string title, CancellationToken cancellationToken) =>
         await ui.ChooseAsync("Codai / " + title,
         [
-            new("Keep unchanged", "Return without saving", "cancel"),
-            new("Confirm change", "Apply the selected configuration change", "confirm"),
+            new("Save", "Save the selected configuration change", "confirm"),
+            new("Cancel", "Return without saving", "cancel"),
         ], cancellationToken).ConfigureAwait(false) == "confirm";
 }

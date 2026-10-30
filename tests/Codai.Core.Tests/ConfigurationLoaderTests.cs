@@ -64,6 +64,7 @@ public class ConfigurationLoaderTests
     [InlineData("ai_provider_config.base_url", "file:///private")]
     [InlineData("ai_provider_config.base_url", "https://user:secret@example.test")]
     [InlineData("checkpoints_enabled", "yes")]
+    [InlineData("theme", "dracula")]
     [InlineData("unknown.path", "value")]
     public async Task Settings_editor_rejects_invalid_values_without_touching_file(string key, string value)
     {
