@@ -11,8 +11,8 @@ namespace Codai.Core.Tools;
 /// <param name="Summary">The call rendered for display, e.g. <c>run_command(cmd=dotnet test)</c>.</param>
 /// <param name="Detail">One line of plain language saying what the call will do.</param>
 /// <param name="Preview">
-/// The exact text being approved — a command line, a path, or a patch — shown verbatim so the
-/// question can be answered without re-reading the summary.
+/// A command line, path, patch, or bounded proposed file contents shown verbatim so the
+/// question can be answered without re-reading the summary. Truncated file contents are marked.
 /// </param>
 public readonly record struct ToolApprovalRequest(
     string ToolName,
@@ -35,19 +35,30 @@ public readonly record struct ToolApprovalRequest(
     /// built from it therefore hides the interesting half of a command exactly when the user needs
     /// to see it most. Reading the arguments instead keeps the approval text complete, and falls
     /// back to the summary when the call carries nothing more specific.
+    /// File writes include the target path and at most 60,000 content characters. Empty contents
+    /// and truncated previews are explicitly marked; this preview does not inspect existing files.
     /// </remarks>
     /// <param name="toolName">The tool the model asked for.</param>
     /// <param name="description">That tool's description.</param>
     /// <param name="summary">The call rendered for display.</param>
     /// <param name="arguments">The arguments the call will run with.</param>
     public static ToolApprovalRequest Create(string toolName, string description, string summary, JsonElement arguments) =>
-        new(toolName, description, summary, FirstSentence(description), PreviewOf(arguments));
+        new(toolName, description, summary, FirstSentence(description), PreviewOf(toolName, arguments));
 
-    private static string? PreviewOf(JsonElement arguments)
+    private static string? PreviewOf(string toolName, JsonElement arguments)
     {
         if (arguments.ValueKind != JsonValueKind.Object)
         {
             return null;
+        }
+
+        if (toolName == "write_file" && arguments.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.String &&
+            arguments.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+        {
+            var source = content.GetString() ?? string.Empty;
+            var preview = source.Length == 0 ? "[Empty file contents]"
+                : source.Length <= 60000 ? source : source[..60000] + "\n[Preview truncated]";
+            return path.GetString() + "\n\n" + preview;
         }
 
         foreach (var field in PreviewFields)

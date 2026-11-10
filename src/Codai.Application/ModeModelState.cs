@@ -32,6 +32,15 @@ public sealed class ModeModelState
         }
     }
 
+    /// <summary>Changes reasoning effort for subsequent requests in one mode.</summary>
+    public void SetReasoningEffort(AgentMode mode, ReasoningEffortLevel? effort)
+    {
+        lock (_gate)
+        {
+            _selections[mode] = _selections[mode] with { ReasoningEffort = effort };
+        }
+    }
+
     public void Set(AgentMode mode, string provider, string model)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(provider);
@@ -40,6 +49,11 @@ public sealed class ModeModelState
         lock (_gate)
         {
             var current = _selections[mode];
+            if (string.Equals(provider, current.Provider, StringComparison.OrdinalIgnoreCase))
+            {
+                _selections[mode] = current with { Model = model };
+                return;
+            }
             _selections[mode] = ResolvedProviderOptions.From(new AiProviderOptions
             {
                 Provider = provider,

@@ -1,8 +1,11 @@
+using System.Globalization;
 using Codai.Application.Inspection;
+using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Chat;
 using Codai.Core.IO;
+using Codai.Providers;
 
 namespace Codai.Application;
 
@@ -29,9 +32,14 @@ public sealed class SessionCommandHandler
     private readonly IFileSystem _fileSystem;
     private readonly SessionSettingsWorkflow? _settings;
     private readonly SessionFootprint? _footprint;
+    private readonly IProcessRunner? _processes;
+    private readonly ConfigurationInspectionContext? _inspectionContext;
+    private readonly Dictionary<string, List<string>> _recentModels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _favoriteModels = new(StringComparer.Ordinal);
 
     private const int MaxRuleCharacters = 8 * 1024;
     private const int MaxBugSummaryCharacters = 2 * 1024;
+    private static readonly string[] ReasoningVariants = ["default", "low", "medium", "high"];
 
     internal AgentModeState ModeState => _mode;
 
@@ -54,7 +62,9 @@ public sealed class SessionCommandHandler
         ModeModelState? models = null,
         IFileSystem? fileSystem = null,
         SessionSettingsWorkflow? settings = null,
-        SessionFootprint? footprint = null)
+        SessionFootprint? footprint = null,
+        IProcessRunner? processes = null,
+        ConfigurationInspectionContext? inspectionContext = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(history);
@@ -82,6 +92,8 @@ public sealed class SessionCommandHandler
         _fileSystem = fileSystem ?? PhysicalFileSystem.Instance;
         _settings = settings;
         _footprint = footprint;
+        _processes = processes;
+        _inspectionContext = inspectionContext;
     }
 
     /// <summary>
@@ -95,8 +107,73 @@ public sealed class SessionCommandHandler
         string arguments = "",
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         switch (command)
         {
+            case SlashCommand.Agents:
+                var agent = string.IsNullOrWhiteSpace(arguments)
+                    ? await _ui.ChooseAsync("Select agent",
+                    [
+                        new("agent", "Work with workspace tools", "agent") { IsCurrent = _mode.Mode == AgentMode.Agent },
+                        new("plan", "Read-only planning", "plan") { IsCurrent = _mode.Mode == AgentMode.Plan },
+                    ], cancellationToken).ConfigureAwait(false)
+                    : arguments.Trim().ToLowerInvariant();
+                if (agent is not null)
+                {
+                    ShowOrChangeMode(agent);
+                }
+                return false;
+
+            case SlashCommand.Models:
+                await SelectModelAsync(arguments, cancellationToken).ConfigureAwait(false);
+                return false;
+
+            case SlashCommand.Variants:
+                await SelectVariantAsync(arguments, cancellationToken).ConfigureAwait(false);
+                return false;
+
+            case SlashCommand.Connect:
+            case SlashCommand.Themes:
+            case SlashCommand.Mcps:
+            case SlashCommand.Skills:
+                if (_settings is null)
+                {
+                    _ui.WriteError("Interactive settings are unavailable in this host.");
+                    return false;
+                }
+                await _settings.RunAsync(command switch
+                {
+                    SlashCommand.Connect => "connect",
+                    SlashCommand.Themes => "theme",
+                    SlashCommand.Mcps => "mcp",
+                    _ => "skills",
+                }, cancellationToken).ConfigureAwait(false);
+                return false;
+
+            case SlashCommand.Debug:
+                await ShowConfigurationAsync("all", cancellationToken).ConfigureAwait(false);
+                ShowOrChangeModel(string.Empty);
+                return false;
+
+            case SlashCommand.Status:
+                ShowOrChangeMode(string.Empty);
+                ShowOrChangeModel(string.Empty);
+                DisplayTokens();
+                await ShowConfigurationAsync("session", cancellationToken).ConfigureAwait(false);
+                return false;
+
+            case SlashCommand.Diff:
+                await ShowWorkingDiffAsync(cancellationToken).ConfigureAwait(false);
+                return false;
+
+            case SlashCommand.Editor:
+                var prompt = await _ui.ReadValueAsync("Edit prompt", arguments, cancellationToken: cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(prompt))
+                {
+                    _ui.InsertInput(prompt);
+                }
+                return false;
+
             case SlashCommand.Help:
                 _ui.WriteLine(SlashCommandParser.HelpText);
                 return false;
@@ -139,6 +216,10 @@ public sealed class SessionCommandHandler
                     .ConfigureAwait(false);
                 return false;
 
+            case SlashCommand.AutoCompact:
+                await SelectAutoCompactWindowAsync(arguments, cancellationToken).ConfigureAwait(false);
+                return false;
+
             case SlashCommand.NewTask:
                 await CreateTaskHandoffAsync(arguments, cancellationToken).ConfigureAwait(false);
                 return false;
@@ -179,6 +260,233 @@ public sealed class SessionCommandHandler
 
             default:
                 return false;
+        }
+    }
+
+    private async Task SelectAutoCompactWindowAsync(string arguments, CancellationToken cancellationToken)
+    {
+        var model = _models?.Get(_mode.Mode).Model ?? _options.Model;
+        var modelWindow = (_models?.Get(_mode.Mode) ?? new ResolvedProviderOptions
+        {
+            Provider = _options.Provider, Model = model, BaseUrl = string.Empty,
+        }).ContextWindowTokens;
+        var current = _options.AutoCompactWindow;
+        var value = arguments.Trim();
+        if (value.Length == 0)
+        {
+            int[] windows = [0, 32_000, 64_000, 128_000, 200_000, 256_000, 400_000, 600_000, 800_000, 1_000_000, 2_000_000];
+            var items = windows.Append(current).Distinct().Order().Select(window =>
+                new SessionMenuItem(FormatCompactWindow(window), string.Empty, window.ToString(CultureInfo.InvariantCulture))
+                { IsCurrent = window == current }).ToArray();
+            var cap = current > modelWindow ? $"; capped to {FormatCompactWindow(modelWindow)} by model" : string.Empty;
+            var selected = await _ui.ChooseAsync("Auto-compact window", items, new SessionMenuOptions
+            {
+                HorizontalSelection = true,
+                Placeholder = "Select auto-compact window:",
+                InitialValue = current.ToString(CultureInfo.InvariantCulture),
+                Description = $"Current setting for {model}: {FormatCompactWindow(current)}{cap}\n\n" +
+                    "Auto uses the model's context window. Explicit windows are capped by the active model; " +
+                    "response and tool headroom is reserved before compaction thresholds are applied." +
+                    (_options.AutoCompact ? string.Empty : "\n\nAutomatic compaction is disabled for this session."),
+            }, cancellationToken).ConfigureAwait(false);
+            if (selected is null)
+            {
+                return;
+            }
+            value = selected;
+        }
+        var multiplier = value.EndsWith('k') || value.EndsWith('K') ? 1_000 :
+            value.EndsWith('m') || value.EndsWith('M') ? 1_000_000 : 1;
+        var number = multiplier == 1 ? value : value[..^1];
+        var automatic = value.Equals("auto", StringComparison.OrdinalIgnoreCase);
+        var tokens = 0m;
+        if (!automatic && (!decimal.TryParse(number, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out tokens) ||
+            tokens > int.MaxValue / (decimal)multiplier || (tokens *= multiplier) != decimal.Truncate(tokens) ||
+            tokens != 0 && tokens < CodaiOptions.MinimumAutoCompactWindow))
+        {
+            _ui.WriteError("Use /autocompact [auto|tokens], with at least 32000 tokens (for example 800k or 1m).");
+            return;
+        }
+        var window = (int)tokens;
+        try
+        {
+            if (_settings is not null)
+            {
+                await _settings.SaveAutoCompactWindowAsync(window, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (exception is CodaiConfigurationException or IOException or UnauthorizedAccessException)
+        {
+            _ui.WriteError("Could not save auto-compact window; no changes were applied. " + exception.Message);
+            return;
+        }
+        _options.AutoCompactWindow = window;
+        var effective = window == 0 ? modelWindow : Math.Min(window, modelWindow);
+        _ui.WriteSuccess($"Auto-compact window: {FormatCompactWindow(window)}; effective model cap: {FormatCompactWindow(effective)}." +
+            (_settings is null ? " Applies to this session only." : " Saved for current and future sessions.") +
+            (_options.AutoCompact ? string.Empty : " Automatic compaction remains disabled for this session."));
+    }
+
+    private static string FormatCompactWindow(int tokens) => tokens == 0 ? "Auto" :
+        tokens >= 1_000_000 && tokens % 1_000 == 0 ? (tokens / 1_000_000m).ToString("0.###", CultureInfo.InvariantCulture) + "m tokens" :
+        tokens % 1_000 == 0 ? (tokens / 1_000).ToString(CultureInfo.InvariantCulture) + "k tokens" :
+        tokens.ToString("N0", CultureInfo.InvariantCulture) + " tokens";
+
+    private async Task SelectModelAsync(string arguments, CancellationToken cancellationToken)
+    {
+        if (_models is null)
+        {
+            _ui.WriteError("Model selection is unavailable in this host.");
+            return;
+        }
+        var current = _models.Get(_mode.Mode);
+        var model = arguments.Trim();
+        if (model.Length == 0)
+        {
+            if (!_recentModels.TryGetValue(current.Provider, out var recent))
+            {
+                recent = [current.Model];
+                _recentModels[current.Provider] = recent;
+            }
+            if (!recent.Contains(current.Model, StringComparer.Ordinal))
+            {
+                recent.Insert(0, current.Model);
+            }
+            string? highlighted = "model:" + current.Model;
+            while (true)
+            {
+                var suggestions = ProviderCatalog.TryGet(current.Provider, out var provider)
+                    ? provider.SuggestedModels.Prepend(provider.DefaultModel) : [];
+                var items = recent.Concat(suggestions).Distinct(StringComparer.Ordinal)
+                    .Select(name => new SessionMenuItem(name, current.Provider, "model:" + name)
+                    {
+                        Group = _favoriteModels.Contains(current.Provider + "/" + name) ? "Favorites"
+                            : recent.Contains(name, StringComparer.Ordinal) ? "Recent" : current.Provider,
+                        IsCurrent = name == current.Model,
+                        RightLabel = _favoriteModels.Contains(current.Provider + "/" + name) ? "*" : string.Empty,
+                    })
+                    .OrderBy(item => item.Group == "Favorites" ? 0 : item.Group == "Recent" ? 1 : 2)
+                    .Append(new SessionMenuItem("Custom model ID", "Use another model on this provider", "custom"))
+                    .ToArray();
+                var choice = await _ui.ChooseAsync("Select model", items, new SessionMenuOptions
+                {
+                    Footer = "Authenticate provider ctrl+a   Favorite ctrl+f",
+                    InitialValue = highlighted,
+                    Shortcuts = [new(ConsoleKey.A, "connect"), new(ConsoleKey.F, "favorite:", true)],
+                }, cancellationToken).ConfigureAwait(false);
+                if (choice == "connect")
+                {
+                    if (_settings is not null)
+                    {
+                        await _settings.RunAsync("connect", cancellationToken).ConfigureAwait(false);
+                    }
+                    return;
+                }
+                if (choice?.StartsWith("favorite:model:", StringComparison.Ordinal) == true && items.Any(item => item.Value == choice[9..]))
+                {
+                    var key = current.Provider + "/" + choice[15..];
+                    if (!_favoriteModels.Add(key))
+                    {
+                        _favoriteModels.Remove(key);
+                    }
+                    highlighted = choice[9..];
+                    continue;
+                }
+                model = choice == "custom"
+                    ? await _ui.ReadValueAsync("Model ID", current.Model, cancellationToken: cancellationToken).ConfigureAwait(false) ?? string.Empty
+                    : items.Any(item => item.Value == choice) && choice!.StartsWith("model:", StringComparison.Ordinal)
+                        ? choice[6..] : string.Empty;
+                break;
+            }
+            if (model.Length == 0)
+            {
+                return;
+            }
+        }
+        if (model.Any(char.IsWhiteSpace) || model.Any(char.IsControl) || model.Length > 256)
+        {
+            _ui.WriteError("Use /models [model-id] without whitespace. Use /auth to change providers.");
+            return;
+        }
+        _models.Set(_mode.Mode, current.Provider, model);
+        if (!_recentModels.TryGetValue(current.Provider, out var history))
+        {
+            history = [];
+            _recentModels[current.Provider] = history;
+        }
+        history.Remove(model);
+        history.Insert(0, model);
+        if (history.Count > 10)
+        {
+            history.RemoveRange(10, history.Count - 10);
+        }
+        DisplayTokens();
+        _ui.WriteSuccess($"{AgentModeParser.ToName(_mode.Mode)} model set to {current.Provider}/{model} for this session.");
+    }
+
+    private async Task SelectVariantAsync(string arguments, CancellationToken cancellationToken)
+    {
+        if (_models is null)
+        {
+            _ui.WriteError("Model selection is unavailable in this host.");
+            return;
+        }
+        var name = string.IsNullOrWhiteSpace(arguments)
+            ? await _ui.ChooseAsync("Select variant",
+                ReasoningVariants.Select(value => new SessionMenuItem(value, "Reasoning effort; provider support required", value)
+                {
+                    IsCurrent = value == (_models.Get(_mode.Mode).ReasoningEffort?.ToString().ToLowerInvariant() ?? "default"),
+                }).ToArray(),
+                cancellationToken).ConfigureAwait(false)
+            : arguments.Trim().ToLowerInvariant();
+        if (name is null)
+        {
+            return;
+        }
+        var effort = name switch
+        {
+            "low" => ReasoningEffortLevel.Low,
+            "medium" => ReasoningEffortLevel.Medium,
+            "high" => ReasoningEffortLevel.High,
+            _ => (ReasoningEffortLevel?)null,
+        };
+        if (effort is null && name != "default")
+        {
+            _ui.WriteError("Use /variants [default|low|medium|high].");
+            return;
+        }
+        _models.SetReasoningEffort(_mode.Mode, effort);
+        _ui.WriteSuccess($"Reasoning effort: {name}. Applied to subsequent requests when supported by the provider.");
+    }
+
+    private async Task ShowWorkingDiffAsync(CancellationToken cancellationToken)
+    {
+        if (_processes is null || _inspectionContext?.AllowShell != true)
+        {
+            _ui.WriteError("Git diff requires shell access in this host.");
+            return;
+        }
+        try
+        {
+            List<string> changes = [];
+            foreach (var staged in new[] { false, true })
+            {
+                var result = await _processes.RunAsync(
+                    "git --no-pager diff --no-ext-diff --no-textconv --color=never " + (staged ? "--cached " : string.Empty) + "--",
+                    _options.ProjectRoot, TimeSpan.FromSeconds(15), cancellationToken).ConfigureAwait(false);
+                if (result.TimedOut || result.ExitCode != 0)
+                {
+                    _ui.WriteError("Could not read Git changes. Check that the workspace is a Git repository and Git is installed.");
+                    return;
+                }
+                var diff = result.StandardOutput;
+                changes.Add(diff.Length > 64 * 1024 ? diff[..(64 * 1024)] + "\n[Diff truncated]" : diff);
+            }
+            await _ui.ShowDiffAsync(changes[0], changes[1], cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            _ui.WriteError("Could not read Git changes. Check Git installation and workspace access.");
         }
     }
 
@@ -983,8 +1291,10 @@ public sealed class SessionCommandHandler
     public void DisplayTokens()
     {
         var session = _tokenTracker.SessionUsage;
-        var cost = _costCalculator.Calculate(_options.Provider, _options.Model, session);
+        var selected = _models?.Get(_mode.Mode);
+        var model = selected?.Model ?? _options.Model;
+        var cost = _costCalculator.Calculate(selected?.Provider ?? _options.Provider, model, session);
 
-        _ui.ShowTokens(_options.Model, session, _tokenTracker.LastUsage, cost);
+        _ui.ShowTokens(model, session, _tokenTracker.LastUsage, cost);
     }
 }

@@ -15,7 +15,9 @@ public static class IgnoreRules
 
     private static readonly string[] DefaultPatterns =
     [
-        "codai-config.yml",
+        ".codai.json",
+        ".codai.yml",
+        ".codai.yaml",
         ".codai-gitignore",
         ".codai",
         ".git",

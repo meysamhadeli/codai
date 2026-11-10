@@ -1,14 +1,16 @@
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
+
 namespace Codai.Core.Customization;
 
 /// <summary>
 /// Reads the optional <c>---</c> front matter block at the top of a markdown file.
 /// </summary>
 /// <remarks>
-/// Deliberately a small subset of YAML: <c>key: value</c> pairs only, with no nesting,
-/// lists or anchors. The files this parses are written by hand by users and by skills,
-/// and shipping a YAML dependency to read two keys would be a larger surface than the
-/// problem deserves. A malformed line is skipped rather than thrown on, because a
-/// broken description must not stop a session from starting.
+/// Reads top-level YAML scalars, including folded and literal multiline values,
+/// and flattens scalar lists into comma-separated values. Nested mappings are ignored.
+/// Malformed YAML falls back to line-based fields so a broken description does not
+/// stop a session from starting. Unterminated headers remain part of the body.
 /// </remarks>
 public static class FrontMatter
 {
@@ -90,6 +92,35 @@ public static class FrontMatter
         if (closingIndex < 0)
         {
             return (empty.Fields, text);
+        }
+
+        try
+        {
+            var yaml = new YamlStream();
+            yaml.Load(new StringReader(string.Join('\n', lines[1..closingIndex]) + "\n"));
+            if (yaml.Documents.FirstOrDefault()?.RootNode is YamlMappingNode mapping)
+            {
+                fields.Clear();
+                foreach (var field in mapping.Children)
+                {
+                    if (field.Key is not YamlScalarNode { Value: { Length: > 0 } key })
+                    {
+                        continue;
+                    }
+                    switch (field.Value)
+                    {
+                        case YamlScalarNode scalar:
+                            fields[key] = scalar.Value ?? string.Empty;
+                            break;
+                        case YamlSequenceNode sequence:
+                            fields[key] = string.Join(", ", sequence.Children.OfType<YamlScalarNode>().Select(value => value.Value ?? string.Empty));
+                            break;
+                    }
+                }
+            }
+        }
+        catch (YamlException)
+        {
         }
 
         var body = string.Join('\n', lines[(closingIndex + 1)..]).Trim();

@@ -67,6 +67,7 @@ internal sealed class RecordingToolExecutor : IToolExecutor
     public List<RecordedToolCall> Calls { get; } = [];
 
     public ToolResult Outcome { get; set; } = ToolResult.Success("tool output");
+    public Queue<ToolResult> Outcomes { get; } = [];
 
     public Task<ToolResult> ExecuteAsync(
         string toolName,
@@ -75,6 +76,6 @@ internal sealed class RecordingToolExecutor : IToolExecutor
     {
         Calls.Add(new RecordedToolCall(toolName, arguments));
 
-        return Task.FromResult(Outcome);
+        return Task.FromResult(Outcomes.TryDequeue(out var outcome) ? outcome : Outcome);
     }
 }

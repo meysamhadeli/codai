@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Codai.Core.Tools;
@@ -126,16 +128,45 @@ public sealed class ToolCallGovernor
     /// </summary>
     private static string Fingerprint(string toolName, JsonElement arguments)
     {
-        if (arguments.ValueKind != JsonValueKind.Object)
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
         {
-            return toolName;
+            WriteNormalized(writer, arguments);
         }
 
-        var properties = arguments
-            .EnumerateObject()
-            .OrderBy(property => property.Name, StringComparer.Ordinal)
-            .Select(property => $"{property.Name}={property.Value.GetRawText()}");
+        return $"{toolName.ToUpperInvariant()}:{Convert.ToHexString(SHA256.HashData(buffer.WrittenSpan))}";
+    }
 
-        return $"{toolName}({string.Join(",", properties)})";
+    private static void WriteNormalized(Utf8JsonWriter writer, JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in value.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteNormalized(writer, property.Value);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in value.EnumerateArray())
+                {
+                    WriteNormalized(writer, item);
+                }
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                writer.WriteStringValue(value.GetString());
+                break;
+            case JsonValueKind.Undefined:
+                writer.WriteNullValue();
+                break;
+            default:
+                value.WriteTo(writer);
+                break;
+        }
     }
 }

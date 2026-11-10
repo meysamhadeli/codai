@@ -3,6 +3,7 @@ using Codai.Core.Agents;
 using Codai.Core.Chat;
 using Codai.Core.Context;
 using Codai.Core.Tools;
+using Codai.Providers;
 
 namespace Codai.Application;
 
@@ -35,6 +36,11 @@ namespace Codai.Application;
 /// </description>
 /// </item>
 /// </list>
+/// <para>
+/// Completed summaries remain parked until the urgent threshold is reached, preserving
+/// the existing prompt prefix between requests. Plans are checked against their source
+/// history before application; newly appended turns are retained.
+/// </para>
 /// <para>
 /// Below both of them sits a tier that costs nothing. <see cref="MicroCompactor"/> clears the
 /// bulk of old tool output, which is what makes an agent conversation long in the first
@@ -74,6 +80,10 @@ public sealed class AutoCompactor
     private readonly AgentModeState _mode;
     private readonly IToolRegistry _registry;
     private readonly MicroCompactor? _trimmer;
+    private readonly ModeModelState? _models;
+    private readonly ResolvedProviderOptions _defaultModel;
+    private int _contextTokens;
+    private string ActiveModel => _models?.Get(_mode.Mode).Model ?? _options.Model;
 
     /// <summary>Creates the compactor.</summary>
     public AutoCompactor(
@@ -85,7 +95,8 @@ public sealed class AutoCompactor
         IUserInterface ui,
         AgentModeState mode,
         IToolRegistry registry,
-        MicroCompactor? trimmer = null)
+        MicroCompactor? trimmer = null,
+        ModeModelState? models = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(history);
@@ -105,6 +116,8 @@ public sealed class AutoCompactor
         _mode = mode;
         _registry = registry;
         _trimmer = trimmer;
+        _models = models;
+        _defaultModel = new ResolvedProviderOptions { Provider = options.Provider, Model = options.Model, BaseUrl = string.Empty };
     }
 
     /// <summary>
@@ -120,25 +133,33 @@ public sealed class AutoCompactor
     /// what will be sent.
     /// </param>
     /// <param name="cancellationToken">Cancels the summarisation when the request has to wait for one.</param>
-    public async Task BeforeRequestAsync(
+    public Task BeforeRequestAsync(
         string pendingRequest,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) => BeforeRequestAsync(pendingRequest, 0, cancellationToken);
+
+    /// <summary>Checks history together with the prepared prompt's non-history context.</summary>
+    /// <param name="pendingRequest">The rendered user message about to be sent.</param>
+    /// <param name="contextTokens">Estimated system, project, attachment and guidance tokens, excluding history and tool definitions.</param>
+    /// <param name="cancellationToken">Cancels foreground compaction.</param>
+    /// <returns>A task completed when urgent compaction has finished.</returns>
+    public async Task BeforeRequestAsync(string pendingRequest, int contextTokens, CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(contextTokens);
+        _contextTokens = contextTokens;
         if (!_options.AutoCompact || _policy.IsTripped)
         {
             return;
         }
 
-        // Whatever the background managed to produce since the last turn. Applied first, so
-        // the measurement below is of the conversation that will actually be sent.
-        if (_summarizer.TryTake(out var produced))
+        var pressure = Measure(pendingRequest);
+
+        if (pressure.IsUrgent && _summarizer.TryTake(out var produced) && _compactor.CanApply(produced))
         {
             await _compactor.ApplyAsync(produced, cancellationToken).ConfigureAwait(false);
             _policy.RecordSuccess();
             Report(produced);
+            pressure = Measure(pendingRequest);
         }
-
-        var pressure = Measure(pendingRequest);
 
         if (pressure.IsUrgent)
         {
@@ -212,37 +233,20 @@ public sealed class AutoCompactor
             return;
         }
 
-        if (_summarizer.TryTake(out var produced))
-        {
-            _compactor.Apply(produced);
-            _policy.RecordSuccess();
-            Report(produced);
-        }
-
         if (_policy.ShouldCompact(Measure()))
         {
             _summarizer.Start(preserveRecentTokens: MeasureTailTokens());
         }
     }
 
-    public async Task AfterResponseAsync(CancellationToken cancellationToken = default)
+    /// <summary>Starts background summarization without applying a completed summary.</summary>
+    /// <param name="cancellationToken">Cancels the boundary notification before it starts.</param>
+    /// <returns>A completed task after scheduling any required background work.</returns>
+    public Task AfterResponseAsync(CancellationToken cancellationToken = default)
     {
-        if (!_options.AutoCompact || _policy.IsTripped)
-        {
-            return;
-        }
-
-        if (_summarizer.TryTake(out var produced))
-        {
-            await _compactor.ApplyAsync(produced, cancellationToken).ConfigureAwait(false);
-            _policy.RecordSuccess();
-            Report(produced);
-        }
-
-        if (_policy.ShouldCompact(Measure()))
-        {
-            _summarizer.Start(preserveRecentTokens: MeasureTailTokens());
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        AfterResponse();
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -280,7 +284,7 @@ public sealed class AutoCompactor
         }
 
         _ui.WriteInfo(
-            $"📉 {_options.Model} refused the request as longer than its context window. " +
+            $"📉 {ActiveModel} refused the request as longer than its context window. " +
             "Shortening the conversation before trying it again.");
 
         var plan = await _compactor
@@ -314,7 +318,7 @@ public sealed class AutoCompactor
     {
         _ui.WriteInfo(
             $"📉 This conversation needs about {pressure.UsedTokens:N0} of the " +
-            $"{pressure.MessageBudget:N0} tokens {_options.Model} can spare for it " +
+            $"{pressure.MessageBudget:N0} tokens {ActiveModel} can spare for it " +
             $"({pressure.Ratio:P0}). Shortening it before the request goes out.");
 
         // Started here so that WaitAsync has something to wait for on the turn where the
@@ -322,6 +326,11 @@ public sealed class AutoCompactor
         _summarizer.Start(preserveRecentTokens: MeasureTailTokens());
 
         var plan = await _summarizer.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        if (plan is not null && !_compactor.CanApply(plan))
+        {
+            plan = null;
+        }
 
         if (plan is null)
         {
@@ -392,14 +401,22 @@ public sealed class AutoCompactor
     /// </summary>
     private ContextPressure Measure(string? pendingRequest = null)
     {
-        var tokens = pendingRequest is null ? 0 : TokenEstimator.EstimateRequest(pendingRequest);
+        var tokens = (long)_contextTokens + (pendingRequest is null ? 0 : TokenEstimator.EstimateRequest(pendingRequest));
 
         foreach (var turn in _history.Turns)
         {
             tokens += TokenEstimator.EstimateRequest(turn.UserRequest, turn.AiResponse);
         }
 
-        return _policy.Measure(tokens, _options.Model, EstimateToolTokens());
+        var selection = _models?.Get(_mode.Mode) ?? _defaultModel;
+        var modelWindow = selection.ContextWindowTokens;
+        var window = _options.AutoCompactWindow > 0
+            ? Math.Min(_options.AutoCompactWindow, modelWindow) : modelWindow;
+        var buffer = Math.Min(CompactionPolicy.DefaultReserveTokens, window / 4);
+        var reserve = (int)Math.Min(int.MaxValue, (long)buffer + selection.OutputReserveTokens);
+        var policyReserve = _policy.ReserveTokens == CompactionPolicy.DefaultReserveTokens ? buffer : _policy.ReserveTokens;
+        return ContextPressure.Measure((int)Math.Min(int.MaxValue, tokens), window,
+            Math.Max(policyReserve, reserve), EstimateToolTokens(), _policy.SafetyMargin);
     }
 
     /// <summary>
@@ -422,7 +439,7 @@ public sealed class AutoCompactor
     /// </remarks>
     private int? MeasureTailTokens()
     {
-        var headroom = (int)Math.Floor(Measure().AvailableTokens * TailHeadroomRatio);
+        var headroom = (int)Math.Floor(Math.Max(0, Measure().AvailableTokens - _contextTokens) * TailHeadroomRatio);
 
         return headroom > 0
             ? Math.Min(_options.CompactionPreserveRecentTokens, headroom)

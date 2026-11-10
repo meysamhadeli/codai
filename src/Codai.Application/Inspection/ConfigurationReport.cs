@@ -187,9 +187,9 @@ public sealed record ConfigurationHookEntry(
 
 /// <summary>A configured MCP server, described without its arguments or environment values.</summary>
 /// <param name="Name">Stable server name.</param>
-/// <param name="Transport">Transport type; only <c>stdio</c> is supported today.</param>
+/// <param name="Transport">Transport type: <c>stdio</c>, <c>streamableHttp</c>, or <c>sse</c>.</param>
 /// <param name="Provenance">How the entry entered configuration.</param>
-/// <param name="Enabled">False when configuration disabled it.</param>
+/// <param name="Enabled">False when configured off or when an imported definition lacks matching private approval.</param>
 /// <param name="CommandConfigured">Whether an executable is configured; its value is omitted.</param>
 /// <param name="ArgumentCount">How many arguments it is launched with; the values may carry secrets.</param>
 /// <param name="EnvironmentVariables">Names of the environment variables added to the process, never their values.</param>

@@ -7,8 +7,64 @@ import { Callout } from "nextra/components";
 
 # Terminal and shortcuts
 
-The terminal keeps your conversation above a pinned composer. Model, mode, usage,
-and approval state remain visible while you read an answer or browse earlier steps.
+The terminal keeps your conversation above the composer. Input follows short
+answers with one blank row between the reply and input block; it stays at the
+bottom when the conversation fills the viewport. Turns use one blank separator
+without stacked Markdown padding. Thinking/loading activity and completed replies
+use the same compact gap before the input border, without an extra blank composer
+row. Model, mode, usage, and approval state remain
+visible while you read an answer or browse earlier steps.
+There is one main conversation screen, without persistent top navigation tabs.
+Submitted questions use compact dark strips with the same `❯` marker as editable
+input, in a slightly darker shade of the active theme accent (`>` on ASCII terminals),
+without padding rows or timestamps. A single-line question occupies one terminal
+row. Assistant replies and public progress start with a neutral dot.
+Editable input uses the terminal background, with thin gray horizontal rules above
+and below on terminals at least twelve rows high. Shorter terminals omit the rules
+to retain usable space. The input grows as text wraps or newlines are inserted,
+up to twelve text rows, with a lower limit on short terminals. Beyond that limit,
+the viewport follows the cursor without discarding any draft text. Clearing the
+draft shrinks the input again. A separate blank row remains before its footer.
+The first row has one theme-colored prompt arrow; continuation lines align with
+the text without repeating the marker. ASCII terminals use `>` and `-` fallbacks.
+Input text and its cursor begin one space after the marker. Submitted questions use
+one space after the marker, with continuation lines aligned to their text.
+The empty-input placeholder appears only on the home screen; after
+the first submission, an empty composer shows the cursor without placeholder text.
+Model, provider, mode, and usage information stays outside the input
+block, in the existing header or footer; it is not repeated inside the prompt.
+Interactive ANSI terminals request a steady block cursor while Codai is open and
+reset the cursor style on exit. Cursor color remains controlled by your terminal;
+terminals that do not support cursor-shape sequences keep their existing cursor.
+Selection menus hide the terminal cursor while browsing choices, so it does not
+cover the theme-colored selection arrow or leave a white block below the model
+list. Search and value-entry fields show the cursor while typing; closing a menu
+restores the chat cursor.
+
+Approvals, confirmations, clarification questions, and workspace trust use bordered
+decision boxes in the current CLI view. The conversation remains visible above the
+box; there is no settings search field or separate dialog screen. Selected choices
+use the active theme's foreground accent without a filled background. Binary
+confirmations show **Yes**, then **No**, with Yes selected. Arrows select, Enter confirms, and Escape
+cancels. Free-text questions show an **Answer** field in the same frame. Closing a
+box restores the composer and its draft. Long tool previews retain PageUp / PageDown
+navigation; long question text can also be paged without changing the selection.
+
+Transcript messages remain separated from the input surface by a blank row, even
+when history fills the viewport on terminals at least twelve rows high; shorter
+terminals keep compact spacing. There is no separate loading row above the input.
+The compact live activity row, and actions opened explicitly, show a nine-dot, 3×3 filling/emptying grid on
+Unicode terminals, with a two-cell ASCII fallback, and an inline
+`(elapsed · esc interrupt)` hint. Narrow rows shorten this to `(elapsed · esc)`;
+ASCII terminals use a hyphen separator. Escape still interrupts the current turn.
+Informational notices, including stopped-request feedback, are white in every
+theme. Error messages are red rather than using the theme accent.
+
+Activity labels use the active theme's solid accent and trailing ellipsis, such as
+**Thinking...**, **Working...**, **Reasoning...**, **Considering...**, **Ruminating...**, or **Loading...**.
+When a caller reports planning, analyzing, searching, reviewing, or compacting,
+those labels use the same presentation; Codai does not invent or rotate phases.
+Activity headers omit action totals while running and after completion.
 
 ## Write a request
 
@@ -21,21 +77,222 @@ Add a regression test and run the parser tests.
 
 Type `@` to complete workspace paths. Mentions currently use whitespace-delimited
 paths; filenames containing spaces are not offered by completion.
-Type `/` to find commands; the `:` prefix works too.
+Type `/` to find commands. Legacy colon commands remain callable for existing
+workflows but are not advertised in slash completion or the command palette.
+`/settings` remains callable but is omitted from slash-command suggestions;
+Ctrl+P or F1 still opens the settings palette.
 
-Command suggestions use a six-row window. Arrows select, Tab inserts, and Enter
+Command suggestions use a flat six-row window with aligned command names and
+descriptions, a left rail, and a subtle highlight only on the selected row.
+The selected arrow, name, and description use the active theme's accent color,
+as does the full left rail; unselected names and descriptions remain neutral.
+Long descriptions clip to the available width without wrapping the menu.
+Arrows select, Tab inserts, and Enter
 completes and runs the command. Completion stays available while a response runs.
+Local slash controls such as `/session`, `/settings`, and `/models` do not add chat-message
+blocks when submitted or cancelled. Normal requests, `/init`, and custom prompt
+workflows remain visible in the transcript.
+
+## Slash commands
+
+The slash menu and `/help` share the following command set. Ctrl+P opens a
+separate, curated settings palette described under [Menus](#menus).
+
+| Command | Behavior |
+| --- | --- |
+| `/agents [agent|plan]` | Choose Agent execution or read-only Plan; applies immediately |
+| `/auth` | Authenticate and save a provider connection through guided setup; restart to apply |
+| `/autocompact [auto\|tokens]` | Adjust automatic-compaction window; save and apply immediately |
+| `/compact [focus]` | Summarize older conversation turns, preserving recent turns and optional focus instructions |
+| `/diff` | Open a read-only working-tree/staged diff browser; requires shell access |
+| `/exit` | Leave the session |
+| `/help` | Show the installed slash-command catalog |
+| `/init [focus]` | Ask the model to inspect the repository and improve AGENTS.md |
+| `/mcps` | Select MCP servers with Enter; Escape saves/closes, new imports require review; restart to apply |
+| `/models [model-id]` | Select a suggested or custom model on the current provider for this mode |
+| `/new` | Confirm, archive current history, and start an empty conversation |
+| `/session` | Browse recent saved conversations and continue one in an independent branch |
+| `/settings [config\|status\|usage\|stats]` | Open settings views without header tabs; configuration edits require Save / Cancel and restart |
+| `/skills` | Enable or disable multiple discovered skills |
+| `/themes` | Save and apply a terminal theme |
+
+`/init` makes a normal model request and spends tokens. Initialization retains
+the current mode and normal write approval. Model suggestions are not
+account-verified. Selections made through `/agents` and `/models` are session-only.
+The agent picker offers exactly `agent` and `plan`.
+
+Built-in slash names take precedence over workspace commands. Rename a colliding
+workflow or invoke its legacy colon form. Retired slash aliases such as `/mode`,
+`/model`, `/preferences`, and `/task` are no longer built-ins.
+`/sessions` remains accepted as an alias for `/session`, but is not advertised separately.
+Custom workflows and skills remain available under their own names.
+`/compact` and `/autocompact` are reserved built-ins; legacy `:compact` remains accepted.
+`/debug`, `/editor`, `/review`, `/status`, and `/variants` are no longer built-ins.
+`/auth` replaced `/connect`; `/connect` is not retained as an alias.
+
+This is command-level compatibility, not a complete OpenCode TUI port. `/move`
+and `/update` are not implemented. Start another Codai process in the target
+directory to change projects; update with `dotnet tool update --global codai`.
+Session pin/delete/rename is not implemented.
+
+## Diff browser
+
+`/diff` opens a read-only snapshot of working-tree and staged Git changes. The
+compact bordered overview shows the source, changed-file count, green additions,
+and red deletions. Each file has right-aligned change counts; overflow indicators
+show files outside the visible list. An empty source displays **No diff!**.
+Enter opens the selected file in a full-width inline diff with a single real line
+number per source line, red/green changed rows, and cell-aware wrapping. Wrapped
+continuations have blank gutters. Escape returns to the list before closing it.
+Working-tree changes are unstaged `git diff` output; staged changes are
+`git diff --cached` output, not a combined `git diff HEAD` total.
+
+| Key | Action |
+| --- | --- |
+| Enter | Open the selected file |
+| Tab | Switch between the file list and detail |
+| Up / Down | Select a file in the list; scroll wrapped rows in detail |
+| PageUp / PageDown, Home / End | Page through the list or detail; jump to the beginning/end |
+| Left / Right | Shift the visible text of source lines horizontally |
+| n / p | Next / previous file |
+| ] / [ | Next / previous hunk |
+| d | Switch working-tree / staged source |
+| m | Toggle a reviewed marker for this open viewer |
+| ? | Show or hide key reference |
+| Escape | Dismiss help, return from detail to the list, then close the list |
+| q | Close the viewer from either view |
+
+Git calls disable external diff/text conversion drivers, time out after 15 seconds,
+and display at most 64 KiB per source, with a truncation notice when needed. Reopen
+the viewer to refresh its snapshots. Untracked files appear only in model-driven
+review, not Git diff output. Redirected/noninteractive hosts receive plain text.
+
+## Model, skill, and MCP pickers
+
+`/models` shows one flat numbered list of the current provider's suggestions,
+with no Recent/provider headings or extra action footer. Favorites and recent
+choices still determine ordering. The current model has a checkmark (`[current]` on non-Unicode
+terminals), using the selected row's theme accent or default text color when not selected.
+Numbered rows align model names and descriptions beneath a theme-accented
+title, without a top separator or filled selection bar. Only **Enter to confirm** and **Esc to cancel**
+appear below the list. Typing still filters the list.
+Ctrl+F toggles the highlighted model's
+favorite; Ctrl+A opens provider setup. Recents and favorites last for this session
+only. Suggestions are not a live account catalog and do not imply free pricing.
+
+`/skills` uses the shared minimal search band and shows plain checkmarks and theme-colored
+titles for enabled skills; disabled titles stay neutral. Rows include descriptions
+below names, source labels, and an enabled count. Enter toggles the highlighted skill
+without closing the manager; Escape closes and saves all choices. Checks survive search
+filtering. Saved availability applies to the next request and future launches;
+this manager does not insert slash commands. See [Skills](/skills).
+Checked skill instructions guide every request where applicable; unchecked skills
+are omitted. With no checks, no active skill section is added. All discovered names appear
+in `/` completion before the first request and refresh after selection changes.
+Type a prefix and use Tab to insert a skill command, such as `/caveman`.
+Unchecked skills remain manually callable; using one does not enable automatic guidance.
+Shared agent skills use the same catalog as `read_skill`; see [Skills](/skills).
+
+`/mcps` uses the same multi-select presentation as Skills, even with no configured
+servers: plain checkmarks, themed checked titles, descriptions, source labels, and
+an enabled count. Enter toggles without closing; Escape saves and closes. Space
+remains search input. Saving selected imports grants startup consent without a
+second confirmation; unselected servers are disabled. Changes do not alter
+active connections, and a restart notice appears after saving rather than as an
+extra footer. Checkmarks describe availability, not connection health.
+Use `codai config mcp remove <name>` to remove a native definition.
+
+SDK hosts can override `IUserInterface.ChooseAsync` with `SessionMenuOptions` to
+render groups, current markers, empty states, and shortcuts. `MultiSelect` returns
+checked values as a JSON string array when closed; null represents unavailable or
+closed input without a saved selection. Terminal palettes omit custom `Footer`
+hints and show only their standard selection actions. `ShowDiffAsync` accepts
+working-tree and staged snapshots. Default implementations preserve the original
+picker contract and plain-text diff presentation for hosts without these views.
 
 ## Read the transcript
 
 - Scroll with the mouse wheel or PageUp / PageDown without moving the composer.
 - Click or drag the right-side scrollbar to jump through the conversation.
-- Click a step header to expand that action, or press Ctrl+O for the selected/latest step.
-- Expand edit steps for bounded red/green diffs and actual added/removed line counts.
-- Expand command steps for live output and the final outcome.
+- Click an inline right-pointing chevron to reveal hidden output and the downward
+  chevron to collapse it. Header clicks and Ctrl+O still toggle the selected/latest step.
+- Read inline red/green edit previews and actual added/removed line counts;
+  expand an edit to see the rest of its bounded preview.
+- Read the first three command-output lines inline; expand for remaining captured output.
 
-Thinking and reasoning steps show status and timing, not private reasoning text.
-Normal assistant commentary and answers remain visible.
+When the transcript overflows, a thin dark-grey rail occupies the terminal's
+far-right column, above the composer. Its lighter-grey thumb grows with the visible
+fraction of the conversation and moves between the top and bottom as you scroll.
+The track disappears when all content fits. It uses a right-aligned narrow Unicode
+stroke rather than full-cell background blocks, with a `|` fallback on ASCII terminals.
+Painting immediately resets the cursor at the edge to prevent wrapping onto the next
+row. The terminal font determines the stroke shape; rounded native scrollbar corners
+and arrow buttons belong to the terminal host, not Codai. Click or drag the track, use the mouse
+wheel, or press PageUp / PageDown; the composer and footer stay in place.
+
+Thought timings, public assistant progress, tool calls, results, and final answers
+appear in chronological, unframed rows. Starting a tool or assistant message closes
+the preceding thinking segment with a muted **Thought for…** duration. Completed
+tools and earlier public progress remain visible after the answer finishes.
+Tool headers use `Name(arguments)` labels, such as `Bash(python --version)` or
+`Write(game.py)`. These are display labels; registered tool names are unchanged.
+Successful tools have dots in the active theme accent; failed or stopped tools have red dots and explicit
+outcomes. A recoverable tool failure does not mark the preceding thought as failed.
+File edits show a count summary and up to eight preview lines. Hunk metadata supplies
+actual old/new line numbers when available; lines without positions are not numbered.
+Removed and added rows have red and green backgrounds. Longer output shows a
+white disclosure chevron and remaining-line count instead of a
+keyboard hint. Click that row to expand; a downward chevron beneath the expanded
+output collapses it. ASCII terminals use `>` and `v`. Tool-header clicks and Ctrl+O
+remain available. Expanding one tool does not hide other tools or public messages.
+These are observable actions and public progress, not internal model chain-of-thought.
+Thought rows contain timing only and are not expandable: the current provider
+stream exposes reasoning status, not reasoning text. No private reasoning is invented.
+Running activity headers and individual actions show only animated dots instead
+of their static status dot. Labels use a solid theme accent rather than a moving
+text highlight; phase labels have a trailing ellipsis. Muted metrics put elapsed
+time first. On terminals at least 64 columns wide, model requests show output tokens
+from the start, including zero while waiting. Live text uses a four-characters-per-token
+estimate marked `~`; reported provider usage replaces it without that marker.
+Live metrics omit reasoning duration, for example `(15s · ↓ 2.1k tokens · esc interrupt)`.
+At least 96 columns also show reported input tokens with an up arrow. ASCII terminals
+use `in` and `out` instead of arrows. Narrower terminals omit token metrics.
+Each chat, foreground compaction, and delegated model request tracks its own usage,
+including summary text that is not printed. Nested requests restore their parent's
+counts when finished, and tool boundaries do not reset an enclosing model request.
+Background compaction remains silent while its reported usage contributes to session
+totals. Estimates do not count hidden reasoning or pretend to be billing usage;
+reported counts follow the provider's definition of input and output tokens. Local
+tools and setup work do not claim model tokens. Startup/setup loading follows the same label
+and timer style, without an interrupt hint when no keyboard monitor is available.
+The 3×3 spinner updates every 160 ms in fixed-width slots without
+moving text; static icons return when work finishes, and completed rows do not
+animate. Click and Ctrl+O controls remain available while work runs.
+While an answer streams, a temporary **Responding** row keeps the inline hint live;
+it disappears on successful completion. On narrow terminals, running tools place
+their interrupt hint on a separate row to preserve readable names.
+When output fills the viewport during automatic scrolling, the current
+live header stays visible above that output; browsing earlier history is unchanged.
+Successful actions omit redundant done labels. Normal assistant commentary and
+answers remain visible.
+
+Default prompts ask for short, natural greetings and direct answers, without
+unrelated project summaries or tool calls. Coding workflows apply to coding work;
+project rules are used when relevant, not recited in response to casual messages.
+Responses still come from the selected model, not canned local replies. Model
+behavior, reasoning settings, provider load, and network latency affect response
+length and speed; prompt guidance is not a guarantee of latency or error-free output.
+
+Answers use neutral text and bold white headings. Inline code and paths written in
+backticks use the active theme accent, matching links and updating when the theme changes. Paragraphs flow across
+soft Markdown line breaks; explicit line breaks remain intact. Lists use compact
+spacing. Answer code blocks leave matching unpainted left and right outer margins,
+including space before the scrollbar. They use a padded dark surface, muted line-number gutter,
+and syntax colors from ColorCode.Core. Long source lines wrap with blank continuation
+gutters; very narrow panes hide the gutter to preserve readable source. Unknown
+languages remain readable plain text on the same surface. Source brackets and
+literal `+`/`-` characters are preserved; expandable tool and diff previews retain
+their existing styling.
 
 ANSI interactive terminals use an alternate screen. Exiting restores the previous
 shell screen; saved task history is independent of terminal scrollback.
@@ -47,16 +304,39 @@ You can keep typing while a response runs. Enter queues your draft for the next 
 up to eight requests can wait. Escape interrupts the current request and keeps
 the session open. It does not undo changes already written.
 
-The status row names the active work and shows the interrupt shortcut. Elapsed
-time and streamed output-token counts appear after two seconds; narrow terminals
-hide secondary information first.
+A theme-colored 3×3 dot grid fills and empties one point at a time beside each
+live activity label and its inline cancel/elapsed hint. Each cycle chooses new fill and empty orders from
+row, column, spiral, center-out, and scattered patterns, with randomized direction.
+Emptying does not simply reverse filling. Frames stay stable between animation
+ticks. The grid uses two Braille cells and keeps a fixed two-cell slot so text
+does not jump between frames. Startup and setup loading use the same animation.
+Non-Unicode terminals use filling and emptying ASCII dots. The live hint shows
+elapsed time from the start; narrow widths shorten `esc interrupt` to `esc`.
+No separate loader or action-count summary is displayed.
 
 ## Keyboard reference
+
+On Windows, Ctrl+V and a right-button press in the main conversation paste Unicode
+clipboard text at the cursor. This also works for the pending draft during a
+response. Pasted line endings become newlines, tabs become four spaces, and other
+control characters are removed. A missing or unavailable clipboard leaves the
+draft unchanged.
+
+Codai enables bracketed paste in interactive ANSI terminals. When the terminal
+forwards a framed paste, the entire payload is inserted literally rather than
+interpreting embedded newlines as Enter or embedded controls as shortcuts. Press
+Enter separately to send. Large pastes are not truncated by the typed-draft limit.
+Terminal settings may intercept Ctrl+V or right-click; use the host's paste binding
+on non-Windows systems. Preserving multiline paste requires bracketed-paste framing
+or Codai's Windows clipboard handling; unframed simulated keystrokes retain normal
+Enter behavior. Terminal-specific shortcut and context-menu behavior is not
+overridden.
 
 | Key | Action |
 | --- | --- |
 | Enter | Send, run the selected command, or queue input during a response |
 | Alt+Enter / Shift+Enter | Insert a newline when supported by the terminal |
+| Ctrl+V / right-click | Paste at the cursor on Windows, or through the terminal's paste binding |
 | Up / Down | Browse history, move between input lines, or select a completion |
 | Home / End | Move to the start/end of the current line |
 | Ctrl+Home / Ctrl+End | Move to the start/end of the request |
@@ -68,39 +348,159 @@ hide secondary information first.
 | PageUp / PageDown | Scroll the transcript |
 | Ctrl+O | Toggle the last selected step, or the latest step |
 | Escape | Interrupt a response, dismiss completion, or decline confirmation |
-| Ctrl+M / Ctrl+P / F1 | Open or close settings |
+| Ctrl+M / Ctrl+P / F1 | Open or close the command palette |
 | Ctrl+D | Exit when the draft is empty |
 | Ctrl+C | Cancel the CLI |
 
 <Callout type="info">
-  Some terminals send Ctrl+M as Enter. Use Ctrl+P or F1 to open settings there.
+  Some terminals send Ctrl+M as Enter. Use Ctrl+P or F1 to open commands there.
   Mode and approval shortcuts are disabled while answering a confirmation.
 </Callout>
 
-## Settings
+## Menus
+
+Settings use a wide layout with a theme-accented **Settings** heading,
+without a top separator or Status / Config / Usage / Stats tab strip.
+The heading and selection accent use the active terminal theme, matching chat.
+Search uses the same neutral dark band across settings, commands, and submenus:
+full menu width, muted text, two spaces of left inset, no border, and no search
+icon. The field occupies one terminal row at every viewport height, without
+shaded padding rows above or below. Compact label/value rows
+use an accent chevron, an overflow count when needed, and a footer immediately
+below the results rather than at the bottom of the terminal. Selection menus
+show only **Enter to confirm** and **Esc to cancel**, or **Esc to close** for
+multi-select managers. Menus and submenus do not add toggle or other auxiliary
+footer lines; saved-change notices appear outside the menu.
+
+Tab / Shift+Tab or Left / Right switches settings views. Config supports
+Enter / Space to edit, `/` to focus search, and Escape to close. Status shows
+runtime policy; Usage shows configured budget limits, not provider account usage;
+Stats shows available and unavailable tool counts. These three views are read-only.
+The main conversation has no persistent navigation tabs.
+
+`/settings` opens configuration fields;
+known live values and edits saved during this workflow are shown, unavailable
+values show **Edit...**, and credentials remain hidden. Changes still require Save
+and restart; environment variables and flags can override saved values.
+
+Single-selection submenus, including model, agent, theme, MCP, configuration,
+and runtime views, share a title, the same padded search band, compact numbered
+rows, inline descriptions or values, and a footer below the results. Search text
+and background stay neutral across themes. Unicode and ASCII terminals use the
+same borderless, icon-free search layout with stable text padding and cursor alignment.
+Multi-select managers use this search field too. The typing cursor stays aligned
+with the text, and the compact field leaves more room for results.
+Only the selected row's arrow, number,
+label, and current-choice checkmark use the active theme accent; other rows use
+default text color. There is no fixed green current-choice color, filled selection
+bar, or separate group heading. Typing filters the list; group metadata remains
+searchable. Name-only lists stay dense. Footers wrap on narrow terminals. Questions and
+forms use the same wide alignment; long fields scroll with the cursor and
+credentials remain masked. Tool approvals show the exact bounded command, path,
+or patch preview in a rounded frame above numbered choices, with theme-colored
+selected text and the same confirmation footer. Yes comes first, No second, and
+remembered approval third. PageUp / PageDown scroll long previews
+without changing the selected decision. Small terminals retain the preview and
+all three decisions; non-Unicode terminals use ASCII borders and markers.
+File-write approvals include the target path and proposed contents rather than
+only a path. Empty writes are marked explicitly; contents over 60,000 characters
+have a truncation notice. This preview does not read or compare the existing file.
+Remembered approval applies only to
+the named tool for this session; Escape refuses.
+
+Ticks identify the active model, agent, and theme, enabled saved MCP/plugin
+entries, and configuration fields whose values are known to the host. Moving
+the selection does not move the tick. Unknown values and masked credentials do
+not imply a configured state. Theme ticks change only after a successful save;
+integration ticks describe saved availability, not live connection health.
+
+Yes/no confirmations use a focused modal with **No** selected by default. Arrows
+choose and Enter submits; Escape declines. Questions from `ask_question` present
+the supplied choices plus **Write another answer**, or a text editor when no
+choices were supplied. Draft input is preserved while the dialog owns keyboard
+input; cancelling a question does not invent an answer or grant write permission.
+The model is instructed to use `ask_question` for blocking clarification when that
+tool is available. Ordinary conversational questions in prose are not parsed into
+dialogs. Non-ANSI interactive terminals keep line-input prompts; noninteractive
+confirmations decline by default.
+
+Ctrl+P opens **Settings**, an action palette containing the actions
+below. Categories remain searchable; settings views do not add main-screen navigation. Search matches
+names, descriptions, categories, and underlying command names; navigation skips nonmatching rows.
+Other slash commands such as `/init` remain available in the composer but are not
+settings entries. **New** invokes `/new`, retaining its confirmation and saved-history behavior.
+New-conversation and branch confirmations list **1. Continue**, then
+**2. Keep current conversation**. Continue is initially selected; Enter saves the
+current history before switching. Select the second option or press Escape to
+return without switching.
 
 Search the palette, select with arrows, and press Enter. Escape closes it without
-discarding the draft. Actions chosen during a response wait until it finishes.
+discarding the draft. Session commands chosen during a response wait until it
+finishes; Docs opens the browser immediately without a model request.
+Home and End select the first or last match; PageUp and PageDown move six choices.
+Menus show the current position when not all matches fit. Questions wrap longer
+choices, and small approval dialogs keep all three decisions visible.
 
-| Action | Behavior |
-| --- | --- |
-| Theme | Choose from ten color themes; apply only after Save |
-| Provider configuration | Save provider fields for next startup |
-| Select model | Change the current mode's session model immediately on Enter |
-| MCP / plugin configuration | Save next-startup integration availability |
-| Skills and workflows | Insert a command without sending it |
-| Conversation / checkpoints | Open saved-session or recovery controls |
+| Group | Action | Behavior |
+| --- | --- | --- |
+| Suggested | Switch session | Continue saved conversation history |
+| Suggested | New | Confirm, archive current history, and start an empty conversation |
+| Suggested | Switch model | Change the current mode's session model |
+| Session | Switch agent | Choose `agent` or read-only `plan` |
+| Session | Compact | Summarize the conversation through `/compact` |
+| Session | Auto-compact | Adjust the context window through `/autocompact` |
+| Session | Skills | Manage enabled skills with checkmarks and Enter toggles |
+| Session | View diff | Browse working-tree and staged changes |
+| Customization | Switch theme | Choose a terminal theme; apply only after Save |
+| Customization | Plugins | Manage configured plugin availability or remove entries; restart to apply |
+| Customization | MCPs | Toggle saved MCP availability; restart to apply |
+| Customization | Auth | Authenticate and save a provider connection for next startup |
+| System | Help | Show the slash-command reference |
+| System | Docs | Open published documentation in the default browser and print its URL |
+| System | Exit | Leave Codai |
+
+The Auto-compact window panel shows the current model, saved selection, and any
+model cap. Left/Right adjusts the token window; Enter saves and applies, while
+Escape cancels without changing configuration. Auto uses the active model's
+window. Explicit choices range from 32k to 2m tokens; a custom value already saved
+in configuration also appears. `/autocompact 800k`, `/autocompact 1m`, or
+`/autocompact auto` applies a value directly. See [Context](/usage/context).
+
+Docs retains the URL in the conversation even if no browser can be launched.
+Terminal hosts can supply the optional `SpectreUserInterface` constructor's
+`openBrowser` callback to customize this action; other session commands continue
+through the normal runtime.
 
 See [Configuration](/customization/configuration) for Save / Cancel behavior and
 [Choose a model](/providers/models) for session-only versus saved selections.
 
 ## Usage display
 
-The footer shows the selected model, current mode, and approval state.
-The context bar uses the latest reported request's input and output tokens against
-the built-in model estimate; unknown models use 128,000 tokens.
-Parenthesized tokens and API cost are session totals, updated after responses.
-Narrow terminals shorten model labels and hide the bar.
+One status line sits below the input with one unpainted blank row between the
+input surface and footer. The footer uses a restrained dark strip. Approval and
+mode labels appear at the left in white, with muted shortcut hints and a subtle
+separator: `auto-approval (shift-tab) · agent (tab)` or their current manual/Plan
+equivalents. ASCII terminals use a hyphen separator. Muted usage and cost sit at
+the right, followed by the current model in the same muted color.
+The workspace address is not displayed. The model is shown from startup and
+follows subsequent model/usage updates. Tab switches Agent/Plan, Shift+Tab switches
+approval, and Ctrl+P still opens settings. Usage appears as
+`19.0K (2%) · $0.01`: session tokens, context percentage, and estimated API cost.
+Counts below 1,000 are shown directly; larger counts use one decimal with `K` or
+`M`. The context percentage uses the latest reported request's input and output tokens against
+the built-in model estimate, clamped to 0-100%; unknown models use 128,000 tokens.
+Token counts and API cost are session totals, updated after responses.
+Interactive terminal sessions default to **Agent** and **Auto approval**; explicit
+mode/approval options remain respected. **Shift+Tab** switches
+to manual review, and `--auto-approve false` starts there explicitly. Automatic
+approval skips individual write/command confirmations, not mode or tool restrictions.
+Narrow terminals use compact shortcut labels, then state-only labels (`auto`/`man`
+and `agent`/`plan`), and clip the model name without adding rows. They omit
+session token totals and, on very small widths, context percentage to keep cost
+and current states visible. Model names
+use at most forty cells and no more than one third of the available footer width.
+Non-Unicode terminals use a
+hyphen instead of the middle dot.
 
 Account-plan connections display a plan indicator instead of estimated API dollars.
 Read [Usage and pricing](/providers/pricing) before treating totals as a spending limit.

@@ -111,6 +111,7 @@ public sealed class CodeSession
     {
         var context = ProjectContext.Empty;
         ProjectGuidance? guidance = null;
+        string[]? skillNames = null;
 
         if (_options.ResumePreviousSession)
         {
@@ -129,6 +130,9 @@ public sealed class CodeSession
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            skillNames = (await _guidanceLoader.LoadCommandSkillsAsync(cancellationToken).ConfigureAwait(false))
+                .Select(skill => skill.Name).ToArray();
+            _ui.SetSkills(skillNames);
             var userInput = await ReadInputAsync(cancellationToken).ConfigureAwait(false);
 
             // End of input (Ctrl+D, closed stdin) ends the session.
@@ -152,9 +156,56 @@ public sealed class CodeSession
                 {
                     var arguments = SlashCommandParser.Arguments(userInput);
 
-                    if (command == SlashCommand.Session)
+                    if (command is SlashCommand.Session or SlashCommand.New or SlashCommand.Sessions)
                     {
-                        await ManageSessionAsync(arguments, cancellationToken).ConfigureAwait(false);
+                        await ManageSessionAsync(command switch
+                        {
+                            SlashCommand.New => "new",
+                            SlashCommand.Sessions => "history",
+                            _ => arguments,
+                        }, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    if (command is SlashCommand.Init or SlashCommand.Review)
+                    {
+                        var previousMode = _mode.Mode;
+                        try
+                        {
+                            if (command == SlashCommand.Review)
+                            {
+                                _mode.Mode = AgentMode.Plan;
+                            }
+                            guidance ??= await _guidanceLoader.LoadAsync(cancellationToken).ConfigureAwait(false);
+                            var commandRequest = command == SlashCommand.Init
+                                ? "Create or improve the repository's AGENTS.md. First inspect existing guidance, project manifests, " +
+                                  "README, build/test scripts and CI. Preserve useful existing instructions. Record only verified, " +
+                                  "repository-specific commands, architecture constraints and non-obvious pitfalls; keep it concise. " +
+                                  "Use normal file-write approval and do not modify unrelated files. User focus:\n" + arguments
+                                : "Review code changes without modifying any files. Target: " +
+                                  (string.IsNullOrWhiteSpace(arguments) ? "all uncommitted changes (staged, unstaged, and untracked)" : arguments) +
+                                  ". Determine whether the target is a commit, comparison branch, or pull request. " +
+                                  "Use git_diff with source working and staged for uncommitted changes, source commit or branch " +
+                                  "and a target ref for explicit Git targets. Use git_status and read_file to inspect untracked files. " +
+                                  "PR access requires an available read-only integration; report unavailable access rather than inventing a diff. " +
+                                  "Inspect the corresponding Git diff (or PR metadata and diff) and surrounding source, tests and guidance. " +
+                                  "Report verified bugs and regressions first, ordered by severity, with file/line references and actionable fixes. " +
+                                  "If no issues are found, say so and identify remaining test gaps. Do not execute mutating commands.";
+                            if (await HandleRequestAsync(context, commandRequest, guidance, null, cancellationToken).ConfigureAwait(false)
+                                == AgentTaskStatus.Cancelled && cancellationToken.IsCancellationRequested)
+                            {
+                                break;
+                            }
+                        }
+                        finally
+                        {
+                            _mode.Mode = previousMode;
+                            if (command == SlashCommand.Init)
+                            {
+                                guidance = null;
+                            }
+                        }
+                        await PersistAsync(cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
@@ -216,6 +267,11 @@ public sealed class CodeSession
                     if (await _commands.HandleAsync(command, arguments, cancellationToken).ConfigureAwait(false))
                     {
                         break;
+                    }
+                    if (command == SlashCommand.Skills)
+                    {
+                        guidance = null;
+                        skillNames = null;
                     }
 
                     await PersistAsync(cancellationToken).ConfigureAwait(false);
@@ -297,8 +353,8 @@ public sealed class CodeSession
         var names = await _userCommands.NamesAsync(cancellationToken).ConfigureAwait(false);
 
         var hint = names.Count > 0
-            ? $" Type :help for the session commands, or use one of the project commands: {string.Join(", ", names)}."
-            : " Type :help for the session commands.";
+            ? $" Type /help for the session commands, or use one of the project commands: {string.Join(", ", names)}."
+            : " Type /help for the session commands.";
 
         _ui.WriteError($"Unknown command '{userInput}'.{hint}");
     }
@@ -469,8 +525,8 @@ public sealed class CodeSession
             {
                 var confirmation = await _ui.ChooseAsync("Codai / " + (operation == "new" ? "Start an empty conversation?" : "Branch this conversation?"),
                 [
-                    new("Keep current conversation", "Return without switching", "cancel"),
                     new("Continue", "Save the current conversation before switching", "confirm"),
+                    new("Keep current conversation", "Return without switching", "cancel"),
                 ], cancellationToken).ConfigureAwait(false);
                 if (confirmation != "confirm")
                 {
@@ -485,7 +541,7 @@ public sealed class CodeSession
                 _conversationTaskId = branch.Id;
                 if (operation == "new")
                 {
-                    _history.Clear();
+                    await _commands.HandleAsync(SlashCommand.ClearHistory, cancellationToken: cancellationToken).ConfigureAwait(false);
                     _budget.BeginTask();
                     await _commands.HandleAsync(SlashCommand.ClearToken, cancellationToken: cancellationToken).ConfigureAwait(false);
                     _ui.Clear();

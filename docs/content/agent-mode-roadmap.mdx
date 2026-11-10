@@ -1,215 +1,134 @@
 ---
-title: "Agent Mode Roadmap"
-description: "Delivery priorities, implemented foundations, and remaining work for Codai's terminal-first agent."
+title: "VS Code Extension Roadmap"
+description: "Planned delivery of Codai as a VS Code extension with contextual coding, controlled agent workflows, and integrated tools."
 ---
 
 import { Callout } from "nextra/components";
 
-# Agent mode roadmap
+# VS Code extension roadmap
 
-This roadmap prioritizes reliable coding workflows. Codai remains terminal-first
-and host-neutral. Use the guides for current behavior; this page tracks the broader
-delivery scope and acceptance criteria.
+Codai's next product direction is a native VS Code extension: one place to discuss
+changes, plan work, edit code, run tools, and review results inside the editor.
+The extension will reuse Codai's host-neutral runtime and existing provider, skill,
+MCP, permission, and task capabilities rather than maintain a separate agent engine.
 
 <Callout type="info">
-  Some slices below have shipped while broader work remains planned.
-  A roadmap item is not a promise that every listed criterion is implemented.
+	This page contains planned extension work only. It does not announce a released
+	extension or imply that the editor features below are available today. Current
+	capabilities remain documented in their individual guides. Phases indicate
+	delivery order, not release dates.
 </Callout>
 
-## Current foundations
+## Phase 1: Extension Foundation
 
-| Available today | Guide | Remaining boundary |
-| --- | --- | --- |
-| Plan / Agent, explicit Act, interactive deep planning | [Modes](/agent-mode) | Further planning and validation hardening |
-| Per-mode model selections | [Models](/providers/models) | Provider transport compatibility still applies |
-| Saved tasks and text checkpoints | [Recovery](/usage/sessions) | Not a complete shadow-Git or binary snapshot store |
-| Read-only background specialists and teams | [Delegation](/usage/context) | No write-capable teammate mode |
-| MCP and plugin configuration management | [MCP](/mcp), [Plugins](/plugins) | No package marketplace or live configuration reload |
-| Optional JSON-lines editor adapter | [ACP](/acp-compatibility) | Not full ACP |
+- Add a Codai Activity Bar entry, sidebar conversation view, command palette actions,
+	and status indicators that respect VS Code themes, keyboard navigation, and accessibility.
+- Connect the extension to the shared runtime with versioned messages, streamed
+	responses, progress events, questions, tool approvals, cancellation, and clean shutdown.
+- Provide provider onboarding, model selection, connection checks, and credentials
+	stored through VS Code SecretStorage rather than committed workspace settings.
+- Support explicit Plan and Agent controls, separate model profiles, and a reviewed
+	transition from a plan to execution.
+- Respect Workspace Trust before reading project guidance or starting external tools;
+	keep workspace trust, connection approval, and tool-call approval separate.
 
-## Phase 1: Core Reliability
+**Acceptance:** A user can connect a provider, start a task in the sidebar, inspect
+its plan, approve an action, receive streamed results, and cancel without leaving
+or blocking the editor. Reloading the window does not silently grant consent.
 
-Phase 1 makes Agent mode safe for long-running, multi-step development tasks.
+## Phase 2: Contextual Coding And Review
 
-### 1. Shadow Git checkpoints
+- Attach selections, open files, folders, diagnostics, terminal output, and Git diffs
+	through editor actions and searchable context mentions.
+- Read unsaved editor buffers accurately, bound attached context, respect exclusions,
+	and isolate settings and permissions across multi-root workspaces.
+- Add explain, review, refactor, fix-diagnostic, and generate-test actions near selected
+	code and in editor context menus.
+- Let the agent search, create, edit, rename, and delete workspace files through
+	controlled tools, with native diff previews and file/hunk accept or reject actions.
+- Detect edits made during a task, preserve unsaved user changes, and require fresh
+	review when a proposed edit no longer matches the current document.
+- Turn diagnostics and focused test results into a bounded edit-and-validate workflow.
 
-Replace the current text snapshot implementation with a repository-local shadow Git store.
+**Acceptance:** A task can use real editor context, propose a multi-file change,
+apply only approved edits, and report validation. User changes are never overwritten
+silently, and Plan mode cannot mutate files or launch commands.
 
-Scope:
+## Phase 3: Integrated Agent Tools
 
-- Create an isolated checkpoint repository under Codai state, never the user's `.git` directory.
-- Capture a checkpoint after every state-changing tool call.
-- Include tracked, untracked, ignored, created, deleted, and binary files.
-- Store checkpoint metadata: task ID, tool name, description, timestamp, and parent checkpoint.
-- Add compare and changed-file reporting.
-- Restore files without changing conversation history.
-- Support `files-only`, `task-only`, and `files-and-task` restore modes. Task metadata is
-	captured when available; older checkpoints remain files-only.
-- Keep checkpoint storage bounded with configurable retention.
+- Run approved commands in integrated terminals with streamed output, background
+	process visibility, cancellation, and ownership-aware process cleanup.
+- Add isolated browser automation for approved web workflows: navigation, screenshots,
+	page interaction, and console/network evidence for debugging and verification.
+- Support image and screenshot attachments for compatible models, with clear
+	capability checks and control over data sent outside the workspace.
+- Provide MCP server management for stdio and HTTP, source inspection, connection
+	review, authentication, tool/resource/prompt browsing, and connection-health reporting.
+- Add controlled MCP reconnect and configuration refresh without restarting VS Code;
+	changed server definitions must invalidate prior approval.
+- Surface per-action approval, optional scoped auto-approval, timeouts, and tool budgets
+	consistently for file, terminal, browser, and external tools.
 
-Acceptance criteria:
+**Acceptance:** Tool activity and results are visible in the conversation, risky
+actions require the configured consent, cancellation reaches owned processes, and
+external tools cannot bypass mode or workspace permissions.
 
-- Restoring a checkpoint reproduces the complete workspace state, including deletions and binary files.
-- The user's actual Git history and index remain untouched.
-- A failed or cancelled task retains its last restorable checkpoint.
-- Restore operations require explicit confirmation and are covered by offline tests.
+## Phase 4: Skills And Workspace Customization
 
-### 2. Resume any saved task
+- Manage global, project, and additional skill roots in an editor-native view with
+	source labels, descriptions, search, and automatic-activation controls.
+- Keep manual skill commands separate from automatic checks, expose invocation/path
+	metadata, and refresh discovered skills when relevant workspace context changes.
+- Bring project instructions, conditional rules, memory, reusable commands, and
+	`.codai.json` runtime and discovery settings into an editor-native configuration experience.
+- Offer user/workspace provider profiles, per-mode models, and explicit effective-value
+	inspection without exposing credentials or silently changing active connections.
+- Integrate trusted hooks and extensions through the shared runtime while keeping
+	project-supplied code and external services behind explicit trust boundaries.
 
-Extend task persistence beyond `--continue`, which currently targets the latest session.
+**Acceptance:** A user can inspect why guidance or a tool is active, configure its
+scope, and apply changes predictably. Manual invocation never changes automatic
+skill selection or grants tool permissions.
 
-Scope:
+## Phase 5: Long-Running Tasks And Recovery
 
-- Add task IDs to the CLI entry point, for example `codai code --task <id>`.
-- Add `:task list`, `:task show <id>`, and `:task resume <id>` behavior for interactive sessions.
-- Restore task conversation and mode interactively; proposal, token, and checkpoint metadata
-	remain stored but are not independently reconstructed by the command.
-- Reject stale, missing, consumed, or incompatible task state with a clear diagnostic.
-- Preserve the current workspace; restoration remains an explicit separate action.
+- Add task history, search, resume, task switching, and versioned export/import from
+	the sidebar without mixing conversations or workspace roots.
+- Expose task steps, context usage, compaction, token/cost estimates, and configurable
+	budgets with pause, cancel, retry, and follow-up controls.
+- Provide checkpoint timelines, changed-file comparisons, and explicit restoration
+	with clear handling of binary files, deletions, and concurrent user changes.
+- Surface bounded background specialists and teams with progress, results, separate
+	budgets, and read-only delegation by default.
+- Recover from editor reloads, provider failures, and interrupted tool calls without
+	repeating completed mutations or automatically widening consent.
 
-Acceptance criteria:
+**Acceptance:** An interrupted task is inspectable and resumable. Restoration is
+separate from conversation resume, requires confirmation, and leaves the user's
+Git history and index untouched.
 
-- A task can be resumed after process restart by ID.
-- Resuming a Plan task preserves its proposal and allows a later explicit Act transition.
-- Resuming never silently changes files or grants write/shell consent.
-- JSON output exposes stable task status and IDs.
+## Phase 6: Distribution And Release Quality
 
-### 3. Deep planning
+- Publish a versioned VSIX and VS Code Marketplace listing with install/update guidance,
+	runtime compatibility checks, release notes, and an offline installation path.
+- Validate Windows, macOS, and Linux, multi-root workspaces, and remote development
+	environments, including SSH, WSL, and Dev Containers.
+- Test extension/runtime communication, webview security, credentials, approvals,
+	editor-buffer conflicts, process lifecycle, and reconnect/recovery behavior.
+- Ship keyboard-accessible, theme-aware views and diagnostics that omit secrets.
+	Keep telemetry optional and document what leaves the machine.
+- Document editor workflows and settings alongside each delivered feature; label
+	unsupported environments and capabilities rather than implying support.
 
-The interactive `:deep-plan` entry point is available. The broader planning
-workflow continues to target stronger structure, persistence, and validation.
+**Acceptance:** The extension installs and updates predictably, passes the shared
+runtime and editor integration gates, and publishes an accurate supported-feature
+and environment matrix.
 
-Scope:
+## Release Criteria
 
-- Keep the `:deep-plan` command; a dedicated matching CLI option remains future work.
-- Keep planning read-only: no write tools, shell tools, hooks, or prose diff application.
-- Produce a bounded plan containing goal, assumptions, affected files, steps, risks, and validation commands.
-- Persist the plan as task state and optionally as `implementation_plan.md` after explicit approval.
-- Let `:act` execute only the matching, non-stale plan.
-
-Acceptance criteria:
-
-- Planning cannot modify project files.
-- The resulting plan is inspectable, resumable, and linked to its source task.
-- Act rejects plans whose referenced task or workspace state is stale.
-
-### 4. Separate models for Plan and Agent modes
-
-Mode-specific provider/model configuration is available. Keep compatibility
-and credential handling explicit as this workflow evolves.
-
-Scope:
-
-- Add `plan_provider`, `plan_model`, `agent_provider`, and `agent_model` configuration.
-- Keep current provider/model as fallback when mode-specific values are absent.
-- Report the active model in CLI and JSON progress output.
-- Do not allow a mode transition to silently change provider credentials.
-
-Acceptance criteria:
-
-- Plan and Agent requests use their configured model independently.
-- Existing configurations behave exactly as before when new settings are absent.
-- Mode/model selection is covered by parser, configuration, and composed session tests.
-
-## Phase 2: Workflow And Integration
-
-Phase 2 improves collaboration, extensibility, and external-host integration after Phase 1 is reliable.
-
-### 1. Checkpoint and task workflow polish
-
-- Add checkpoint compare output and changed-file summaries.
-- Add task history search and filtering. (Implemented: `:task history [query]`.)
-- Add task export/import with schema versioning. (Implemented: `:task export <task-id> <path>` and
-	`:task import <path>` export and restore task metadata only; imports never load conversation or
-	modify workspace files.)
-- Add retention cleanup and storage diagnostics. (Implemented: `:task storage` and
-	`:task diagnostics` report retained checkpoint count and byte size without checkpoint
-	contents or secrets.)
-- Add clear progress events for capture, compare, restore, and resume. (Implemented:
-	structured start/completion/failure events are emitted through `IAgentProgressSink`.)
-
-### 2. Agent teams
-
-Add optional multi-agent coordination for large tasks.
-
-Scope:
-
-- Coordinator, specialist tasks, and a bounded persisted message mailbox. (Implemented vertical
-	slice: `:team start`, `:team list`, and `:team message`.)
-- Separate context and budgets for each teammate. (Implemented through the existing
-	`ISubAgent`/`SubAgentRunner` boundary: every specialist gets its own model loop, read-only
-	tool set, governor, and token accounting.)
-- Read-only delegation by default; writes stay with the coordinator unless explicitly enabled.
-	(Implemented; this slice has no write-capable teammate mode.)
-- Cancellation, failure propagation, and deterministic shutdown. (Implemented through
-	`:team cancel`, bounded fan-out, specialist result aggregation, and awaited cancellation.)
-- Shared task board is implemented: persisted bounded items support `pending`, `in-progress`,
-	`completed`, and `failed` states, optional specialist assignment, and coordinator `:team add`,
-	`:team list`, and `:team complete` commands. `:team start <coordinator> | <plan> ||
-	<description> | <prompt>` accepts an optional host-provided plan; it is persisted as
-	coordinator context and never triggers an extra model call.
-	Model-driven planning remains future work.
-
-Acceptance criteria:
-
-- Team state survives process restart when the host enables the durable state store; exact
-	specialist background-task IDs and mailbox messages are persisted under `.codai/tasks/teams`.
-- A teammate cannot escape its assigned tools, workspace, or budget; existing sub-agent tests
-	continue to enforce the read-only filter and no nesting.
-- Partial failure leaves the coordinator with specialist states, reports, and bounded mailbox
-	messages.
-
-### 3. MCP and plugin management
-
-- Add inspection, enable/disable, install, remove, and reload operations. (Implemented for
-	the current configuration surface: `codai config plugins`, `codai config mcp`, and
-	`codai config mcp|plugin enable|disable|remove <name-or-path>`. Mutations update only an
-	existing Codai config document through atomic file persistence. Plugin remove removes the
-	configuration entry, never the binary; package installation and binary deletion are not
-	part of Codai's configuration model.)
-- Keep external tool startup lazy for offline inspection. (Implemented: inspection reads
-	manifests and paths only; it never loads plugin assemblies or starts MCP processes.)
-- Apply the same mode, consent, budget, and disabled-tool policy to external tools.
-	(Implemented at composition and execution boundaries; MCP tools enter the ordinary tool
-	registry and plugin paths are filtered before registration.)
-- Report plugin and MCP provenance in configuration inspection. (Implemented for configured
-	paths and project `.codai/plugins` discovery.)
-- Live reload remains a host operation: the current DI composition is immutable after session
-	startup, so inspection does not claim that changing configuration mutates active tools.
-
-- Full ACP/protocol parity remains out of scope. The compatibility adapter still does not
-	implement JSON-RPC request IDs, capability negotiation, authentication, binary/image
-	content, separate ACP terminal resources, or provider/model mutation inside an existing
-	session. Create a new session after changing provider/model or external-tool configuration.
-
-### 4. ACP host integration
-
-Implemented as an optional host-neutral compatibility adapter: start `codai --acp` and
-send one JSON object per line over stdin. One JSON object is emitted per line on stdout.
-The adapter reuses `ICodaiSession`, `SessionOptions`, `IUserInterface`,
-`IAgentProgressSink`, the existing configuration loader, and durable session/task stores.
-
-Supported compatibility messages:
-
-- `initialize` -> `initialized`.
-- `new_session` with `cwd`, optional `provider`, `model`, `mode`, `resume`, `taskId`, and
-	`dataDirectory` -> `session_created`.
-- `prompt`, `set_mode`, `cancel`, and `permission_response`.
-- `permission_request`, `progress`, `text`, `error`, and completion events.
-
-This is deliberately named `codai-acp-compat`, not full ACP. Unsupported parts are
-JSON-RPC request IDs, capability negotiation, authentication, binary/image content,
-terminal streaming as a separate ACP resource, and provider/model mutation inside an
-existing session. Create a new session to select a different provider or model. The
-normal CLI path and `--json` one-shot output are unchanged.
-
-## Explicit Non-Goals
-
-Do not prioritize voice input, desktop settings, marketplace UI, billing, email/connectors, or scheduling until the terminal and SDK workflows are stable. These features add product surface but do not materially improve Codai's core agent safety.
-
-## Delivery Rules
-
-- Each feature gets focused unit tests and at least one composed CLI/session test.
-- Read-only modes remain fail-closed at advertisement, execution, and prose-change boundaries.
-- New persistent data is versioned and isolated from user source control.
-- Every phase ends with a zero-warning build and the full offline test suite.
+- Every feature includes focused tests plus an editor/runtime integration check.
+- Read-only modes and approval boundaries remain fail-closed at execution time.
+- Persistent task data is versioned; secrets stay outside source-controlled settings.
+- Runtime builds remain warning-free, and extension type checks, tests, packaging,
+	and documentation validation pass before release.
+- No extension capability is marked available until implemented and verified.

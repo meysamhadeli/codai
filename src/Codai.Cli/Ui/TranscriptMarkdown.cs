@@ -30,8 +30,8 @@ public static class TranscriptMarkdown
         {
             var line = lines[index];
             var prefix = numbered ? (index + 1).ToString(CultureInfo.InvariantCulture).PadLeft(digits) + "  " : "  ";
-            var style = line.StartsWith('+') ? $"{accent} on grey11"
-                : line.StartsWith('-') ? $"dim {accent} on grey11" : "silver on grey11";
+            var style = line.StartsWith('+') ? "#9be9a8 on #102819"
+                : line.StartsWith('-') ? "#ff9d9d on #30191b" : "silver on grey11";
             var display = prefix + line;
             if (width is { } columns)
             {
@@ -42,7 +42,7 @@ public static class TranscriptMarkdown
         return new Rows(rows);
     }
 
-    private static IEnumerable<IRenderable> Blocks(ContainerBlock container, string accent)
+    private static IEnumerable<IRenderable> Blocks(ContainerBlock container, string accent, bool compact = false)
     {
         foreach (var block in container)
         {
@@ -66,11 +66,12 @@ public static class TranscriptMarkdown
                     yield return display;
                     break;
                 case HeadingBlock heading:
-                    yield return new Markup($"[bold {accent}]" + Inline(heading.Inline, accent) + "[/]");
+                    yield return new Markup("[bold white]" + Inline(heading.Inline, accent) + "[/]");
                     yield return new Text(" ");
                     break;
                 case CodeBlock code:
-                    yield return Code(code.Lines.ToString(), code is FencedCodeBlock fenced ? fenced.Info ?? string.Empty : string.Empty, accent: accent);
+                    yield return new Padder(new SyntaxCodeBlock(code.Lines.ToString(),
+                        code is FencedCodeBlock fenced ? fenced.Info ?? string.Empty : string.Empty), new Padding(0, 0, 2, 0));
                     yield return new Text(" ");
                     break;
                 case ListBlock list:
@@ -78,18 +79,25 @@ public static class TranscriptMarkdown
                     foreach (var item in list.OfType<ListItemBlock>())
                     {
                         var label = list.IsOrdered ? (itemNumber++).ToString(CultureInfo.InvariantCulture) + ". " : "- ";
-                        var itemRows = Blocks(item, accent).ToArray();
+                        var itemRows = Blocks(item, accent, compact: true).ToArray();
                         var grid = new Grid().AddColumn(new GridColumn().Width(label.Length)).AddColumn();
-                        grid.AddRow(new Text(label, Style.Parse(accent)), new Rows(itemRows));
+                        grid.AddRow(new Text(label, Style.Parse("grey")), new Rows(itemRows));
                         yield return grid;
+                    }
+                    if (!compact)
+                    {
+                        yield return new Text(" ");
                     }
                     break;
                 case QuoteBlock quote:
                     yield return new Padder(new Rows(Blocks(quote, accent)), new Padding(2, 0, 0, 0));
                     break;
                 case ParagraphBlock paragraph:
-                    yield return new Markup(Inline(paragraph.Inline, accent));
-                    yield return new Text(" ");
+                    yield return new Markup("[white]" + Inline(paragraph.Inline, accent) + "[/]");
+                    if (!compact)
+                    {
+                        yield return new Text(" ");
+                    }
                     break;
                 case ThematicBreakBlock:
                     yield return new Rule().RuleStyle("grey");
@@ -123,7 +131,7 @@ public static class TranscriptMarkdown
             EmphasisInline emphasis => "[" + (emphasis.DelimiterCount >= 2 ? "bold" : "italic") + "]" + Inline(emphasis, accent) + "[/]",
             LinkInline link => $"[{accent}]" + Inline(link, accent) + "[/]",
             AutolinkInline link => $"[{accent}]" + Markup.Escape(link.Url) + "[/]",
-            LineBreakInline => "\n",
+            LineBreakInline lineBreak => lineBreak.IsHard ? "\n" : " ",
             HtmlInline html => Markup.Escape(html.Tag),
             ContainerInline nested => Inline(nested, accent),
             _ => Markup.Escape(inline.ToString() ?? string.Empty),

@@ -7,12 +7,18 @@ namespace Codai.Pricing;
 /// </summary>
 public sealed class ModelPricing
 {
+    /// <summary>Published combined input/output window; zero when not reviewed.</summary>
+    [JsonPropertyName("max_context_tokens")]
+    public int MaxContextTokens { get; set; }
+
     [JsonPropertyName("max_tokens")]
     public int MaxTokens { get; set; }
 
+    /// <summary>Independent input ceiling; zero when no separate ceiling was verified.</summary>
     [JsonPropertyName("max_input_tokens")]
     public int MaxInputTokens { get; set; }
 
+    /// <summary>Verified output ceiling; zero when unknown, not unlimited.</summary>
     [JsonPropertyName("max_output_tokens")]
     public int MaxOutputTokens { get; set; }
 

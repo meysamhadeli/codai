@@ -5,17 +5,283 @@ using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Chat;
-using Codai.Core.Tools;
 using Codai.Core.IO;
+using Codai.Core.Tools;
 using Codai.Providers.Accounts;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Spectre.Console;
 
 namespace Codai.Session.Tests;
 
+internal static class TrustedCliInvocation
+{
+    public static Task<int> RunTrustedAsync(this CliApplication application, string[] args, CancellationToken cancellationToken = default)
+    {
+        string[] trustedArgs = args.Length > 0 && args[0] is "code" or "auth" or "config"
+            ? [args[0], "--trust-directory", .. args.Skip(1)]
+            : ["--trust-directory", .. args];
+        return application.RunAsync(trustedArgs, cancellationToken);
+    }
+}
+
 public class CliApplicationTests
 {
+    [Fact]
+    public async Task Interactive_workspace_opens_without_starting_enabled_mcp_servers()
+    {
+        var root = Directory.CreateTempSubdirectory("codai-offline-startup-");
+        try
+        {
+            var project = root.CreateSubdirectory("project");
+            var profile = root.CreateSubdirectory("profile");
+            await File.WriteAllTextAsync(Path.Combine(project.FullName, ".codai.json"), JsonSerializer.Serialize(new
+            {
+                ai_provider_config = new { provider = "ollama", model = "test" },
+                mcp = new
+                {
+                    servers = new[] { new { name = "offline", command = Path.Combine(root.FullName, "missing-mcp-server"), enabled = true } },
+                },
+            }));
+            var ui = new FakeUserInterface();
+            ui.EnqueueChoice("trust");
+            ui.EnqueueInput("/exit");
+            var environment = new TestEnvironment(new Dictionary<string, string?>
+            {
+                [OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME"] = profile.FullName,
+            });
+            var app = new CliApplication(new RecordingConsole(), () => project.FullName, ui,
+                input: new TaskInput(), environment: environment, sessionFactory: provider =>
+                {
+                    provider.GetRequiredService<IToolRegistry>().Should().BeAssignableTo<IAsyncToolRegistry>();
+                    return provider.GetRequiredService<Codai.Application.ICodaiSession>();
+                });
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            (await app.RunAsync(["code", "--no-hooks", "--no-sub-agents"])).Should().Be(0);
+
+            stopwatch.Stop();
+            Console.WriteLine($"Offline interactive workspace bootstrap: {stopwatch.ElapsedMilliseconds} ms.");
+            ui.Dialogs.Should().Contain("Codai / Workspace access");
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(".json", "project", null, null, "purple")]
+    [InlineData(".yaml", "project", null, null, "purple")]
+    [InlineData(".yml", "project", null, null, "purple")]
+    [InlineData(".json", "global", null, null, "purple")]
+    [InlineData(".json", "directory", null, null, "purple")]
+    [InlineData(".json", "file", null, null, "purple")]
+    [InlineData(".json", "project", null, "forest", "green")]
+    [InlineData(".json", "project", "ember", "forest", "yellow")]
+    [InlineData(".json", "malformed", null, null, "deepskyblue1")]
+    [InlineData(".yaml", "malformed", null, null, "deepskyblue1")]
+    [InlineData(".json", "oversized", null, null, "deepskyblue1")]
+    [InlineData(".json", "missing", null, null, "deepskyblue1")]
+    public async Task Directory_trust_uses_saved_theme_without_binding_project_settings(
+        string extension, string source, string? flagTheme, string? environmentTheme, string expectedAccent)
+    {
+        var root = Directory.CreateTempSubdirectory("codai-trust-theme-");
+        try
+        {
+            var project = root.CreateSubdirectory("project");
+            var profile = root.CreateSubdirectory("profile");
+            var configurationDirectory = source switch
+            {
+                "global" => profile.CreateSubdirectory(".codai"),
+                "directory" or "file" => root.CreateSubdirectory("configuration"),
+                _ => project,
+            };
+            var configuration = extension == ".json"
+                ? "{\"theme\":\"violet\",\"ai_provider_config\":{\"provider\":42}}"
+                : "theme: violet\nai_provider_config:\n  provider: 42\n";
+            configuration = source switch
+            {
+                "malformed" => "{ invalid [",
+                "oversized" => configuration + new string(' ', 65536),
+                _ => configuration,
+            };
+            var file = Path.Combine(configurationDirectory.FullName, ".codai" + extension);
+            if (source != "missing")
+            {
+                await File.WriteAllTextAsync(file, configuration);
+            }
+            List<string> args = ["code"];
+            if (source == "directory")
+            {
+                args.AddRange(["--config-dir", configurationDirectory.FullName]);
+            }
+            else if (source == "file")
+            {
+                args.AddRange(["--config", file]);
+            }
+            if (flagTheme is not null)
+            {
+                args.AddRange(["--theme", flagTheme]);
+            }
+            using var writer = new StringWriter();
+            var console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Out = new AnsiConsoleOutput(writer),
+                Ansi = AnsiSupport.Yes,
+                Interactive = InteractionSupport.Yes,
+                ColorSystem = ColorSystemSupport.TrueColor,
+            });
+            console.Profile.Width = 100;
+            console.Profile.Height = 30;
+            console.Write(new Text("> Yes", Style.Parse("bold " + expectedAccent)));
+            var expectedSelection = writer.ToString().Split('>')[0] + "> Yes";
+            writer.GetStringBuilder().Clear();
+            var input = new TrustEscapeInput();
+            using var ui = new SpectreUserInterface(console, input);
+            var session = new RecordingSession();
+            var environment = new TestEnvironment(new Dictionary<string, string?>
+            {
+                [OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME"] = profile.FullName,
+                ["THEME"] = environmentTheme,
+            });
+            var app = new CliApplication(new RecordingConsole(), () => project.FullName, ui, input: input,
+                sessionFactory: _ => session, environment: environment);
+
+            (await app.RunAsync([.. args])).Should().Be(0);
+
+            writer.ToString().Replace("\u001b", "<ESC>", StringComparison.Ordinal).Should()
+                .Contain(expectedSelection.Replace("\u001b", "<ESC>", StringComparison.Ordinal));
+            session.InteractiveCalls.Should().Be(0);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    private sealed class TrustEscapeInput : IConsoleInput
+    {
+        public string? ReadLine() => null;
+
+        public bool TryReadKey(out ConsoleKeyInfo key)
+        {
+            key = new ConsoleKeyInfo('\0', ConsoleKey.Escape, false, false, false);
+            return true;
+        }
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Directory_trust_is_required_for_scripted_runs_even_with_auto_approval(bool redirected, bool json)
+    {
+        var ui = new FakeUserInterface();
+        var output = new RecordingConsole();
+        var session = new RecordingSession();
+        var app = new CliApplication(output, Directory.GetCurrentDirectory, ui,
+            input: new TaskInput { IsRedirected = redirected }, sessionFactory: _ => session);
+        List<string> args = ["task", "--auto-approve", "true"];
+        if (json)
+        {
+            args.Add("--json");
+        }
+        (await app.RunAsync([.. args])).Should().Be(1);
+
+        ui.Dialogs.Should().BeEmpty();
+        session.Requests.Should().BeEmpty();
+        var messages = string.Join('\n', output.Errors.Concat(output.Lines));
+        messages.Should().Contain("--trust-directory");
+    }
+
+    [Fact]
+    public async Task Directory_trust_is_requested_again_on_each_launch_and_scoped_to_cwd()
+    {
+        var root = Directory.CreateTempSubdirectory("codai-trust-launch-");
+        try
+        {
+            var project = root.CreateSubdirectory("project");
+            var ui = new FakeUserInterface();
+            ui.EnqueueChoice("trust");
+            ui.EnqueueChoice(null);
+            var session = new RecordingSession();
+            var app = new CliApplication(new RecordingConsole(), () => root.FullName, ui, input: new TaskInput(),
+                sessionFactory: _ => session, environment: new TestEnvironment(new Dictionary<string, string?>()));
+            string[] args = ["code", "--cwd", "project/../project", "--provider", "ollama", "--no-hooks", "--no-sub-agents"];
+
+            (await app.RunAsync(args)).Should().Be(0);
+            (await app.RunAsync(args)).Should().Be(0);
+
+            session.InteractiveCalls.Should().Be(1);
+            ui.Dialogs.Should().Equal("Codai / Workspace access", "Codai / Workspace access");
+            ui.Lines.Count(line => line == project.FullName).Should().Be(2);
+            Directory.GetFiles(root.FullName, "*", SearchOption.AllDirectories).Should().BeEmpty();
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Directory_trust_cancellation_returns_interrupt_without_starting_session()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var session = new RecordingSession();
+        var app = new CliApplication(new RecordingConsole(), Directory.GetCurrentDirectory, new FakeUserInterface(),
+            input: new TaskInput(), sessionFactory: _ => session);
+
+        (await app.RunAsync(["code"], cancellation.Token)).Should().Be(130);
+        session.InteractiveCalls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("leave")]
+    [InlineData(null)]
+    [InlineData("trust")]
+    public async Task Directory_trust_precedes_project_configuration(string? choice)
+    {
+        var root = Directory.CreateTempSubdirectory("codai-directory-trust-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"), "not valid json");
+            var ui = new FakeUserInterface();
+            ui.EnqueueSelection(items =>
+            {
+                items.Select(item => item.Value).Should().Equal("trust", "leave");
+                return choice;
+            });
+            var output = new RecordingConsole();
+            var app = new CliApplication(output, () => root.FullName, ui, input: new TaskInput(),
+                environment: new TestEnvironment(new Dictionary<string, string?>()));
+
+            if (choice == "trust")
+            {
+                Func<Task> run = () => app.RunAsync(["code"]);
+                await run.Should().ThrowAsync<InvalidDataException>();
+            }
+            else
+            {
+                (await app.RunAsync(["code"])).Should().Be(0);
+            }
+
+            ui.Dialogs.Should().ContainSingle(title => title.Contains("Workspace access", StringComparison.Ordinal));
+            ui.Lines.Should().Contain(line => line.Contains(root.FullName, StringComparison.Ordinal));
+            if (choice != "trust")
+            {
+                output.Errors.Should().BeEmpty();
+                Directory.GetFileSystemEntries(root.FullName).Should().ContainSingle();
+            }
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -24,7 +290,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-plan-signout-");
         try
         {
-            var path = Path.Combine(root.FullName, "codai-config.json");
+            var path = Path.Combine(root.FullName, ".codai.json");
             const string original = """{"theme":"forest"}""";
             await File.WriteAllTextAsync(path, original);
             var store = new AccountCredentialStore(Path.Combine(root.FullName, "private"));
@@ -72,7 +338,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-plan-setup-");
         try
         {
-            var path = Path.Combine(root.FullName, "codai-config.json");
+            var path = Path.Combine(root.FullName, ".codai.json");
             const string original = """{"theme":"forest","ai_provider_config":{"api_key":"old-key"}}""";
             await File.WriteAllTextAsync(path, original);
             var ui = new FakeUserInterface();
@@ -144,7 +410,7 @@ public class CliApplicationTests
         var ui = new FakeUserInterface();
         var output = new RecordingConsole();
         var app = new CliApplication(output, uiOverride: ui);
-        (await app.RunAsync(["auth", option])).Should().Be(1);
+        (await app.RunTrustedAsync(["auth", option])).Should().Be(1);
         ui.Dialogs.Should().BeEmpty();
         output.Errors.Should().Contain(message => message.Contains("interactive terminal", StringComparison.Ordinal));
     }
@@ -160,8 +426,8 @@ public class CliApplicationTests
             cancellation.Cancel();
             var app = new CliApplication(new RecordingConsole(), () => root.FullName, ui,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
-            (await app.RunAsync(["auth"], cancellation.Token)).Should().Be(130);
-            File.Exists(Path.Combine(root.FullName, "codai-config.json")).Should().BeFalse();
+            (await app.RunTrustedAsync(["auth"], cancellation.Token)).Should().Be(130);
+            File.Exists(Path.Combine(root.FullName, ".codai.json")).Should().BeFalse();
         }
         finally
         {
@@ -179,7 +445,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-auth-models-");
         try
         {
-            var path = Path.Combine(root.FullName, "codai-config.json");
+            var path = Path.Combine(root.FullName, ".codai.json");
             await File.WriteAllTextAsync(path, """{"theme":"forest","budget":{"max_tokens":64000}}""");
             var ui = new FakeUserInterface();
             ui.EnqueueChoice("provider");
@@ -235,7 +501,7 @@ public class CliApplicationTests
                     return unavailable ? throw new HttpRequestException("Unavailable")
                         : Task.FromResult<IReadOnlyList<string>>(["codai-listed-model"]);
                 });
-            (await app.RunAsync(["auth"])).Should().Be(0);
+            (await app.RunTrustedAsync(["auth"])).Should().Be(0);
             using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
             var settings = document.RootElement.GetProperty("ai_provider_config");
             settings.GetProperty("provider").GetString().Should().Be(providerName);
@@ -265,7 +531,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-auth-cancel-");
         try
         {
-            var path = Path.Combine(root.FullName, "codai-config.json");
+            var path = Path.Combine(root.FullName, ".codai.json");
             const string original = """{"theme":"forest","ai_provider_config":{"api_key":"saved-credential"}}""";
             await File.WriteAllTextAsync(path, original);
             var ui = new FakeUserInterface();
@@ -280,7 +546,7 @@ public class CliApplicationTests
             var app = new CliApplication(new RecordingConsole(), () => root.FullName, ui,
                 environment: new TestEnvironment(new Dictionary<string, string?>()),
                 modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
-            (await app.RunAsync(["auth"])).Should().Be(0);
+            (await app.RunTrustedAsync(["auth"])).Should().Be(0);
             (await File.ReadAllTextAsync(path)).Should().Be(original);
         }
         finally
@@ -332,7 +598,7 @@ public class CliApplicationTests
                 items.Select(item => item.Label).Should().Equal("Save", "Change model", "Cancel");
                 return "save";
             });
-            var path = Path.Combine(root.FullName, "codai-config.json");
+            var path = Path.Combine(root.FullName, ".codai.json");
             var setup = new ConnectionSetupWorkflow(ui, new CodaiConfigurationManager(new PhysicalFileSystem()),
                 path, root.FullName, new AiProviderOptions(), (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
 
@@ -363,9 +629,9 @@ public class CliApplicationTests
             var app = new CliApplication(new RecordingConsole(), () => root.FullName, ui,
                 environment: new TestEnvironment(new Dictionary<string, string?>()),
                 modelDiscovery: (_, _, _, _) => throw new InvalidOperationException("Unsafe endpoint must not receive a credential."));
-            (await app.RunAsync(["auth"])).Should().Be(0);
+            (await app.RunTrustedAsync(["auth"])).Should().Be(0);
             ui.Errors.Should().Contain(message => message.Contains("HTTPS", StringComparison.Ordinal));
-            File.Exists(Path.Combine(root.FullName, "codai-config.json")).Should().BeFalse();
+            File.Exists(Path.Combine(root.FullName, ".codai.json")).Should().BeFalse();
         }
         finally
         {
@@ -405,7 +671,7 @@ public class CliApplicationTests
                 sessionFactory: _ => explicitAuth ? throw new InvalidOperationException("Auth must not start a session.") : initialSession,
                 environment: new TestEnvironment(new Dictionary<string, string?> { ["CODAI_CONFIG_DIR"] = root.FullName }),
                 modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
-            (await app.RunAsync(explicitAuth ? ["auth"] : [])).Should().Be(0);
+            (await app.RunTrustedAsync(explicitAuth ? ["auth"] : [])).Should().Be(0);
             var options = CodaiConfigurationLoader.Load(new(root.FullName), new TestEnvironment(new Dictionary<string, string?>()));
             options.AiProviderConfig.Provider.Should().Be(ProviderCatalog.Ollama);
             options.AiProviderConfig.Model.Should().Be("codai-local-model");
@@ -422,7 +688,7 @@ public class CliApplicationTests
                     return session;
                 }, environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await restarted.RunAsync([])).Should().Be(0);
+            (await restarted.RunTrustedAsync([])).Should().Be(0);
             restartedUi.Dialogs.Should().BeEmpty();
             session.InteractiveCalls.Should().Be(1);
         }
@@ -450,11 +716,11 @@ public class CliApplicationTests
                 environment: new TestEnvironment(new Dictionary<string, string?>()),
                 modelDiscovery: (_, _, _, _) => throw new InvalidOperationException("Model discovery must wait for credentials."));
 
-            (await app.RunAsync(["auth"])).Should().Be(0);
+            (await app.RunTrustedAsync(["auth"])).Should().Be(0);
 
             ui.Dialogs.Should().Equal("Codai / Connect a model", "Codai / Your provider", "Codai / Provider",
                 "Codai / Provider", "Codai / Your provider", "Codai / Connect a model");
-            File.Exists(Path.Combine(root.FullName, "codai-config.json")).Should().BeFalse();
+            File.Exists(Path.Combine(root.FullName, ".codai.json")).Should().BeFalse();
         }
         finally
         {
@@ -490,7 +756,7 @@ public class CliApplicationTests
             var app = new CliApplication(output, () => project.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await app.RunAsync(["config", target, "--json", "--config-dir", global.FullName, "--no-hooks"])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", target, "--json", "--config-dir", global.FullName, "--no-hooks"])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
             var entries = report.RootElement.GetProperty(section).EnumerateArray().ToArray();
@@ -537,7 +803,7 @@ public class CliApplicationTests
                 args.AddRange(["--config-dir", flagRules.Parent!.FullName]);
             }
 
-            (await app.RunAsync([.. args])).Should().Be(0);
+            (await app.RunTrustedAsync([.. args])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
             var entries = report.RootElement.GetProperty("rules").EnumerateArray().ToArray();
@@ -559,17 +825,17 @@ public class CliApplicationTests
     [Fact]
     public async Task Config_settings_uses_file_environment_and_cli_precedence_without_provider_work()
     {
-        var root = Directory.CreateTempSubdirectory("codai-config-precedence-");
+        var root = Directory.CreateTempSubdirectory(".codai-precedence-");
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(root.FullName, "codai-config.json"),
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"),
                 """{"ai_provider_config":{"provider":"openai","model":"file-model"}}""");
             var output = new RecordingConsole();
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?> { ["MODEL"] = "environment-model" }),
                 sessionFactory: _ => throw new InvalidOperationException("Session must not start."));
 
-            (await app.RunAsync(["config", "settings", "--json", "--model", "cli-model", "--no-hooks"])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "settings", "--json", "--model", "cli-model", "--no-hooks"])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
             report.RootElement.EnumerateObject().Select(property => property.Name).Should().Equal("paths", "model", "session");
@@ -586,12 +852,12 @@ public class CliApplicationTests
     [Fact]
     public async Task Config_management_updates_only_configuration_entries()
     {
-        var root = Directory.CreateTempSubdirectory("codai-config-management-");
+        var root = Directory.CreateTempSubdirectory(".codai-management-");
         try
         {
             var plugin = Path.Combine(root.FullName, "plugin.dll");
             await File.WriteAllTextAsync(plugin, "plugin-binary-placeholder");
-            await File.WriteAllTextAsync(Path.Combine(root.FullName, "codai-config.json"), """
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"), """
                 {
                   "plugins": ["plugin.dll"],
                   "mcp": {"servers": [{"name": "docs", "command": "must-not-start"}]}
@@ -601,10 +867,10 @@ public class CliApplicationTests
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await app.RunAsync(["config", "mcp", "disable", "docs"])).Should().Be(0);
-            (await app.RunAsync(["config", "plugin", "remove", "plugin.dll"])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "mcp", "disable", "docs"])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "plugin", "remove", "plugin.dll"])).Should().Be(0);
 
-            using var config = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root.FullName, "codai-config.json")));
+            using var config = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root.FullName, ".codai.json")));
             config.RootElement.GetProperty("mcp").GetProperty("servers")[0].GetProperty("enabled").GetBoolean().Should().BeFalse();
             config.RootElement.GetProperty("plugins").GetArrayLength().Should().Be(0);
             File.Exists(plugin).Should().BeTrue();
@@ -629,7 +895,7 @@ public class CliApplicationTests
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await app.RunAsync(["config", "hooks", "--json", "--config-dir", root.FullName])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "hooks", "--json", "--config-dir", root.FullName])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
             var manifest = report.RootElement.GetProperty("hooks")[0];
@@ -663,7 +929,7 @@ public class CliApplicationTests
             input: new TaskInput { IsRedirected = true },
             environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-        (await app.RunAsync(["config", target, "--json", "--no-hooks"])).Should().Be(0);
+        (await app.RunTrustedAsync(["config", target, "--json", "--no-hooks"])).Should().Be(0);
 
         using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
         report.RootElement.EnumerateObject().Select(property => property.Name).Should().Equal(section);
@@ -679,7 +945,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-        (await app.RunAsync(["config", "tools", "--json", "--mode", mode,
+        (await app.RunTrustedAsync(["config", "tools", "--json", "--mode", mode,
             "--no-shell", "--no-sub-agents", "--no-hooks", "--disable-tool=fetch_web"])).Should().Be(0);
 
         using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
@@ -703,7 +969,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             sessionFactory: _ => throw new InvalidOperationException("Session must not start."));
 
-        (await app.RunAsync(["config", target, "--json"])).Should().Be(1);
+        (await app.RunTrustedAsync(["config", target, "--json"])).Should().Be(1);
 
         output.Lines.Should().BeEmpty();
         output.Errors.Should().ContainSingle().Which.Should().Contain("Unknown configuration target");
@@ -717,7 +983,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-redaction-");
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(root.FullName, "codai-config.json"),
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"),
                 """{"ai_provider_config":{"api_key":"secret-key","base_url":"https://user:secret-password@example.com/secret-path?token=secret-query#secret-fragment"},"mcp":{"servers":[{"name":"local","command":"secret-command","args":["secret-argument"],"env":{"TOKEN":"secret-environment"}}]}}""");
             var output = new RecordingConsole();
             var app = new CliApplication(output, () => root.FullName,
@@ -728,7 +994,7 @@ public class CliApplicationTests
                 args.Add("--json");
             }
 
-            (await app.RunAsync([.. args])).Should().Be(0);
+            (await app.RunTrustedAsync([.. args])).Should().Be(0);
 
             var text = string.Join('\n', output.Lines);
             text.Should().NotContain("secret-").And.Contain("https://example.com").And.Contain("TOKEN");
@@ -765,7 +1031,7 @@ public class CliApplicationTests
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await app.RunAsync(["config", "hooks", "--json", "--config-dir", root.FullName])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "hooks", "--json", "--config-dir", root.FullName])).Should().Be(0);
 
             var text = string.Join('\n', output.Lines);
             text.Should().NotContain("secret-");
@@ -790,7 +1056,7 @@ public class CliApplicationTests
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await app.RunAsync(["config", "hooks", "--json", "--config-dir", root.FullName])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "hooks", "--json", "--config-dir", root.FullName])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
             report.RootElement.GetProperty("hooks")[0].GetProperty("error").GetString().Should().Contain("exceeds");
@@ -813,7 +1079,7 @@ public class CliApplicationTests
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()));
 
-            (await app.RunAsync(["config", "paths", "--json", "--cwd", "project",
+            (await app.RunTrustedAsync(["config", "paths", "--json", "--cwd", "project",
                 "--config-dir", "../configuration", "--data-dir", "../state", "--no-hooks"])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
@@ -838,7 +1104,7 @@ public class CliApplicationTests
         var output = new RecordingConsole();
         var app = new CliApplication(output, Directory.GetCurrentDirectory);
 
-        (await app.RunAsync(["config", "--json"], cancellation.Token)).Should().Be(130);
+        (await app.RunTrustedAsync(["config", "--json"], cancellation.Token)).Should().Be(130);
 
         output.Lines.Should().BeEmpty();
         output.Errors.Should().BeEmpty();
@@ -850,7 +1116,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-inspection-");
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(root.FullName, "codai-config.json"),
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"),
                 """{"plugins":["missing-plugin.dll"],"mcp":{"servers":[{"name":"offline","command":"codai-must-not-launch-this","args":["secret-argument"],"env":{"TOKEN":"secret-environment"}}]}}""");
             var output = new RecordingConsole();
             var input = new TaskInput { IsRedirected = true, WaitForCancellation = true };
@@ -858,7 +1124,7 @@ public class CliApplicationTests
                 environment: new TestEnvironment(new Dictionary<string, string?>()),
                 sessionFactory: _ => throw new InvalidOperationException("Session must not start."));
 
-            (await app.RunAsync(["config", "mcp", "--json", "--no-hooks"])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "mcp", "--json", "--no-hooks"])).Should().Be(0);
 
             input.Reads.Should().Be(0);
             output.Errors.Should().BeEmpty();
@@ -883,14 +1149,14 @@ public class CliApplicationTests
         {
             var pluginDirectory = Directory.CreateDirectory(Path.Combine(root.FullName, ".codai", "plugins"));
             await File.WriteAllBytesAsync(Path.Combine(pluginDirectory.FullName, "discovered.dll"), [0x4D, 0x5A]);
-            await File.WriteAllTextAsync(Path.Combine(root.FullName, "codai-config.json"),
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"),
                 "{\"plugins\":[\"missing.dll\"]}");
             var output = new RecordingConsole();
             var app = new CliApplication(output, () => root.FullName,
                 environment: new TestEnvironment(new Dictionary<string, string?>()),
                 sessionFactory: _ => throw new InvalidOperationException("Session must not start."));
 
-            (await app.RunAsync(["config", "plugins", "--json", "--no-hooks"])).Should().Be(0);
+            (await app.RunTrustedAsync(["config", "plugins", "--json", "--no-hooks"])).Should().Be(0);
 
             using var report = JsonDocument.Parse(string.Join('\n', output.Lines));
             var plugins = report.RootElement.GetProperty("plugins").EnumerateArray().ToArray();
@@ -915,7 +1181,7 @@ public class CliApplicationTests
         var root = Directory.CreateTempSubdirectory("codai-tool-settings-");
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(root.FullName, "codai-config.json"),
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, ".codai.json"),
                 """{"disabled_tools":["write_file","run_command","task"]}""");
             IToolRegistry? registry = null;
             var app = new CliApplication(new RecordingConsole(), () => root.FullName,
@@ -930,14 +1196,14 @@ public class CliApplicationTests
                 args.Add("--json");
             }
 
-            (await app.RunAsync([.. args])).Should().Be(0);
+            (await app.RunTrustedAsync([.. args])).Should().Be(0);
 
             registry!.Tools.Select(tool => tool.Name).Should().NotContain(["write_file", "fetch_web"]);
             registry.TryGet("write_file", out _).Should().BeFalse();
             registry.TryGet("fetch_web", out _).Should().BeFalse();
             registry.TryGet("read_file", out _).Should().BeTrue();
 
-            (await app.RunAsync(["--provider", "ollama", "--no-hooks", "task"])).Should().Be(0);
+            (await app.RunTrustedAsync(["--provider", "ollama", "--no-hooks", "task"])).Should().Be(0);
 
             registry.TryGet("write_file", out _).Should().BeFalse();
             registry.TryGet("fetch_web", out _).Should().BeTrue();
@@ -969,7 +1235,7 @@ public class CliApplicationTests
             args.Add("--json");
         }
 
-        (await app.RunAsync([.. args])).Should().Be(1);
+        (await app.RunTrustedAsync([.. args])).Should().Be(1);
 
         session.Requests.Should().BeEmpty();
         session.InteractiveCalls.Should().Be(0);
@@ -997,7 +1263,7 @@ public class CliApplicationTests
             args.Add("--json");
         }
 
-        (await app.RunAsync([.. args])).Should().Be(0);
+        (await app.RunTrustedAsync([.. args])).Should().Be(0);
 
         session.PlanInstructions.Should().Equal(piped ? "Additional instructions" : string.Empty);
         session.InteractiveCalls.Should().Be(0);
@@ -1020,7 +1286,7 @@ public class CliApplicationTests
                 return new RecordingSession();
             });
 
-        (await app.RunAsync(["task", "--compaction", option, "--no-hooks"])).Should().Be(0);
+        (await app.RunTrustedAsync(["task", "--compaction", option, "--no-hooks"])).Should().Be(0);
 
         selected!.AutoCompact.Should().Be(automatic);
         selected.CompactionStrategy.Should().Be(strategy);
@@ -1031,7 +1297,7 @@ public class CliApplicationTests
     {
         var output = new RecordingConsole();
 
-        var exitCode = await new CliApplication(output, () => @"C:\project").RunAsync(["--version"]);
+        var exitCode = await new CliApplication(output, () => @"C:\project").RunTrustedAsync(["--version"]);
 
         exitCode.Should().Be(0);
         output.Lines.Should().Contain($"version: {CodaiDefaults.Version}");
@@ -1042,7 +1308,7 @@ public class CliApplicationTests
     {
         var output = new RecordingConsole();
 
-        var exitCode = await new CliApplication(output, () => @"C:\project").RunAsync(["-v"]);
+        var exitCode = await new CliApplication(output, () => @"C:\project").RunTrustedAsync(["-v"]);
 
         exitCode.Should().Be(0);
         output.Lines.Should().ContainSingle(line => line.StartsWith("version:", StringComparison.Ordinal));
@@ -1094,13 +1360,13 @@ public class CliApplicationTests
                     return session;
                 }, modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
 
-            (await app.RunAsync([])).Should().Be(0);
+            (await app.RunTrustedAsync([])).Should().Be(0);
 
             ui.Dialogs.First().Should().Be("Codai / Theme");
             ui.Themes.Should().Contain("forest");
             ui.Successes.Should().Contain("Connection settings saved.");
             session.InteractiveCalls.Should().Be(1);
-            var path = Path.Combine(configurationPath, "codai-config.json");
+            var path = Path.Combine(configurationPath, ".codai.json");
             var saved = await File.ReadAllTextAsync(path);
             var options = CodaiConfigurationLoader.Load(new(configurationPath), environment);
             options.Theme.Should().Be("forest");
@@ -1110,10 +1376,55 @@ public class CliApplicationTests
             var restartedSession = new RecordingSession();
             var restarted = new CliApplication(new RecordingConsole(), () => secondProject.FullName, restartedUi,
                 input: new TaskInput(), environment: environment, sessionFactory: _ => restartedSession);
-            (await restarted.RunAsync([])).Should().Be(0);
+            (await restarted.RunTrustedAsync([])).Should().Be(0);
             restartedUi.Dialogs.Should().BeEmpty();
             restartedSession.InteractiveCalls.Should().Be(1);
             (await File.ReadAllTextAsync(path)).Should().Be(saved);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Bare_launch_creates_missing_user_json_without_copying_or_replacing_project_settings(bool existingUserSettings, bool explicitCode)
+    {
+        var root = Directory.CreateTempSubdirectory("codai-user-settings-creation-");
+        try
+        {
+            var project = root.CreateSubdirectory("project");
+            var profile = root.CreateSubdirectory("profile");
+            var userPath = Path.Combine(profile.FullName, ".codai", ".codai.json");
+            const string projectSettings = """{"ai_provider_config":{"provider":"ollama","model":"project-model"}}""";
+            await File.WriteAllTextAsync(Path.Combine(project.FullName, ".codai.json"), projectSettings);
+            const string userSettings = """{"theme":"ember","custom_note":"keep"}""";
+            if (existingUserSettings)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(userPath)!);
+                await File.WriteAllTextAsync(userPath, userSettings);
+            }
+            var environment = new TestEnvironment(new Dictionary<string, string?>
+            {
+                ["USERPROFILE"] = profile.FullName,
+                ["HOME"] = profile.FullName,
+            });
+            var session = new RecordingSession();
+            var app = new CliApplication(new RecordingConsole(), () => project.FullName, new FakeUserInterface(),
+                input: new TaskInput(), environment: environment, sessionFactory: services =>
+                {
+                    File.Exists(userPath).Should().BeTrue();
+                    services.GetRequiredService<SessionOptions>().Model.Should().Be("project-model");
+                    return session;
+                });
+
+            (await app.RunTrustedAsync(explicitCode ? ["code"] : [])).Should().Be(0);
+            (await File.ReadAllTextAsync(userPath)).Should().Be(existingUserSettings ? userSettings : "{}" + Environment.NewLine);
+            (await File.ReadAllTextAsync(Path.Combine(project.FullName, ".codai.json"))).Should().Be(projectSettings);
         }
         finally
         {
@@ -1139,10 +1450,10 @@ public class CliApplicationTests
             var first = new CliApplication(new RecordingConsole(), () => root.FullName, firstUi,
                 input: new TaskInput(), environment: environment, sessionFactory: _ => firstSession);
 
-            (await first.RunAsync([])).Should().Be(0);
+            (await first.RunTrustedAsync([])).Should().Be(0);
             firstSession.InteractiveCalls.Should().Be(0);
             firstUi.Dialogs.Should().Equal("Codai / Theme", "Codai / Connect a model");
-            var path = Path.Combine(root.FullName, ".codai", "codai-config.json");
+            var path = Path.Combine(root.FullName, ".codai", ".codai.json");
             using (var document = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
             {
                 document.RootElement.GetProperty("theme").GetString().Should().Be("ember");
@@ -1162,7 +1473,7 @@ public class CliApplicationTests
                 input: new TaskInput(), environment: environment, sessionFactory: _ => resumedSession,
                 modelDiscovery: (_, _, _, _) => Task.FromResult<IReadOnlyList<string>>([]));
 
-            (await resumed.RunAsync([])).Should().Be(0);
+            (await resumed.RunTrustedAsync([])).Should().Be(0);
             resumedUi.Dialogs.Should().NotContain("Codai / Theme");
             resumedUi.Themes.Should().Contain("ember");
             resumedSession.InteractiveCalls.Should().Be(1);
@@ -1185,12 +1496,18 @@ public class CliApplicationTests
 
             var exitCode = await new CliApplication(
                 output, () => root.FullName, ui, input: new TaskInput(), sessionFactory: _ => session,
-                environment: new TestEnvironment(new Dictionary<string, string?>())).RunAsync([]);
+                environment: new TestEnvironment(new Dictionary<string, string?>
+                {
+                    ["USERPROFILE"] = root.FullName,
+                    ["HOME"] = root.FullName,
+                })).RunTrustedAsync([]);
 
             exitCode.Should().Be(0);
             ui.Dialogs.Should().Equal("Codai / Theme");
             session.InteractiveCalls.Should().Be(0);
             session.Requests.Should().BeEmpty();
+            (await File.ReadAllTextAsync(Path.Combine(root.FullName, ".codai", ".codai.json")))
+                .Should().Be("{}" + Environment.NewLine);
         }
         finally
         {
@@ -1213,7 +1530,7 @@ public class CliApplicationTests
         {
             var project = root.CreateSubdirectory("project");
             var configuration = shared ? root.CreateSubdirectory("configuration") : project;
-            var path = Path.Combine(configuration.FullName, "codai-config.json");
+            var path = Path.Combine(configuration.FullName, ".codai.json");
             var original = JsonSerializer.Serialize(new
             {
                 ai_provider_config = new
@@ -1228,7 +1545,7 @@ public class CliApplicationTests
             await File.WriteAllTextAsync(path, original);
             var profile = root.CreateSubdirectory("profile");
             var global = profile.CreateSubdirectory(".codai");
-            await File.WriteAllTextAsync(Path.Combine(global.FullName, "codai-config.json"),
+            await File.WriteAllTextAsync(Path.Combine(global.FullName, ".codai.json"),
                 """{"theme":"ember","ai_provider_config":{"provider":"ollama","model":"global-model-must-not-replace-project"}}""");
             var variables = new Dictionary<string, string?>
             {
@@ -1252,7 +1569,7 @@ public class CliApplicationTests
                     return session;
                 });
 
-            (await app.RunAsync(explicitAuth ? ["auth"] : [])).Should().Be(0);
+            (await app.RunTrustedAsync(explicitAuth ? ["auth"] : [])).Should().Be(0);
 
             session.InteractiveCalls.Should().Be(explicitAuth ? 0 : 1);
             if (explicitAuth)
@@ -1276,12 +1593,14 @@ public class CliApplicationTests
     {
         var output = new RecordingConsole();
 
-        var exitCode = await new CliApplication(output, () => @"C:\project").RunAsync(["--help"]);
+        var exitCode = await new CliApplication(output, () => @"C:\project").RunTrustedAsync(["--help"]);
 
         exitCode.Should().Be(0);
-        output.Lines.Should().Contain(line => line.Contains("/clear-token", StringComparison.Ordinal));
-        output.Lines.Should().Contain(line => line.Contains("/compact", StringComparison.Ordinal));
-        output.Lines.Should().Contain(line => line.Contains("/mode", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("/agents", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("/models", StringComparison.Ordinal));
+        output.Lines.Should().Contain(line => line.Contains("/auth", StringComparison.Ordinal));
+        output.Lines.Should().NotContain(line => line.Contains("/variants", StringComparison.Ordinal));
+        output.Lines.Should().NotContain(line => line.Contains("/clear-token", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains("--continue", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains("--mode", StringComparison.Ordinal));
         output.Lines.Should().Contain(line => line.Contains("--no-shell", StringComparison.Ordinal));
@@ -1294,7 +1613,7 @@ public class CliApplicationTests
     {
         var output = new RecordingConsole();
 
-        await new CliApplication(output, () => @"C:\project").RunAsync(["--help"]);
+        await new CliApplication(output, () => @"C:\project").RunTrustedAsync(["--help"]);
 
         // An option that shares a line with the previous one is invisible to a reader
         // scanning the column, and it is how a missing newline in the raw string shows up.
@@ -1313,7 +1632,7 @@ public class CliApplicationTests
         var output = new RecordingConsole();
 
         var exitCode = await new CliApplication(output, () => @"C:\project")
-            .RunAsync(["code", "--nope", "1"]);
+            .RunTrustedAsync(["code", "--nope", "1"]);
 
         exitCode.Should().Be(1);
         output.Errors.Should().Contain("Unknown option '--nope'.");
@@ -1325,7 +1644,7 @@ public class CliApplicationTests
         var output = new RecordingConsole();
 
         var exitCode = await new CliApplication(output, Directory.GetCurrentDirectory, input: new TaskInput())
-            .RunAsync(["code", "--config", "does-not-exist.yml"]);
+            .RunTrustedAsync(["code", "--config", "does-not-exist.yml"]);
 
         exitCode.Should().Be(1);
         output.Errors.Should().Contain(message => message.Contains("was not found", StringComparison.Ordinal));
@@ -1351,7 +1670,7 @@ public class CliApplicationTests
         var app = new CliApplication(
             new RecordingConsole(), Directory.GetCurrentDirectory, input: input, sessionFactory: _ => session);
 
-        var exitCode = await app.RunAsync(["explain tests", "--model", "test-model"]);
+        var exitCode = await app.RunTrustedAsync(["explain tests", "--model", "test-model"]);
 
         exitCode.Should().Be(expectedExit);
         session.Requests.Should().Equal("explain tests");
@@ -1367,7 +1686,7 @@ public class CliApplicationTests
         var app = new CliApplication(
             new RecordingConsole(), Directory.GetCurrentDirectory, input: input, sessionFactory: _ => session);
 
-        var exitCode = await app.RunAsync(["summarize"]);
+        var exitCode = await app.RunTrustedAsync(["summarize"]);
 
         exitCode.Should().Be(0);
         session.Requests.Should().Equal("summarize\n\nline one\nline two\n");
@@ -1383,7 +1702,7 @@ public class CliApplicationTests
         var app = new CliApplication(
             new RecordingConsole(), Directory.GetCurrentDirectory, input: input, sessionFactory: _ => session);
 
-        (await app.RunAsync([])).Should().Be(0);
+        (await app.RunTrustedAsync([])).Should().Be(0);
 
         session.Requests.Should().Equal(input.Content);
         session.InteractiveCalls.Should().Be(0);
@@ -1397,7 +1716,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             input: new TaskInput { IsRedirected = true, Content = " \n" }, sessionFactory: _ => session);
 
-        (await app.RunAsync([])).Should().Be(1);
+        (await app.RunTrustedAsync([])).Should().Be(1);
 
         output.Errors.Should().ContainSingle().Which.Should().Contain("did not contain a task prompt");
         session.Requests.Should().BeEmpty();
@@ -1411,7 +1730,7 @@ public class CliApplicationTests
         var app = new CliApplication(new RecordingConsole(), Directory.GetCurrentDirectory,
             input: new TaskInput(), sessionFactory: _ => session);
 
-        (await app.RunAsync(["code", "--", "--help"])).Should().Be(0);
+        (await app.RunTrustedAsync(["code", "--", "--help"])).Should().Be(0);
 
         session.Requests.Should().Equal("--help");
     }
@@ -1431,7 +1750,7 @@ public class CliApplicationTests
                 return session;
             });
 
-        (await app.RunAsync(["task"])).Should().Be(0);
+        (await app.RunTrustedAsync(["task"])).Should().Be(0);
 
         (await selectedUi!.ConfirmAsync("write file?")).Should().BeFalse();
         (await selectedApprover!.ApproveAsync(new ToolApprovalRequest("write_file", "Write file", "write file?")))
@@ -1448,7 +1767,7 @@ public class CliApplicationTests
         var app = new CliApplication(new RecordingConsole(), Directory.GetCurrentDirectory,
             input: new TaskInput { IsRedirected = true });
 
-        (await app.RunAsync([], cancellation.Token)).Should().Be(130);
+        (await app.RunTrustedAsync([], cancellation.Token)).Should().Be(130);
     }
 
     [Fact]
@@ -1459,7 +1778,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             input: new TaskInput(), sessionFactory: _ => session);
 
-        (await app.RunAsync(["task", "--cwd", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))]))
+        (await app.RunTrustedAsync(["task", "--cwd", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))]))
             .Should().Be(1);
 
         output.Errors.Should().ContainSingle().Which.Should().Contain("Working directory");
@@ -1484,7 +1803,7 @@ public class CliApplicationTests
                     return session;
                 });
 
-            (await app.RunAsync(["task", "--cwd", project.Name, "--config", "settings.json"]))
+            (await app.RunTrustedAsync(["task", "--cwd", project.Name, "--config", "settings.json"]))
                 .Should().Be(0);
 
             selectedOptions!.ProjectRoot.Should().Be(project.FullName);
@@ -1506,7 +1825,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             input: new TaskInput(), sessionFactory: _ => session);
 
-        (await app.RunAsync([" \n"])).Should().Be(1);
+        (await app.RunTrustedAsync([" \n"])).Should().Be(1);
 
         session.Requests.Should().BeEmpty();
         output.Errors.Should().ContainSingle().Which.Should().Contain("must not be empty");
@@ -1529,7 +1848,7 @@ public class CliApplicationTests
                 },
             });
 
-        (await app.RunAsync(["task", "--json"])).Should().Be(0);
+        (await app.RunTrustedAsync(["task", "--json"])).Should().Be(0);
 
         var events = output.Lines.Select(line => JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
         events.Should().OnlyContain(line => line.GetProperty("ts").ValueKind == JsonValueKind.String);
@@ -1551,7 +1870,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             input: new TaskInput { IsRedirected = true, WaitForCancellation = true });
 
-        (await app.RunAsync(["--json", "--timeout", "0.05"])).Should().Be(124);
+        (await app.RunTrustedAsync(["--json", "--timeout", "0.05"])).Should().Be(124);
 
         var events = output.Lines.Select(line => JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
         events.Single(line => line.GetProperty("type").GetString() == "run_result")
@@ -1567,7 +1886,7 @@ public class CliApplicationTests
         var output = new RecordingConsole();
         var app = new CliApplication(output, Directory.GetCurrentDirectory, input: new TaskInput());
 
-        (await app.RunAsync(["--json"])).Should().Be(1);
+        (await app.RunTrustedAsync(["--json"])).Should().Be(1);
 
         output.Lines.Should().Contain(line => JsonSerializer.Deserialize<JsonElement>(line)
             .GetProperty("type").GetString() == "run_result");
@@ -1600,7 +1919,7 @@ public class CliApplicationTests
                     },
                 });
 
-            (await app.RunAsync(["task", "--config-dir", config.FullName, "--data-dir", data])).Should().Be(0);
+            (await app.RunTrustedAsync(["task", "--config-dir", config.FullName, "--data-dir", data])).Should().Be(0);
 
             Directory.Exists(Path.Combine(workspace.FullName, ".codai")).Should().BeFalse();
             Directory.GetFiles(data, "latest.json", SearchOption.AllDirectories).Should().NotBeEmpty();
@@ -1636,7 +1955,7 @@ public class CliApplicationTests
                 },
             });
 
-        (await app.RunAsync(["task", "--json", "--model", "run-model"])).Should().Be(exitCode);
+        (await app.RunTrustedAsync(["task", "--json", "--model", "run-model"])).Should().Be(exitCode);
 
         var events = output.Lines.Select(line => JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
         var result = events.Single(line => line.GetProperty("type").GetString() == "run_result");
@@ -1680,10 +1999,10 @@ public class CliApplicationTests
                     },
                 });
 
-            (await app.RunAsync(["task"])).Should().Be(0);
+            (await app.RunTrustedAsync(["task"])).Should().Be(0);
             Directory.Exists(environmentData).Should().BeTrue();
             expectedModel = "explicit-model";
-            (await app.RunAsync(["task", "--config-dir", explicitConfig.FullName, "--data-dir", explicitData])).Should().Be(0);
+            (await app.RunTrustedAsync(["task", "--config-dir", explicitConfig.FullName, "--data-dir", explicitData])).Should().Be(0);
             Directory.Exists(explicitData).Should().BeTrue();
             Directory.Exists(Path.Combine(workspace.FullName, ".codai")).Should().BeFalse();
         }
@@ -1738,7 +2057,7 @@ public class CliApplicationTests
         var input = new TaskInput { IsRedirected = true, WaitForCancellation = true };
         var app = new CliApplication(output, Directory.GetCurrentDirectory, input: input);
 
-        (await app.RunAsync(["--timeout", "0.05"])).Should().Be(124);
+        (await app.RunTrustedAsync(["--timeout", "0.05"])).Should().Be(124);
 
         output.Errors.Should().Contain("Run timed out.");
     }
@@ -1790,7 +2109,7 @@ public class CliApplicationTests
             args.Add("--json");
         }
 
-        (await app.RunAsync([.. args])).Should().Be(1);
+        (await app.RunTrustedAsync([.. args])).Should().Be(1);
 
         if (json)
         {
@@ -1831,7 +2150,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             input: new TaskInput(), sessionFactory: _ => session);
 
-        (await app.RunAsync(["task", "--timeout", "0.2"])).Should().Be(124);
+        (await app.RunTrustedAsync(["task", "--timeout", "0.2"])).Should().Be(124);
 
         session.Requests.Should().ContainSingle();
         output.Errors.Should().Contain("Run timed out.");
@@ -1846,7 +2165,7 @@ public class CliApplicationTests
         var app = new CliApplication(output, Directory.GetCurrentDirectory,
             input: new TaskInput { IsRedirected = true });
 
-        (await app.RunAsync(["--timeout", "1"], cancellation.Token)).Should().Be(130);
+        (await app.RunTrustedAsync(["--timeout", "1"], cancellation.Token)).Should().Be(130);
 
         output.Errors.Should().NotContain("Run timed out.");
     }
@@ -1867,7 +2186,7 @@ public class CliApplicationTests
                 return new RecordingSession();
             });
 
-        (await app.RunAsync(["task", "--auto-approve", flag])).Should().Be(0);
+        (await app.RunTrustedAsync(["task", "--auto-approve", flag])).Should().Be(0);
 
         (await selectedUi!.ConfirmAsync("apply prose diff?")).Should().Be(expected);
         (await approver!.ApproveAsync(new ToolApprovalRequest("write_file", "Write", "write file?")))
@@ -1877,6 +2196,33 @@ public class CliApplicationTests
         {
             output.Errors.Should().Contain(message => message.Contains("Auto-approved", StringComparison.Ordinal));
         }
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    public async Task Interactive_terminal_defaults_to_auto_approval_but_honors_manual_override(string? flag, bool expected)
+    {
+        IUserInterface? selectedUi = null;
+        IToolApprover? approver = null;
+        var app = new CliApplication(new RecordingConsole(), Directory.GetCurrentDirectory,
+            input: new TaskInput(), sessionFactory: provider =>
+            {
+                selectedUi = provider.GetRequiredService<IUserInterface>();
+                approver = provider.GetRequiredService<IToolApprover>();
+                return new RecordingSession();
+            });
+        List<string> args = ["code", "--provider", "ollama"];
+        if (flag is not null)
+        {
+            args.AddRange(["--auto-approve", flag]);
+        }
+
+        (await app.RunTrustedAsync(args.ToArray())).Should().Be(0);
+        (await selectedUi!.ConfirmAsync("apply changes?")).Should().Be(expected);
+        (await approver!.ApproveAsync(new ToolApprovalRequest("write_file", "Write", "write file?")))
+            .Should().Be(expected);
     }
 
     [Theory]
@@ -1903,7 +2249,7 @@ public class CliApplicationTests
                     },
                 });
 
-            (await app.RunAsync(["task", "--mode", mode, "--auto-approve", approval, "--no-sub-agents"]))
+            (await app.RunTrustedAsync(["task", "--mode", mode, "--auto-approve", approval, "--no-sub-agents"]))
                 .Should().Be(expectedWrite ? 0 : 1);
 
             File.Exists(Path.Combine(project.FullName, "test.txt")).Should().Be(expectedWrite);
@@ -1946,7 +2292,7 @@ public class CliApplicationTests
                         return 0;
                     },
                 });
-            (await app.RunAsync(["code", "--provider", "ollama", "--model", "codai-question", "--auto-approve", approval, "--no-sub-agents"]))
+            (await app.RunTrustedAsync(["code", "--provider", "ollama", "--model", "codai-question", "--auto-approve", approval, "--no-sub-agents"]))
                 .Should().Be(0);
         }
         finally

@@ -13,6 +13,7 @@ public static class CodaiApplicationBuilder
     /// <summary>
     /// Registers the application runtime and exposes it through a host-neutral contract.
     /// </summary>
+    /// <remarks>Set <c>deferMcpStartup</c> to open interactive sessions without waiting for MCP connections.</remarks>
     public static IServiceCollection AddCodaiApplication(
         this IServiceCollection services,
         CodaiOptions options,
@@ -28,7 +29,8 @@ public static class CodaiApplicationBuilder
         IReadOnlyList<string>? hookDirectories = null,
         CompactionStrategy compactionStrategy = CompactionStrategy.Agentic,
         string? configurationDirectory = null,
-        string? globalConfigurationDirectory = null)
+        string? globalConfigurationDirectory = null,
+        bool deferMcpStartup = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
@@ -47,7 +49,8 @@ public static class CodaiApplicationBuilder
             hookDirectories,
             compactionStrategy,
             configurationDirectory,
-            globalConfigurationDirectory);
+            globalConfigurationDirectory,
+            deferMcpStartup);
 
         services.AddSingleton<ICodaiSession>(serviceProvider =>
             new CodaiSessionAdapter(serviceProvider.GetRequiredService<CodeSession>()));

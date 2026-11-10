@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Codai.Application;
 using Codai.Application.Acp;
 using Codai.Application.Inspection;
@@ -7,11 +8,14 @@ using Codai.Configuration;
 using Codai.Core;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
+using Codai.Core.Customization;
 using Codai.Core.IO;
 using Codai.Providers;
 using Codai.Providers.Accounts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 
 namespace Codai.Cli;
 
@@ -130,7 +134,8 @@ public sealed class CliApplication
     }
 
     private async Task<(int ExitCode, bool Saved)> RunConnectionSetupAsync(
-        CommandLineParseResult parsed, IConsoleOutput output, bool firstRun, CancellationToken cancellationToken)
+        CommandLineParseResult parsed, IConsoleOutput output, bool firstRun, CancellationToken cancellationToken,
+        bool initializeAppearance = false)
     {
         if (parsed.Acp || parsed.JsonOutput || parsed.Prompt is not null ||
             _uiOverride is null && (_input.IsRedirected || Console.IsOutputRedirected))
@@ -161,7 +166,7 @@ public sealed class CliApplication
             };
             var discovery = new ProviderModelDiscovery(http, options.AiProviderConfig.ApiVersion);
             var manager = new CodaiConfigurationManager(new PhysicalFileSystem());
-            if (firstRun && options.LoadedFrom is null)
+            if (firstRun && (options.LoadedFrom is null || initializeAppearance))
             {
                 var theme = await ui.ChooseAsync("Codai / Theme",
                     TerminalThemes.All
@@ -236,8 +241,67 @@ public sealed class CliApplication
         }
     }
 
+    private string ResolveWorkspaceTheme(RunPaths paths, CommandLineParseResult parsed)
+    {
+        if (parsed.Overrides.TryGetValue(ConfigKeys.Theme, out var theme))
+        {
+            return TerminalThemes.Find(theme).Id;
+        }
+        if (_environment.GetVariable("THEME") is { } environmentTheme && !string.IsNullOrWhiteSpace(environmentTheme))
+        {
+            return TerminalThemes.Find(environmentTheme).Id;
+        }
+
+        try
+        {
+            var file = paths.ConfigPath ?? CodaiConfigurationLoader.FindDefaultConfigFile(paths.ConfigurationDirectory);
+            if (file is null)
+            {
+                return TerminalThemes.Default.Id;
+            }
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var bytes = new byte[65537];
+            var length = stream.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+            if (length > 65536)
+            {
+                return TerminalThemes.Default.Id;
+            }
+            using var buffer = new MemoryStream(bytes, 0, length, writable: false);
+            using var reader = new StreamReader(buffer);
+            if (Path.GetExtension(file).Equals(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                using var document = JsonDocument.Parse(reader.ReadToEnd(), new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip,
+                });
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    var value = document.RootElement.EnumerateObject()
+                        .LastOrDefault(property => property.Name.Equals(ConfigKeys.Theme, StringComparison.OrdinalIgnoreCase)).Value;
+                    theme = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                }
+            }
+            else if (Path.GetExtension(file).ToLowerInvariant() is ".yml" or ".yaml")
+            {
+                var document = new YamlStream();
+                document.Load(reader);
+                if (document.Documents.FirstOrDefault()?.RootNode is YamlMappingNode mapping)
+                {
+                    theme = (mapping.Children.LastOrDefault(pair => pair.Key is YamlScalarNode key &&
+                        string.Equals(key.Value, ConfigKeys.Theme, StringComparison.OrdinalIgnoreCase)).Value as YamlScalarNode)?.Value;
+                }
+            }
+            return TerminalThemes.Find(theme).Id;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or YamlException)
+        {
+            return TerminalThemes.Default.Id;
+        }
+    }
+
     private async Task<int> RunConfiguredAsync(string[] args, CommandLineParseResult parsed,
-        IConsoleOutput output, JsonRunUserInterface? jsonUi, CancellationToken cancellationToken)
+        IConsoleOutput output, JsonRunUserInterface? jsonUi, CancellationToken cancellationToken, bool directoryTrusted = false)
     {
         using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (parsed.RunTimeout > TimeSpan.Zero)
@@ -293,6 +357,49 @@ public sealed class CliApplication
             return 1;
         }
 
+        if (!directoryTrusted && !parsed.TrustDirectory)
+        {
+            if (parsed.JsonOutput || _input.IsRedirected || _uiOverride is null && Console.IsOutputRedirected)
+            {
+                output.WriteError("Workspace access was not authorized. Review the directory, then pass --trust-directory to allow this run.");
+                return 1;
+            }
+
+            try
+            {
+                var trustTheme = ResolveWorkspaceTheme(paths, parsed);
+                var trustUi = _uiOverride ?? new SpectreUserInterface(input: _input,
+                    theme: trustTheme);
+                using var terminal = _uiOverride is null ? trustUi as IDisposable : null;
+                string? choice;
+                if (trustUi is SpectreUserInterface spectre)
+                {
+                    spectre.SetTheme(trustTheme);
+                    choice = await spectre.RequestWorkspaceTrustAsync(paths.WorkingDirectory, runToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    trustUi.WriteLine(paths.WorkingDirectory);
+                    trustUi.WriteLine("Only continue if you trust this directory and its contents.");
+                    trustUi.WriteLine("Codai can read project files and instructions, load integrations, and propose edits or commands.");
+                    trustUi.WriteLine("Access lasts for this run only. Tool approvals remain separate.");
+                    choice = await trustUi.ChooseAsync("Codai / Workspace access",
+                        [new SessionMenuItem("Yes", "Allow access for this run", "trust"),
+                         new SessionMenuItem("No", "Do not open this workspace", "leave")],
+                        runToken).ConfigureAwait(false);
+                }
+                if (choice != "trust")
+                {
+                    output.WriteLine("Workspace was not opened.");
+                    return 0;
+                }
+            }
+            catch (OperationCanceledException) when (runToken.IsCancellationRequested)
+            {
+                return CancellationExitCode(output, cancellationToken);
+            }
+        }
+
         CodaiOptions options;
         try
         {
@@ -307,14 +414,31 @@ public sealed class CliApplication
             return 1;
         }
 
+        var interactiveLaunch = args.All(arg => arg is "code" or "--trust-directory" or "--trust_directory") &&
+            (_uiOverride is not null || !_input.IsRedirected && !Console.IsOutputRedirected);
+        var createdUserConfiguration = false;
+        if (interactiveLaunch)
+        {
+            try
+            {
+                createdUserConfiguration = await CreateUserConfigurationAsync(paths.GlobalConfigurationDirectory, runToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                output.WriteError($"Could not create user configuration: {exception.Message}");
+                return 1;
+            }
+        }
+
         var connection = ResolvedProviderOptions.From(options.AiProviderConfig);
-        if (args.Length == 0 && (_uiOverride is not null || !_input.IsRedirected) &&
+        if (interactiveLaunch &&
             (options.LoadedFrom is null || connection.RequiresApiKey && connection.ApiKey is null && connection.Account is null))
         {
-            var setup = await RunConnectionSetupAsync(parsed, output, firstRun: true, runToken).ConfigureAwait(false);
+            var setup = await RunConnectionSetupAsync(parsed, output, firstRun: true, runToken,
+                initializeAppearance: createdUserConfiguration && options.LoadedFrom is null).ConfigureAwait(false);
             return setup.ExitCode != 0 || !setup.Saved
                 ? setup.ExitCode
-                : await RunConfiguredAsync([CodeCommand], parsed, output, jsonUi, runToken).ConfigureAwait(false);
+                : await RunConfiguredAsync([CodeCommand], parsed, output, jsonUi, runToken, directoryTrusted: true).ConfigureAwait(false);
         }
 
         var services = new ServiceCollection();
@@ -332,13 +456,14 @@ public sealed class CliApplication
         else
         {
             interactiveModeState = new AgentModeState(parsed.Mode);
-            interactiveApprovalState = new ApprovalState(parsed.AutoApprove);
+            var autoApprove = parsed.AutoApprove || !parsed.AutoApproveSpecified && _uiOverride is null && !_input.IsRedirected;
+            interactiveApprovalState = new ApprovalState(autoApprove);
             ui = _uiOverride ?? new SpectreUserInterface(
                 input: _input,
                 provider: options.AiProviderConfig.Provider,
                 model: options.AiProviderConfig.Model,
                 mode: parsed.Mode,
-                autoApprove: parsed.AutoApprove,
+                autoApprove: autoApprove,
                 projectRoot: paths.WorkingDirectory,
                 modeState: interactiveModeState,
                 approvalState: interactiveApprovalState,
@@ -372,7 +497,13 @@ public sealed class CliApplication
             hookDirectories: paths.HookDirectories,
             compactionStrategy: parsed.CompactionStrategy,
             configurationDirectory: paths.ConfigurationDirectory,
-            globalConfigurationDirectory: paths.GlobalConfigurationDirectory);
+            globalConfigurationDirectory: paths.GlobalConfigurationDirectory,
+            deferMcpStartup: prompt is null && !parsed.ExecutePlan);
+
+        services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(provider => new SkillCatalog(
+            provider.GetRequiredService<IFileSystem>(), paths.GlobalConfigurationDirectory,
+            _environment.GetVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME") ??
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))));
 
         if (interactiveModeState is not null)
         {
@@ -539,6 +670,11 @@ public sealed class CliApplication
             configurationDirectory: paths.ConfigurationDirectory,
             globalConfigurationDirectory: paths.GlobalConfigurationDirectory);
 
+        services.Replace(ServiceDescriptor.Singleton<ISkillCatalog>(provider => new SkillCatalog(
+            provider.GetRequiredService<IFileSystem>(), paths.GlobalConfigurationDirectory,
+            _environment.GetVariable(OperatingSystem.IsWindows() ? "USERPROFILE" : "HOME") ??
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))));
+
         await using var provider = services.BuildServiceProvider();
 
         ConfigurationReport report;
@@ -598,7 +734,7 @@ public sealed class CliApplication
             CodaiConfigurationLoader.FindDefaultConfigFile(paths.ConfigurationDirectory);
         if (configurationFile is null)
         {
-            output.WriteError("No existing codai-config.yml, codai-config.yaml or codai-config.json was found to modify.");
+            output.WriteError("No existing .codai.yml, .codai.yaml or .codai.json was found to modify.");
             return 1;
         }
 
@@ -661,6 +797,32 @@ public sealed class CliApplication
     /// once, so <c>codai config</c> and a real run can never disagree about where the
     /// project, the configuration and the hook manifests are.
     /// </summary>
+    private static async Task<bool> CreateUserConfigurationAsync(string directory, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (CodaiConfigurationLoader.FindDefaultConfigFile(directory) is not null)
+        {
+            return false;
+        }
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, CodaiOptions.FileName + ".json");
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                bufferSize: 4096, FileOptions.Asynchronous);
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            return false;
+        }
+        await using (stream)
+        {
+            await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes("{}" + Environment.NewLine), cancellationToken).ConfigureAwait(false);
+        }
+        return true;
+    }
+
     private sealed record RunPaths(
         string WorkingDirectory,
         string? ConfigPath,
@@ -768,7 +930,7 @@ public sealed class CliApplication
 
                         Options:
                                     --cwd <path>            Project working directory (host directory unchanged).
-                            -c, --config <path>         Configuration file (codai-config.yml|yaml|json).
+                            -c, --config <path>         Configuration file (.codai.yml|yaml|json).
                   --provider <name>       Chat provider: {string.Join(", ", ProviderCatalog.SupportedNames)}.
                   --base-url <url>        Provider endpoint override.
                   --model <name>          Model identifier (provider default applies when omitted).
@@ -785,7 +947,8 @@ public sealed class CliApplication
                   --no-auto-compact       Never summarise a conversation that grows too long.
                   --compaction <name>     Automatic compaction: agentic | basic | off (default: agentic).
                   --no-sub-agents         Do not let the model delegate a search to a sub-agent.
-                  --auto-approve <bool>   Approve all writes/commands explicitly (default: false).
+                  --auto-approve <bool>   Auto approve (interactive: true; headless: false).
+                  --trust-directory      Authorize workspace access for this run (required headless).
               -t, --timeout <seconds>    Run-wide timeout, including stdin and tools (0 disables).
               -s, --system <prompt>      Replace default template; mode/tool policies remain enforced.
                   --json                 JSON Lines events and final result for one-shot/piped tasks.

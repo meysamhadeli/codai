@@ -1,5 +1,5 @@
-using Codai.Configuration;
 using Codai.Application.Inspection;
+using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Chat;
@@ -103,6 +103,8 @@ internal sealed class SessionHarness
 
     public IWorkspaceCheckpointStore? Checkpoints { get; set; }
 
+    public SessionSettingsWorkflow? Settings { get; set; }
+
     /// <summary>The mode the session is running in. Tests change it the way the user does.</summary>
     public AgentModeState Mode { get; } = new();
 
@@ -171,7 +173,7 @@ internal sealed class SessionHarness
                     Ui,
                     Mode,
                     new StubToolRegistry([.. Tools])),
-                Ui),
+                Ui, instructionsProvider: instructionsProvider),
             new ChangeApplicator(Options, new CodeChangeExtractor(), new DiffApplier(FileSystem), Mode, Ui),
             new SessionCommandHandler(
                 Options,
@@ -185,6 +187,7 @@ internal sealed class SessionHarness
                 taskStore: TaskStore,
                 inspector: Inspector,
                 models: CreateModelState(),
+                settings: Settings,
                 fileSystem: FileSystem,
                 checkpoints: Checkpoints),
             new UserCommandResolver(commands, new SkillCatalog(FileSystem), Options),

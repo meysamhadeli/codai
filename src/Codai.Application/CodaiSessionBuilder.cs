@@ -4,8 +4,10 @@ using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Chat;
+using Codai.Core.IO;
 using Codai.Core.Prompting;
 using Codai.Core.Tools;
+using Codai.Mcp.Client;
 using Codai.Mcp.DependencyInjection;
 using Codai.Pricing;
 using Codai.Pricing.Abstractions;
@@ -63,6 +65,7 @@ public static class CodaiRuntimeBuilder
     /// The host is responsible for registering an <see cref="IUserInterface" />
     /// implementation (the CLI registers the Spectre.Console one).
     /// </remarks>
+    /// <param name="deferMcpStartup">When true, connects enabled MCP servers before the first model exchange rather than during registration.</param>
     public static IServiceCollection AddCodaiApplicationRuntime(
         this IServiceCollection services,
         CodaiOptions options,
@@ -78,7 +81,8 @@ public static class CodaiRuntimeBuilder
         IReadOnlyList<string>? hookDirectories = null,
         CompactionStrategy compactionStrategy = CompactionStrategy.Agentic,
         string? configurationDirectory = null,
-        string? globalConfigurationDirectory = null)
+        string? globalConfigurationDirectory = null,
+        bool deferMcpStartup = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
@@ -131,12 +135,19 @@ public static class CodaiRuntimeBuilder
         }));
         services.AddCodaiAnalysis();
         ToolPluginLoader.Register(services, options.PluginPaths, root, options.DisabledPlugins);
-        services.AddCodaiMcpClientTools(options.Mcp, root);
+        var mcpCatalog = new McpManifestCatalog(PhysicalFileSystem.Instance, globalConfigurationDirectory);
+        var mcpServers = mcpCatalog.LoadAsync(root, options.Mcp.Servers).GetAwaiter().GetResult();
         services.TryAddSingleton<IClarificationHandler>(sp =>
             sp.GetService<IUserInterface>() is { } ui
                 ? new InteractiveClarificationHandler(ui)
                 : UnavailableClarificationHandler.Instance);
-        services.AddCodaiTools(allowShell, allowSubAgents, options.DisabledTools);
+        var deferredDisabled = deferMcpStartup && mcpServers.Count > 0
+            ? options.DisabledTools.Where(name => name.StartsWith("mcp_", StringComparison.OrdinalIgnoreCase)).ToArray()
+            : [];
+        services.AddCodaiTools(allowShell, allowSubAgents, options.DisabledTools.Except(deferredDisabled, StringComparer.OrdinalIgnoreCase));
+        services.AddCodaiMcpClientTools(new McpOptions { Servers = mcpServers.ToList() }, root,
+            deferDiscovery: deferMcpStartup, disabledTools: deferredDisabled,
+            serverSource: deferMcpStartup ? cancellationToken => mcpCatalog.LoadAsync(root, options.Mcp.Servers, cancellationToken) : null);
         services.AddCodaiProviders();
 
         // The mode the session was started in replaces the safe default the core
@@ -212,7 +223,10 @@ public static class CodaiRuntimeBuilder
                 sp.GetRequiredService<ITokenTracker>(),
                 sp.GetService<IUserInterface>(),
                 root,
-                maxConsecutiveToolFailures: options.Budget.MaxConsecutiveToolFailures));
+                maxConsecutiveToolFailures: options.Budget.MaxConsecutiveToolFailures,
+                instructionsProvider: sp.GetRequiredService<IProjectInstructionsProvider>(),
+                ruleCatalog: sp.GetRequiredService<IProjectRuleCatalog>(),
+                skillCatalog: sp.GetRequiredService<ISkillCatalog>()));
             services.AddSingleton<IBackgroundAgentManager>(sp => new BackgroundAgentManager(
                 sp.GetRequiredService<ISubAgent>(),
                 sp.GetRequiredService<IBackgroundAgentStore>(),
@@ -253,6 +267,7 @@ public static class CodaiRuntimeBuilder
             ResumeTaskId = resumeTaskId,
             Mode = mode,
             AutoCompact = autoCompact,
+            AutoCompactWindow = options.AutoCompactWindow,
             CompactionStrategy = compactionStrategy,
             CheckpointRetention = options.CheckpointRetention,
             CheckpointsEnabled = options.CheckpointsEnabled,
@@ -260,7 +275,7 @@ public static class CodaiRuntimeBuilder
 
         services.AddInspectionContext(options, providerOptions, root, allowShell, autoCompact,
             allowSubAgents, dataDirectory, hookDirectories, compactionStrategy, configurationDirectory,
-            globalConfigurationDirectory: globalConfigurationDirectory);
+            globalConfigurationDirectory: globalConfigurationDirectory, mcpServers: mcpServers);
 
         services.AddSingleton<ProjectContextLoader>();
         services.AddSingleton<ProjectGuidanceLoader>();

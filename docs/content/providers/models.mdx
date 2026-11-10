@@ -17,8 +17,8 @@ requirements across providers.
 | --- | --- | --- |
 | `codai auth` model selection, then Save | Next session; first-run setup opens chat | Yes |
 | `:preferences provider`, Default model, then Save | Next startup | Yes |
-| Settings, Select model, then Enter | Future requests in the current mode | No |
-| `:model agent <provider> <model>` | Future Agent requests in this session | No |
+| `/auth`, then Save | Next startup | Yes |
+| `/models`, then Enter, or `/models <model-id>` | Future requests in the current mode | No |
 | `--model <id>` | This invocation | No |
 
 <Callout type="info">
@@ -31,12 +31,19 @@ Inspect or change the mode-specific selection:
 
 ```text
 :model
-:model plan ollama qwen3-coder
-:model agent openai gpt-5.4-mini
+/agents plan
+/models qwen3-coder
 ```
 
-The compact form `:model agent openai/gpt-5.4-mini` also works.
-Changing the selection does not authorize a new credential or grant tool access.
+`/models` retains the active provider, endpoint, credential, and account reference.
+Its picker offers bundled suggestions and a custom ID, not live discovery.
+Suggestions are grouped under the provider, with session Recent and Favorites
+sections and a dot beside the current model. Ctrl+F adds or removes the highlighted
+model from Favorites; Ctrl+A opens provider setup. Recents and favorites are not
+persisted across processes. The picker does not label unknown model pricing as free.
+Use `/auth` or `codai auth` to authenticate provider connections, then restart.
+Legacy `:model` remains callable but is not part of slash completion. Changing
+the selection does not authorize a new credential or grant tool access.
 
 ## Live discovery
 
@@ -85,16 +92,71 @@ endpoint, and model lifecycle can change availability.
 | Provider | Additional suggestions |
 | --- | --- |
 | OpenAI | GPT-6 variants, GPT-5.5 / 5.4 / 5.2 / 5.1 / 5, GPT-4.1 variants |
-| Anthropic | Sonnet / Opus / Haiku 5.5, Fable 5.1, 5-series and selected 4-series models |
-| Gemini | 4 Argon, 3.6 Flash, 3.5 / 3.1 Flash Lite, Pro / Flash previews, 2.5 legacy models |
+| Anthropic | Sonnet / Opus / Haiku 5.5, Fable 5.2 / 5.1, 5-series and selected 4-series models |
+| Gemini | 4 Carbon / Argon, 3.6 Flash, 3.5 / 3.1 Flash Lite, Pro / Flash previews |
 | DeepSeek | `deepseek-v4-pro` |
 | OpenRouter | Provider-qualified OpenAI, Claude, Gemini, DeepSeek, Qwen, Mistral, and Grok families |
-| Qwen | Qwen3.8 Max / Flash / Omni Flash, Qwen3 Coder, Plus / Max / Flash aliases |
-| Mistral | Large 4, Small 4, Codestral and Large / Small aliases, Ministral variants |
+| Qwen | Qwen3.8 Max / Flash, Qwen3 Coder Flash |
+| Mistral | Small 4, Codestral, Ministral variants; Large 4 is the default |
 | Grok | 4.6 / 4.5 / 4.3, 4.20 variants, Grok Build 0.1 |
 
 Azure has no guessed deployment suggestions. SDK hosts can inspect
 `ProviderDescriptor.DefaultModel` and `SuggestedModels` for exact bundled IDs.
+
+Suggestions were reviewed against provider catalogs on **November 10, 2026**.
+Gemini 2.5 choices are no longer recommended for new connections; existing
+configured IDs and historical prices remain usable subject to provider access.
+Qwen suggestions focus on verified text/coding choices rather than older aliases
+or Omni variants. Mistral no longer defaults to deprecated Medium 3.5.
+Changing these suggestions does not migrate saved connections.
+
+## Context limits and compaction
+
+Every bundled hosted default and suggestion has provider-qualified context
+metadata, reviewed separately from prices on **November 10, 2026**. Setup's live
+model listing does not update this offline snapshot or infer limits for custom IDs.
+
+| Default model | Published context | Separate maximum input | Synchronous output ceiling |
+| --- | ---: | ---: | ---: |
+| OpenAI / model-named Azure `gpt-5.4-mini` | 400,000 | 272,000 | 128,000 |
+| Anthropic `claude-sonnet-4-6` | 1,000,000 | Not separately recorded | 64,000 |
+| Gemini `gemini-3.8-flash` | 1,048,576 | 1,048,576 | 65,536 |
+| DeepSeek `deepseek-flash` | 1,000,000 | 1,000,000 | 384,000 |
+| OpenRouter `openai/gpt-5.4-mini` | 400,000 | Not separately recorded | 128,000 |
+| Qwen `qwen3.7-plus` | 1,000,000 | Not separately recorded | 128,000 |
+| Mistral `mistral-large-4` | 1,000,000 | Not separately recorded | Not verified |
+| Grok `grok-4.7` | 500,000 | Not separately recorded | Not verified |
+| Local Ollama `qwen3-coder` | Server-dependent | Server-dependent | Server-dependent |
+
+Input and output share context; the columns are not additive allowances. Native
+GPT-6 / GPT-5.5 / GPT-5.4 use a 1,050,000-token combined window with a
+922,000-token input ceiling. Native Gemini 4 Carbon / Argon use a shared
+1,048,576-token window and the normal 65,536-token output ceiling, not optional
+long-decode limits. Routed limits can differ from native APIs.
+
+Manual and automatic compaction use the active provider/model's input ceiling
+when published, otherwise its recorded context window. Output reserve, tools,
+safety margins, and any smaller selected automatic window reduce the usable
+allowance further. Unknown output caps retain bounded fallback headroom; they
+are not treated as unlimited. See [Context and delegation](/usage/context).
+
+SDK hosts can read `ModelPricing.MaxContextTokens`, `MaxInputTokens`, and
+`MaxOutputTokens` through `EmbeddedPricingCatalog.Find(provider, model)`.
+Zero means that a separate limit was not verified. `ResolvedProviderOptions`
+applies the effective input ceiling and bounded output reserve. Legacy
+`MaxTokens` metadata is unchanged and is not a combined-window field.
+
+### Context sources
+
+[OpenAI](https://developers.openai.com/api/docs/models) ·
+[Azure](https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure) ·
+[Anthropic](https://platform.claude.com/docs/en/models/overview) ·
+[Gemini](https://aistudio.google.com/docs/models) ·
+[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing) ·
+[Qwen](https://www.alibabacloud.com/help/en/model-studio/text-generation-model) ·
+[Mistral](https://docs.mistral.ai/models) ·
+[xAI](https://docs.x.ai/developers/models) ·
+[OpenRouter](https://openrouter.ai/api/v1/models).
 
 ## Next steps
 

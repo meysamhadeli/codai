@@ -1,21 +1,12 @@
-using System.Collections;
-using System.Reflection;
 using System.Text.Json;
 using Codai.Configuration;
+using ModelContextProtocol.Client;
 
 namespace Codai.Mcp.Client;
 
 /// <summary>Discovers tools from stdio MCP servers using the official SDK.</summary>
 public sealed class McpStdioToolDiscoverer : IMcpToolDiscoverer
 {
-    private const string EmptySchema = """
-        {
-          "type": "object",
-          "properties": {},
-          "additionalProperties": false
-        }
-        """;
-
     /// <inheritdoc />
     public async Task<IReadOnlyList<McpToolDefinition>> DiscoverAsync(
         IEnumerable<McpServerOptions> servers,
@@ -50,15 +41,15 @@ public sealed class McpStdioToolDiscoverer : IMcpToolDiscoverer
             var serverTools = await ListToolsAsync(client, timeout.Token).ConfigureAwait(false);
             foreach (var tool in serverTools)
             {
-                var remoteName = RequiredString(tool, "Name");
+                var remoteName = tool.Name;
                 var prefix = string.IsNullOrWhiteSpace(server.ToolPrefix)
                     ? "mcp_" + Sanitize(server.Name) + "_"
                     : server.ToolPrefix;
 
                 tools.Add(new McpToolDefinition(
                     prefix + Sanitize(remoteName),
-                    Description(server.Name, remoteName, OptionalString(tool, "Description")),
-                    Schema(tool),
+                    Description(server.Name, remoteName, tool.Description),
+                    tool.JsonSchema.GetRawText(),
                     server.ReadOnly,
                     !IsAutoApproved(server, prefix + Sanitize(remoteName)),
                     (arguments, _, ct) => InvokeToolWithTimeoutAsync(tool, arguments, server.TimeoutSeconds, ct)));
@@ -69,7 +60,7 @@ public sealed class McpStdioToolDiscoverer : IMcpToolDiscoverer
     }
 
     private static async Task<string> InvokeToolWithTimeoutAsync(
-        object tool,
+        McpClientTool tool,
         JsonElement arguments,
         int timeoutSeconds,
         CancellationToken cancellationToken)
@@ -98,206 +89,39 @@ public sealed class McpStdioToolDiscoverer : IMcpToolDiscoverer
     private static bool IsAutoApproved(McpServerOptions server, string exposedName) =>
         server.AutoApprove.Any(name => string.Equals(name, exposedName, StringComparison.OrdinalIgnoreCase));
 
-    private static async Task<object> CreateClientAsync(
+    private static async Task<McpClient> CreateClientAsync(
         McpServerOptions server,
         string projectRoot,
         CancellationToken cancellationToken)
     {
-        var optionsType = Type.GetType("ModelContextProtocol.Client.StdioClientTransportOptions, ModelContextProtocol", throwOnError: true)!;
-        var transportType = Type.GetType("ModelContextProtocol.Client.StdioClientTransport, ModelContextProtocol", throwOnError: true)!;
-        var factoryType = Type.GetType("ModelContextProtocol.Client.McpClientFactory, ModelContextProtocol", throwOnError: true)!;
-
-        var options = Activator.CreateInstance(optionsType)!;
-        Set(options, "Name", server.Name);
-        Set(options, "Command", server.Command);
-        Set(options, "Arguments", server.Args);
-
-        if (!string.IsNullOrWhiteSpace(server.WorkingDirectory))
+        var options = new StdioClientTransportOptions
         {
-            Set(options, "WorkingDirectory", Path.GetFullPath(server.WorkingDirectory, projectRoot));
-        }
-
-        if (server.Environment.Count > 0)
-        {
-            Set(
-                options,
-                "EnvironmentVariables",
-                server.Environment.ToDictionary(
-                    pair => pair.Key,
-                    pair => ExpandEnvironmentReference(pair.Value),
-                    StringComparer.OrdinalIgnoreCase));
-        }
-
-        var transport = Activator.CreateInstance(transportType, options)!;
-        var create = factoryType.GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Where(method => method.Name == "CreateAsync")
-            .OrderBy(method => method.GetParameters().Length)
-            .FirstOrDefault(method => method.GetParameters().Length > 0 &&
-                method.GetParameters()[0].ParameterType.IsAssignableFrom(transportType))
-            ?? throw new MissingMethodException(factoryType.FullName, "CreateAsync");
-
-        var result = create.Invoke(null, Arguments(create, transport, cancellationToken))
-            ?? throw new InvalidOperationException("MCP client factory returned null.");
-
-        return await AwaitObjectAsync(result).ConfigureAwait(false);
+            Name = server.Name,
+            Command = server.Command,
+            Arguments = server.Args,
+            WorkingDirectory = string.IsNullOrWhiteSpace(server.WorkingDirectory)
+                ? null : Path.GetFullPath(server.WorkingDirectory, projectRoot),
+            EnvironmentVariables = server.Environment.ToDictionary(
+                pair => pair.Key, pair => ExpandEnvironmentReference(pair.Value), StringComparer.OrdinalIgnoreCase),
+        };
+        return await McpClient.CreateAsync(new StdioClientTransport(options), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<IReadOnlyList<object>> ListToolsAsync(object client, CancellationToken cancellationToken)
-    {
-        var method = client.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(candidate => candidate.Name == "ListToolsAsync")
-            .OrderBy(candidate => candidate.GetParameters().Length)
-            .FirstOrDefault()
-            ?? throw new MissingMethodException(client.GetType().FullName, "ListToolsAsync");
-
-        var result = method.Invoke(client, Arguments(method, cancellationToken))
-            ?? throw new InvalidOperationException("MCP client returned no tool list.");
-
-        var value = await AwaitObjectAsync(result).ConfigureAwait(false);
-        if (value is not IEnumerable enumerable)
-        {
-            throw new InvalidOperationException("MCP ListToolsAsync result was not enumerable.");
-        }
-
-        return enumerable.Cast<object>().ToArray();
-    }
+    private static async Task<IReadOnlyList<McpClientTool>> ListToolsAsync(McpClient client, CancellationToken cancellationToken) =>
+        (await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false)).ToArray();
 
     private static async Task<string> InvokeToolAsync(
-        object tool,
+        McpClientTool tool,
         JsonElement arguments,
         CancellationToken cancellationToken)
     {
-        var method = tool.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Where(candidate => candidate.Name is "InvokeAsync" or "CallAsync")
-            .OrderBy(candidate => candidate.GetParameters().Length)
-            .FirstOrDefault()
-            ?? throw new MissingMethodException(tool.GetType().FullName, "InvokeAsync");
-
-        var result = method.Invoke(tool, Arguments(method, arguments, cancellationToken))
-            ?? throw new InvalidOperationException("MCP tool returned null.");
-
-        var value = await AwaitObjectAsync(result).ConfigureAwait(false);
-        return value switch
+        var result = await tool.CallAsync(ToDictionary(arguments), cancellationToken: cancellationToken).ConfigureAwait(false);
+        var content = JsonSerializer.Serialize(result);
+        if (result.IsError == true)
         {
-            null => string.Empty,
-            string text => text,
-            JsonElement json => json.GetRawText(),
-            _ => value.ToString() ?? string.Empty,
-        };
-    }
-
-    private static object?[] Arguments(MethodBase method, object first, CancellationToken cancellationToken)
-    {
-        var parameters = method.GetParameters();
-        var values = new object?[parameters.Length];
-        values[0] = first;
-
-        for (var i = 1; i < parameters.Length; i++)
-        {
-            values[i] = ValueFor(parameters[i], cancellationToken);
+            throw new InvalidOperationException(content);
         }
-
-        return values;
-    }
-
-    private static object?[] Arguments(MethodBase method, CancellationToken cancellationToken) =>
-        [.. method.GetParameters().Select(parameter => ValueFor(parameter, cancellationToken))];
-
-    private static object?[] Arguments(MethodBase method, JsonElement arguments, CancellationToken cancellationToken)
-    {
-        var values = new object?[method.GetParameters().Length];
-        var parameters = method.GetParameters();
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            if (parameters[i].ParameterType == typeof(JsonElement))
-            {
-                values[i] = arguments;
-            }
-            else if (parameters[i].ParameterType == typeof(string))
-            {
-                values[i] = arguments.GetRawText();
-            }
-            else if (typeof(IDictionary).IsAssignableFrom(parameters[i].ParameterType) ||
-                parameters[i].ParameterType.Name.Contains("Arguments", StringComparison.Ordinal))
-            {
-                values[i] = ToDictionary(arguments);
-            }
-            else
-            {
-                values[i] = ValueFor(parameters[i], cancellationToken);
-            }
-        }
-
-        return values;
-    }
-
-    private static object? ValueFor(ParameterInfo parameter, CancellationToken cancellationToken)
-    {
-        if (parameter.ParameterType == typeof(CancellationToken))
-        {
-            return cancellationToken;
-        }
-
-        if (parameter.HasDefaultValue)
-        {
-            return parameter.DefaultValue;
-        }
-
-        return parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType) : null;
-    }
-
-    private static async Task<object> AwaitObjectAsync(object result)
-    {
-        if (result is not Task task)
-        {
-            return result;
-        }
-
-        await task.ConfigureAwait(false);
-        return task.GetType().GetProperty("Result")?.GetValue(task)
-            ?? throw new InvalidOperationException("MCP async operation completed without a result.");
-    }
-
-    private static void Set(object instance, string name, object? value)
-    {
-        var property = instance.GetType().GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-        if (property is not null && property.CanWrite)
-        {
-            property.SetValue(instance, value);
-        }
-    }
-
-    private static string RequiredString(object value, string property) =>
-        OptionalString(value, property) ?? throw new InvalidOperationException($"MCP tool has no {property}.");
-
-    private static string? OptionalString(object value, string property) =>
-        value.GetType().GetProperty(property)?.GetValue(value)?.ToString();
-
-    private static string Schema(object tool)
-    {
-        foreach (var propertyName in new[] { "JsonSchema", "InputSchema", "ParametersSchema", "Schema" })
-        {
-            var value = tool.GetType().GetProperty(propertyName)?.GetValue(tool);
-            switch (value)
-            {
-                case null:
-                    continue;
-                case JsonElement json:
-                    return json.GetRawText();
-                case string text when !string.IsNullOrWhiteSpace(text):
-                    return text;
-                default:
-                    var stringValue = value.ToString();
-                    if (!string.IsNullOrWhiteSpace(stringValue))
-                    {
-                        return stringValue;
-                    }
-
-                    break;
-            }
-        }
-
-        return EmptySchema;
+        return content;
     }
 
     private static Dictionary<string, object?> ToDictionary(JsonElement arguments)

@@ -1,5 +1,4 @@
 # Changelog
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -9,6 +8,403 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reduced the gap between thinking/loading activity or result text and the input
+  border by one row, preserving a clear separator and stable cursor alignment.
+
+- Matched submitted-message markers to the input chevron, using a darker shade
+  of the active theme accent for history and preserving ASCII fallback. Removed
+  `/settings` from slash-command suggestions without disabling the command.
+
+- Unified settings, command, and submenu search fields with the same full-width
+  neutral background and text inset. Reduced search fields to a compact single
+  row while keeping cursor alignment consistent across viewport sizes.
+
+- Placed Continue first and Keep current conversation second in new-conversation
+  and branch confirmations. Preserved save-before-switch and Escape cancellation.
+
+- Expanded multiline input to fit the terminal up to twelve text rows, with a
+  cursor-following viewport for longer drafts. Replaced the filled input rail with
+  thin horizontal rules and a single prompt marker. Preserved multiline bracketed
+  paste without accidental submission and added Windows Ctrl+V and right-click
+  clipboard paste, including pending drafts during responses.
+
+- Recorded provider-qualified context windows and independently published input
+  and output ceilings for every bundled hosted model choice. Used the active
+  model's input ceiling, or recorded context window, for manual and automatic
+  compaction instead of broad family estimates. Preserved bounded headroom when
+  output caps were unknown and kept context provenance separate from price reviews.
+
+- Scaled manual and automatic compaction tails, requested summary lengths, and
+  deterministic fallback to the active model's input allowance and lower selected
+  window. Rejected summaries that remained oversized, bounded fallback endpoint
+  fields, and preserved complete transcripts for recovery.
+
+- Scaled the default automatic-compaction buffer for small context windows so short
+  conversations no longer compacted prematurely, while retaining non-default host
+  policy reserves and proactive/urgent thresholds.
+
+- Rendered informational notices, including stopped-request feedback, in white and
+  error messages in red across all terminal themes and transcript rendering paths.
+
+- Accounted for prepared project context, mentions, instructions, memory, skill
+  metadata, and initialized tools before automatic history compaction. Used bundled
+  model input limits and output headroom, with conservative fallbacks.
+
+- Checked context again between streamed and non-streamed tool rounds. Compacted
+  older ordinary payloads before large current results while preserving call IDs,
+  loaded skills, rule-review guidance, and original results. Honored lower automatic
+  windows and explicit compaction disablement; retained cancellation semantics.
+
+- Budgeted summary input and automatic-window displays for the currently selected
+  model rather than only the startup model. Kept summary calls tool-free and excluded
+  them from recursive automatic compaction.
+
+- Matched Markdown inline code and backtick-delimited paths to the active theme
+  accent instead of fixed green, including after live theme changes. Preserved
+  code-block syntax highlighting and semantic red/green diff colors.
+
+- Balanced answer code panes' left and right outer margins, keeping the dark
+  surface away from the scrollbar while preserving syntax colors, line numbers,
+  indentation, and wrapped continuation rows.
+
+- Reloaded MCP definitions and private selections at the first deferred connection,
+  honoring checklist changes made after workspace opening but before the first model
+  request, including servers discovered after an initially empty catalog. Preserved
+  offline startup, disabled-server exclusion, and once-only successful initialization.
+  Initialized deferred MCP tools for background or delegated requests started before
+  foreground chat, selecting their read-only inventory only after discovery completed.
+
+- Fixed remote MCP startup parsing for SSE responses beginning with event metadata,
+  heartbeat comments, or IDs. Used the standard SSE parser for multiline data and
+  CRLF framing while retaining JSON response support. Sent required JSON/SSE Accept
+  headers on initialization notifications, fixing Microsoft Learn's HTTP 406 response.
+
+- Retained failed and cancelled model exchanges in conversation history, including
+  partial streamed text marked as interrupted. Preserved the earlier request in
+  subsequent prompts and saved conversations so follow-ups could refer to a lookup
+  that stopped at a tool failure limit without repeating the question. Kept failure
+  statuses, cancellation exit codes, and approval policy unchanged.
+
+- Replaced legacy stdio MCP reflection with the installed SDK's typed client and
+  tool APIs. Fixed connection failures caused by obsolete type names and returned
+  actual MCP result content instead of result type names. Reported server-declared
+  tool errors as failed calls.
+
+- Discovered native MCP lists from user-wide `.codai.json` even when project runtime
+  settings were selected. Restored Global entries in `/mcps` without copying provider
+  settings or automatically starting unapproved servers. Preserved selected native
+  overrides and project-specific startup review.
+
+### Changed
+
+- Added Claude Fable 5.2 and Gemini 4 Carbon suggestions and dated rates. Changed
+  the Mistral default from deprecated Medium 3.5 to Large 4, removed Gemini 2.5
+  from new-connection suggestions, and focused Qwen and Mistral fallbacks on
+  reviewed text/coding models. Preserved explicitly configured model IDs and
+  historical prices; model listing did not guarantee tool-transport compatibility.
+
+- Reworked `/diff` into a compact bordered file overview with aggregate and per-file
+  addition/deletion counts, selection highlighting, and overflow indicators. Added
+  Enter-to-open inline detail, Escape-to-list navigation, single real line-number
+  gutters, and cell-aware wrapped changed rows while preserving source switching,
+  reviewed markers, hunk navigation, and read-only Git snapshots.
+
+- Removed the inline `thought for ...` duration from live activity metrics while
+  retaining elapsed time, token counts, interruption hints, and completed thought rows.
+
+- Added request-scoped activity metrics for chat, foreground compaction, and
+  delegated model calls, including unprinted summary output. Showed zero tokens
+  while waiting, replaced marked live estimates with reported provider usage,
+  displayed input counts on wide terminals and timed provider-signaled reasoning.
+  Restored parent counts after nested requests, preserved counts across tools,
+  and retained the original animated 3×3 spinner and themed phase labels.
+
+- Styled live activity and loading labels with solid theme accents, trailing
+  ellipses, and muted time-first metrics while retaining the existing 3×3 dot
+  spinner. Added approximate streamed-output token counts on wide terminals and
+  consistent presentation for caller-reported phases such as considering and
+  reviewing. Changed successful tool dots to the active theme accent and made
+  inline expansion chevrons and remaining-line counts white.
+
+- Refined the far-right transcript scrollbar into a thin dark-grey rail with a
+  lighter proportional thumb instead of full-cell background blocks. Added an
+  ASCII fallback and immediate cursor repositioning to prevent right-margin
+  wrapping. Kept edge-aligned click targets, wheel scrolling, dragging, and the
+  fixed composer and footer.
+
+- Replaced inline tool-output expansion keyboard hints with clickable disclosure
+  chevrons. Added an inline collapse control while retaining tool-header clicks,
+  Ctrl+O shortcuts, ASCII fallbacks, and scroll anchoring.
+
+- Replaced grouped working boxes with chronological, unframed thought timings,
+  public assistant progress, tool calls, and results that remained visible after
+  completion. Added green success dots, `Name(arguments)` display labels, inline
+  command output, and numbered red/green file previews with expandable overflow.
+  Kept live interrupt controls while answers streamed and reduced submitted prompts
+  to unpadded strips without timestamps. Kept thought rows timing-only rather than
+  inventing reasoning text unavailable from the provider stream.
+
+- Applied the active theme accent to selected command suggestion arrows, names,
+  and descriptions and every segment of the left rail. Retained neutral unselected
+  text, subtle selected-row shading, aligned columns, and compact keyboard navigation.
+
+- Increased the live activity text highlight's travel speed by approximately one
+  third while preserving the dot animation cadence, text layout, and interrupt controls.
+
+- Styled slash-command suggestions as flat, rail-marked rows with aligned names
+  and descriptions and subtle shading only on the selected row. Preserved the
+  six-row window, keyboard completion, skill commands, and narrow-width clipping.
+  Added New to the settings action menu, using the existing `/new` confirmation
+  and saved-history workflow.
+
+- Replaced default expanded activity breadcrumbs with one compact live row based
+  on public assistant progress or observed operations. Kept earlier narration and
+  tool calls in an explicitly opened, flat detail trace and displayed only the
+  final assistant segment as the answer. Preserved interrupt controls, animation,
+  and tool output inspection. Stopped labeling completed activities as failed
+  solely because an earlier tool call failed; retained actual failure outcomes.
+
+- Styled the existing composer footer as a quiet dark strip with bright approval
+  and mode labels, muted shortcut hints and model text, and subtle control-group
+  separators. Preserved current labels, keyboard shortcuts, right-aligned usage,
+  account-plan links, and single-row compact fallbacks on narrow terminals.
+
+- Strengthened research routing to discover relevant MCP tools before falling back
+  to URL retrieval, resolve documentation identifiers before querying, and use URLs
+  supplied by users or returned by actual sources rather than guessed paths. Guided
+  external questions away from unrelated repository browsing and requested concise,
+  observable progress instead of fabricated reasoning. Shared routing and checked
+  skill metadata with read-only subagents, retaining deferred skill bodies and manual
+  opt-outs. Added source-specific HTTP failure feedback recommending safe discovery
+  and recovery without retries, access bypasses, or relaxed tool-failure limits.
+
+- Combined `AGENTS.md`, `CLAUDE.md`, and `instructions.md` with existing instruction
+  compatibility paths instead of selecting only the first file. Loaded repository
+  ancestors in broad-to-specific order, refreshed instructions for every model
+  request, and discovered nested guidance only for referenced or file-tool target
+  directories. Paused reads, writes, edits, and structured patches before execution
+  when applicable instructions changed, preserving approval and mode restrictions.
+  Applied the same scoped guidance to read-only subagents and background investigations,
+  retained reviewed changes during provider conversation rebuilds, and bounded discovery
+  by canonical repository paths and context limits. Stopped discovering `CODAI.md`;
+  existing content required renaming to a supported standard filename.
+
+- Opened interactive workspaces without waiting for MCP server connections. Deferred
+  enabled-server discovery until the first model exchange and ran stdio and remote
+  discovery concurrently. Published complete tool definitions together and allowed
+  retries after cancellation or failure. Preserved eager SDK and one-shot defaults,
+  private startup consent, disabled tools, workspace trust, and tool-call policy.
+
+- Matched settings action titles to their slash-command names: Session, Models,
+  Agents, Diff, and Themes. Preserved descriptions, action order, and command routing.
+
+- Centered the settings search placeholder, entered text, and cursor between equal
+  shaded padding rows above and below. Retained the compact single-row field on
+  short terminals and the existing neutral background, width, and menu navigation.
+
+- Discovered repository skills in `.github/skills/` and personal skills in
+  `~/.copilot/skills/` without explicit discovery configuration. Included shared
+  repository roots in bounded ancestor, referenced-file nested, and additional-directory
+  discovery. Preserved existing root priority, project-over-global precedence,
+  private skill selections, and discovery limits.
+
+- Loaded checked skill instructions on demand in agent sessions offering `read_skill`,
+  advertising names and descriptions first. Retained eager fallback for other hosts
+  and legacy requests, manual invocation, path metadata, and selection opt-outs.
+  Deferred MCP schemas behind bounded request-local `tool_search` discovery, loading
+  up to five matching schemas per search without executing tools. Preserved allowed-tool
+  filtering, actual-call approval and budgets, startup consent, and saved selections.
+
+- Clarified existing direct `npx` support for stdio MCP servers on Windows. The
+  official SDK handled command wrappers internally, so explicit `cmd.exe /d /c`
+  configuration was unnecessary. Documented the shorter portable definition.
+
+- Moved private MCP consent and per-project skill selections out of user-wide
+  `.codai.json` into Codai-managed `state/customization.json` beneath the user
+  configuration directory. Preserved fingerprints, enabled and disabled choices,
+  global skill defaults, provider settings, and unrelated fields. Migrated existing
+  `customization` selections and valid legacy files during catalog loading, saving
+  private state atomically before cleaning sources. Existing private choices won
+  conflicts without combining consent records. Serialized selection updates,
+  rejected malformed or oversized saves and redirected selection paths, and allowed
+  saves alongside YAML settings without creating a runtime JSON file. Retained
+  project-only skill storage for SDK hosts without an explicit global directory.
+
+- Removed the second MCP startup confirmation. Saving `/mcps` selections enabled
+  selected imports and disabled unselected servers through the existing private,
+  project-specific consent store. Showed executable or endpoint information in the
+  checklist, preserved definition-change invalidation and tool-call approval, and
+  retained restart-required connection rebuilding.
+
+- Guided automatic selection of relevant offered MCP tools and checked skills from
+  their capability descriptions. Preferred documentation resolvers and lookup tools
+  for library research, search before retrieving external URLs, and repository tools
+  for repository questions. Preserved disabled selections, model invocation opt-outs,
+  project priority, mode restrictions, and approval.
+
+- Created missing user configuration automatically on interactive bare and `code`
+  launches after workspace trust, including when project settings already existed.
+  Preserved existing user files and project precedence without copying credentials.
+  Kept first-run setup for missing connections and retained the empty JSON file when
+  setup was cancelled.
+
+- Replaced the previous configuration basename with `.codai.json` for full runtime
+  settings and discovery metadata. Preferred JSON over `.codai.yml` and `.codai.yaml`,
+  updated setup and configuration editing to use the new names, and excluded these
+  files from default project scans. Removed discovery of the previous filenames;
+  existing settings required renaming. Preserved unrelated discovery fields on saves.
+
+- Removed auxiliary toggle/help footer lines from terminal menus and submenus.
+  Matched MCP management to Skills with checkmarks, themed checked titles,
+  descriptions, source labels, and an enabled count. Enter toggled without closing;
+  Escape saved and closed. Used checklist selection as startup consent for imports and
+  reported restart requirements after saving instead of inside the menu.
+
+- Replaced the previous agent-mode roadmap with a VS Code extension roadmap covering
+  native conversations, contextual edits and review, terminal/browser tools, MCP and
+  skills, task recovery, and distribution. Kept the published roadmap URL and clearly
+  separated planned editor features from available capabilities.
+
+### Added
+
+- Added `/compact [focus]` and `/autocompact [auto|tokens]` to slash completion,
+  help, and the settings action palette. Reused the existing safe summary/archive
+  workflow and retained `:compact`. Added a left/right window selector with Enter
+  to save/apply and Escape to cancel, plus direct `800k`/`1m` arguments. Persisted
+  `auto_compact_window` in JSON/YAML, with `0` preserving automatic defaults.
+  Capped selected windows by the active model, retained compaction headroom and
+  disable flags, and kept live settings unchanged when saving failed. Displayed
+  foreground summarization as `Compacting conversation...` with the existing spinner.
+
+- Accepted VS Code's `type` transport key in native MCP configuration, normalized
+  HTTP aliases, and gave explicit `type` precedence over `transport`. Supported
+  bounded slash-qualified imported server names such as `microsoftdocs/mcp`, while
+  rejecting empty or traversal-like segments. Retained `gallery` and `version` as
+  informational metadata without marketplace installation or executable pinning.
+  Preserved ordinary startup selection and tool-call approval.
+
+- Added bounded nearest-first skill discovery through Git repository ancestors,
+  `.codai.json` discovery roots, canonical-path deduplication, and nested skills
+  revealed by referenced workspace files. Supported `user-invocable`,
+  `disable-model-invocation`, and `paths` metadata independently of saved checkmarks.
+
+- Added layered MCP manifest discovery for Codai, Claude-style, and VS Code files,
+  explicit manifest paths, additional repositories, environment substitutions,
+  safe offline provenance, and native configuration overrides. Kept imported servers
+  disabled until selected in `/mcps`; stored startup approvals privately
+  with project/definition fingerprints and invalidated them when definitions changed.
+  Preserved tool-call approval and required restart after connection changes.
+
+- Added all discovered skill names to `/` completion before the first request and refreshed
+  suggestions after skill management. Included checked skill instructions in every
+  applicable workflow while preserving project constraints, mode restrictions, and tool permissions.
+  Omitted unchecked automatic skill instructions while keeping manual slash invocation
+  available independently of checks. Manual invocation did not change automatic selection.
+
+- Added multi-skill enablement in `/skills`, with plain checkmarks, theme-colored
+  enabled titles, neutral disabled titles, descriptions below names, source labels,
+  an enabled count, and the existing search panel. Enter toggled multiple choices
+  without closing the manager; Escape closed and saved them atomically.
+  Persisted project availability, supported re-enabling globally disabled skills,
+  and refreshed model-visible guidance before the next request without restarting.
+  Added catalog APIs for listing disabled entries and saving enabled selections.
+
+- Added a workspace-access screen before CLI agent startup loaded project configuration,
+  instructions, integrations, or session state. Selected Yes before No;
+  required fresh consent on each launch and explicit `--trust-directory` authorization
+  for redirected or JSON runs. Kept directory trust separate from tool approval and
+  provided a Yes-default confirmation fallback for plain terminals.
+
+### Fixed
+
+- Simplified every terminal search field to a single neutral dark band with muted
+  inset text, without borders or search icons. Preserved filtering and aligned
+  the typing cursor in settings and all selection menus, including ASCII terminals.
+
+- Parsed folded and literal multiline YAML skill descriptions instead of showing
+  `>` or `|` as the description. Preserved scalar lists and tolerant malformed-header
+  fallback in the shared skill, command, and rule frontmatter parser.
+
+- Matched loading labels to the compact muted-grey style with a moving theme-colored
+  highlight and inline interrupt/elapsed hint. Kept the animated 3-by-3 dot grid
+  and removed trailing-period animation from startup and setup loading.
+
+- Matched workspace-access selection colors to the saved chat theme, including
+  project, explicit, and user-fallback JSON/YAML configuration. Preserved flag and
+  environment precedence with a bounded theme-only read before consent; malformed
+  or unreadable settings did not prevent leaving the workspace.
+
+- Removed accidental game-test and temporary probe registrations from the product
+  solution so its build and test commands targeted only Codai projects.
+
+- Selected Yes first and No second in approvals and confirmations, including workspace
+  access. Kept Escape, EOF, and unattended runs from granting consent. Moved remembered
+  tool approval to the third choice, with `Y` / `1`, `N` / `2`, and `A` / `3` shortcuts.
+- Used the active theme's foreground accent rather than filled selection bars in
+  decision boxes, and standardized selection footers to Enter to confirm and Esc to
+  cancel. Applied the configured theme to workspace access without activating other
+  project settings before consent.
+
+- Kept approvals, confirmations, questions, and workspace-trust choices in bordered
+  decision boxes below the current CLI conversation instead of opening settings
+  palettes or clearing the workspace view. Preserved draft input, Escape cancellation,
+  custom answers, and tool-preview paging.
+
+- Corrected input and submitted-message alignment within compact prompt strips.
+  Centered text and the input cursor between equal top and bottom padding rows,
+  removed excess left spacing,
+  and used a steady block input cursor with a one-space inset from the rail. Preserved wrapping,
+  short-terminal fallback, footer spacing, and cursor restoration on exit.
+- Included bounded proposed contents in file-write approvals instead of displaying
+  only the target path. Explicitly marked empty writes and truncated previews.
+- Hid the terminal cursor while navigating selection menus so it no longer
+  covered the theme-colored Settings arrow or appeared below the model list.
+  Preserved a visible cursor for search, value entry, and the chat composer.
+- Matched settings and model-dialog accents to the active terminal theme instead
+  of a fixed lavender color, including headings, rules, search borders, and selection.
+- Kept every edge of the settings search box theme-colored, including its vertical
+  borders and after moving selection, while retaining muted text and an inset
+  search icon. Aligned padding using terminal cell widths.
+- Kept stable agent instructions ahead of growing conversation history to avoid
+  invalidating the reusable prompt prefix on every turn. Preserved non-agent
+  prompt compatibility, mode permissions, and configured reasoning effort.
+- Reused one shadow Git repository and index for new tasks in a project instead of
+  initializing and indexing a new repository per request. Preserved legacy
+  checkpoint repositories, serialized shared-index access across processes, and
+  kept later checkpoint revisions reachable when restoring earlier state.
+- Preserved ignored local files during Git checkpoint cleanup while still
+  removing non-ignored files created after a checkpoint.
+- Rejected stale compaction plans after history was cleared or rewritten, while
+  preserving turns appended during summarization. Added source snapshots to
+  planner-produced `CompactionPlan` instances.
+- Fixed background compaction becoming stuck after synchronous completion and
+  returning an awaited summary again through the completed-result queue.
+- Reaffirmed the active Plan or Agent mode after supplied context so historical
+  mode instructions did not select the current mode. Preserved enforced tool
+  permissions, project constraints, and approval requirements.
+- Validated tool-call arguments against each tool's advertised JSON Schema before
+  approval, guidance, hooks, or execution. Returned bounded field-level feedback
+  for correction, counted invalid calls toward safety limits, and stopped on
+  invalid schemas or unresolved external references without downloading them.
+- Closed repeated-tool-call limit bypasses involving nested object key order,
+  escaped strings, and tool-name casing. Preserved array order and stored hashed
+  argument fingerprints instead of full argument payloads.
+- Stopped local slash controls such as `/sessions` and `/models` from leaving
+  duplicate user-message blocks above the composer. Kept ordinary requests,
+  `/init`, and custom prompt workflows visible in the conversation.
+- Discovered shared agent skills from project `.agents`, `.claude`, and `.opencode`
+  roots and home `.agents`, `.claude`, and `.config/opencode` roots. Kept project
+  precedence, disabled-skill policy, and shared-home discovery when the CLI used
+  a separate configuration directory; SDK global discovery remained opt-in.
+- Kept the empty-input placeholder on the home screen only, leaving the composer
+  blank after the first submission, including after chat redraws and resizing.
+- Cleared the newly positioned composer area on terminal resize so blank spacing
+  no longer retained duplicate loader text from the previous layout.
+- Scoped default prompts and mode workflows to the actual request so greetings and
+  simple questions no longer requested repository overviews, capability lists, or
+  automatic plans. Required grounded claims, avoided unnecessary missing-file
+  requests from abbreviated summaries, and stopped requesting full-file echoes
+  after tool edits. Preserved mode permissions and requests for detailed answers.
 - Kept the active theme unchanged until Save succeeded. Cancel, Escape, and failed
   saves no longer applied an unsaved theme to terminal controls.
 - Isolated model-price lookup by provider instead of borrowing another provider's
@@ -26,6 +422,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replaced running activity and tool icons with a nine-dot 3×3 animation and
+  theme-colored text with a moving bright highlight at a fixed-width 160 ms cadence.
+  Moved cancel/elapsed hints into each live row and removed the separate bottom
+  loader. Removed action totals from running and completed headers while retaining
+  failure status. Kept live headers visible during streamed output and restored
+  static icons after completion. Preserved grouping, disclosure
+  controls, output previews, and narrow-terminal clipping.
+- Added breathing room between transcript/status messages and input, including
+  when history filled the viewport, with a compact short-terminal fallback.
+- Grouped thinking, reasoning, and working under one collapsible activity header
+  with nested tool actions. Removed duplicate status/timing panels and the
+  confusing private-reasoning warning. Collapsed completed groups to compact
+  duration-only summaries, preserved failure status and manual collapse, and
+  kept individual tool output/diffs inspectable without exposing internal reasoning.
+- Thickened the input rail and colored it with the active terminal theme,
+  preserving centered text, the block cursor inset, and an ASCII fallback.
+- Combined white approval/mode shortcut labels, muted usage/cost, and the white
+  current model into one input footer line. Removed the workspace address and
+  used compact labels on narrow terminals without wrapping. Preserved keyboard
+  switching, interactive Agent/Auto defaults, and explicit mode/approval options.
+  Showed the selected model immediately at startup and bounded long model names.
+- Centered single-line input and submitted messages in three-row strips with
+  equal shaded padding above and below their text. Preserved text wrapping,
+  the blank row before the single-line footer, and collapsed composer padding on
+  short terminals.
+- Selected automatic approval by default for interactive terminal sessions while
+  preserving explicit `--auto-approve false`, Shift+Tab switching, read-only mode
+  restrictions, and existing headless and custom-host defaults.
+- Restyled the main conversation with shaded timestamped user messages, accent-dot
+  assistant replies, a left-railed composer, muted thought durations, and compact
+  tool summaries with right-aligned timing and green/red change counts. Kept one
+  conversation screen without Current, Sessions, Issues, Pull requests, or Gists tabs.
+- Framed tool approvals around command and patch previews, highlighted the selected
+  decision with the active theme, and added preview paging without changing consent
+  scope. Preserved the single-line composer footer and `/session` switching.
+
+- Consolidated the input footer into one row beneath the composer: workspace on
+  the left, with usage/cost and the current model on the right. Preserved
+  percentage and cost while clipping secondary text on narrow terminals, and replaced
+  stacked status rows with one footer beneath the padded input surface.
+- Applied the rounded, theme-colored Settings search field and inset icon to all
+  searchable selection submenus. Added accurate current-state ticks for agents,
+  themes, enabled MCP/plugin entries, and known configuration values. Preserved
+  theme ticks when saving was cancelled or failed, and kept unknown or masked
+  values from implying a configured state.
+- Unified selection submenus around compact numbered rows, inline descriptions
+  and values, and a footer below results. Applied the active theme accent only
+  to the selected row; left other numbers, labels, and current-choice markers
+  in default text color instead of fixed green. Preserved filtering, ordering,
+  keyboard actions, current markers, and workflow guidance.
+- Removed the standalone top separator lines from Settings and model menus,
+  preserving titles, theme accents, and the rounded Settings search border.
+- Removed the Status / Config / Usage / Stats strip from Settings headers and
+  standardized selection-menu hints to "Enter to change" and "Esc to close".
+  Preserved keyboard navigation, direct settings views, and workflow guidance.
+- Simplified model selection to one flat numbered list without Recent/provider
+  headings or the authentication/favorite shortcut footer. Preserved filtering,
+  ordering, keyboard actions, current-model markers, and the confirmation hint.
+  Moved the idle cursor below the dialog instead of onto a list heading.
+- Matched settings to the reference layout with a theme-accented heading,
+  rounded search border, aligned compact values, overflow counts, and a
+  footer directly below results. Added settings-local Status / Config / Usage /
+  Stats navigation backed by runtime inspection; kept main chat free of tabs.
+  Restyled model selection with numbered inline rows and a current marker,
+  preserving session-only selection, filtering, favorites, and authentication.
+- Redesigned the terminal around one conversation screen without persistent top
+  tabs. Added wide, unframed settings with safe label/value rows, searchable
+  feature pickers with secondary descriptions, full-width forms, and exact
+  approval previews above numbered decisions. Preserved draft restoration,
+  masked credentials, keyboard controls, and session/tool approval scope.
+- Advertised `/session` for saved-conversation switching while retaining
+  `/sessions` as an accepted alias, and added `/settings` for the local
+  configuration editor without a model request.
+- Held precomputed summaries until automatic compaction was due, avoiding eager
+  history-prefix replacement at every completed response. Replaced transcript-style
+  summaries with concise continuation checkpoints, bounded summary inputs including
+  prior checkpoints by estimated model context, and retained both ends of clipped
+  transcript fields.
+- Replaced padded user/input blocks with compact `>` prompt strips and indented
+  continuations. Kept editable input lighter than history, aligned text and cursor
+  positions, and retained model, usage, mode, workspace, and approval footer data.
+- Replaced the settings palette with twelve grouped actions: session, model,
+  agents, skills, diff, theme, plugins, MCPs, auth, help, docs, and exit. Removed
+  other settings entries, kept slash commands independent, and opened published
+  documentation in the browser with a visible URL fallback.
+- Reduced the slash menu to thirteen commands. Removed `/debug`,
+  `/editor`, `/review`, `/status`, and `/variants`; renamed `/connect` to `/auth`
+  without keeping an alias. Changed `/agents` choices to `agent` and `plan`.
+- Replaced transcript-only `/diff` output with a full-screen, read-only browser
+  with working/staged snapshots, file navigation, colored numbered hunks,
+  scrolling, help, and temporary reviewed markers. Retained bounded Git calls
+  and plain-text fallback for noninteractive hosts.
+- Added model and skill pickers with aligned descriptions, current-model
+  markers, session recents/favorites, and connect/favorite keyboard actions.
+  Opened empty MCP/skill pickers instead of writing transcript messages. Made
+  Space toggle saved MCP availability directly, with restart requirements shown.
+- Replaced the slash menu with a command catalog:
+  `/agents`, `/auth`, `/diff`, `/exit`, `/help`, `/init`, `/mcps`, `/models`,
+  `/new`, `/session`, `/settings`, `/skills`, and `/themes`. Removed previous slash aliases from parsing and
+  completion while retaining legacy colon commands for existing callers.
+  Preserved connection identity during model changes.
+  Extended read-only `git_diff` with staged, commit, and branch comparisons,
+  rejecting shell syntax and option-like refs before process execution.
+  Documented restart-required connections/MCP changes and remaining OpenCode
+  differences, including unsupported `/move` and `/update`.
+- Restyled answer code blocks as padded dark panes with muted line numbers,
+  ColorCode.Core syntax highlighting, and wrapped-line continuation gutters.
+  Preserved literal source and existing tool/diff preview styling, with plain
+  fallback for unknown languages and hidden gutters on very narrow panes.
+- Replaced the ring-style loading pulse with an animated 3×3 dot grid that filled
+  and emptied using randomly varied row, column, spiral, center-out, and scattered
+  patterns, with separately selected fill and empty orders each cycle. Kept a
+  stable two-cell slot and used the same animation for startup and setup loading,
+  retaining themed colors, ASCII fallback, metrics, and narrow-terminal hints.
+- Routed interactive yes/no confirmations through modal choices
+  with No selected by default, Escape rejection, preserved drafts, and cancellation
+  cleanup. Guided blocking agent questions through `ask_question` while keeping
+  clarification separate from write/execute approval.
+- Normalized conversation gaps to one blank row and placed input below short
+  replies, retaining bottom anchoring for overflowing transcripts. Replaced the
+  solid busy blocks with a smoother shaded wave and kept themed/ASCII fallbacks.
+- Replaced the busy phase label with a themed moving-block loader and compact
+  `esc interrupt` hint. Added blank rows above and below activity, aligned it
+  with input text, and kept narrow/short-window fallbacks, ASCII animation,
+  elapsed/token metrics, and Escape cancellation.
+- Restyled footer usage as `19.0K (2%) · $0.01`, with compact token totals,
+  parenthesized context percentages, and responsive fallbacks. Requested a
+  steady block input cursor on ANSI terminals and reset cursor style on exit.
+- Simplified assistant text with neutral headings, green inline code and paths,
+  naturally flowing paragraphs and compact lists. Preserved explicit Markdown line breaks and
+  existing tool/diff preview styling.
+- Placed a single-line footer below padded prompt input with a blank gap, and replaced the
+  context progress bar with a percentage beside estimated cost. Preserved
+  percentage and cost on narrow terminals by shortening secondary labels.
+- Restyled submitted questions and prompt input as padded dark blocks with a
+  theme-colored left edge. Kept model, mode, usage, and approval details below
+  the input block, with cursor positioning adjusted for the new padding.
+- Grouped settings actions into Suggested, Session, Integrations, Workspace, and
+  Help sections, with searchable category names and nonselectable headings.
+- Restyled interactive menus and tool approvals as compact, borderless modals with
+  a dark surface, full-row theme highlights, aligned descriptions, and responsive
+  previews. Added Home, End, and PageUp/PageDown navigation to searchable menus.
 - Reorganized documentation into task-focused guides for terminal use, tools,
   permissions, recovery, providers, configuration, and troubleshooting. Refined the
   landing page and navigation, expanded integration guides, and preserved the

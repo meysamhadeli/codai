@@ -21,12 +21,15 @@ public class SubAgentRunnerTests
     private static (SubAgentRunner Runner, FakeChatClientFactory Factory, TokenTracker Tokens, FakeUserInterface Ui) Create(
         IReadOnlyList<ITool> tools,
         int maxReportChars = SubAgentRunner.DefaultMaxReportChars,
-        bool withUi = true)
+        bool withUi = true,
+        InMemoryFileSystem? fileSystem = null,
+        ISkillCatalog? skillCatalog = null,
+        IToolRegistry? registry = null)
     {
         var factory = new FakeChatClientFactory();
         var tokens = new TokenTracker();
         var ui = new FakeUserInterface();
-        var fileSystem = new InMemoryFileSystem(Root);
+        fileSystem ??= new InMemoryFileSystem(Root);
 
         var runner = new SubAgentRunner(
             factory,
@@ -35,18 +38,117 @@ public class SubAgentRunnerTests
                 Provider = "ollama",
                 BaseUrl = "http://localhost:11434/api",
             }),
-            new ToolRegistry(tools),
+            registry ?? new ToolRegistry(tools),
             fileSystem,
             tokens,
             withUi ? ui : null,
             Root,
-            maxReportChars);
+            maxReportChars,
+            skillCatalog: skillCatalog);
 
         return (runner, factory, tokens, ui);
     }
 
     private static SubAgentRequest Question() =>
         new("Where is the token validated?", "Look in the auth code.");
+
+    [Fact]
+    public async Task Subagent_initializes_deferred_tools_before_selecting_its_read_only_inventory()
+    {
+        var registry = new DeferredRegistry(new StubTool("mcp_docs"));
+        var (runner, factory, _, _) = Create([], registry: registry);
+        factory.Service.Enqueue("Documentation report.");
+
+        var result = await runner.RunAsync(new SubAgentRequest("Research", "Find product documentation"));
+
+        result.Succeeded.Should().BeTrue();
+        registry.Initialized.Should().BeTrue();
+        factory.OfferedToolNames.Should().Equal("mcp_docs");
+    }
+
+    private sealed class DeferredRegistry(ITool tool) : IAsyncToolRegistry
+    {
+        public bool Initialized { get; private set; }
+        public IReadOnlyList<ITool> Tools { get; private set; } = [];
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Initialized = true;
+            Tools = [tool];
+            return Task.CompletedTask;
+        }
+
+        public bool TryGet(string name, out ITool found)
+        {
+            found = Tools.FirstOrDefault(candidate => candidate.Name == name)!;
+            return found is not null;
+        }
+    }
+
+    [Fact]
+    public async Task Subagent_research_uses_shared_discovery_guidance_and_only_checked_automatic_skill_metadata()
+    {
+        var skills = new StaticSkillCatalog([
+            new("research", "Research product documentation", "PRIVATE_SKILL_BODY", "skills/research/SKILL.md"),
+            new("unchecked", "UNCHECKED_DESCRIPTION", "UNCHECKED_BODY", "skills/unchecked/SKILL.md") { IsEnabled = false },
+            new("manual", "MANUAL_DESCRIPTION", "MANUAL_BODY", "skills/manual/SKILL.md") { DisableModelInvocation = true },
+        ]);
+        var (runner, factory, _, _) = Create([new StubTool("read_skill"), new StubTool("fetch_web")], skillCatalog: skills);
+        factory.Service.Enqueue("Evidence-qualified answer.");
+
+        (await runner.RunAsync(new SubAgentRequest("Research", "Find product correlation-header documentation"))).Succeeded.Should().BeTrue();
+
+        var prompt = factory.Service.Requests.Single().SystemPrompt;
+        prompt.Should().Contain("call tool_search to discover relevant documentation")
+            .And.Contain("do not list or scan unrelated repository directories")
+            .And.Contain("research: Research product documentation")
+            .And.Contain("call read_skill with its exact name")
+            .And.NotContain("PRIVATE_SKILL_BODY")
+            .And.NotContain("UNCHECKED_DESCRIPTION")
+            .And.NotContain("MANUAL_DESCRIPTION");
+        factory.OfferedToolNames.Should().Equal("read_skill", "fetch_web");
+    }
+
+    private sealed class StaticSkillCatalog(IReadOnlyList<Codai.Core.Customization.SkillDefinition> skills) : ISkillCatalog
+    {
+        public Task<IReadOnlyList<Codai.Core.Customization.SkillDefinition>> LoadAsync(string rootDirectory, CancellationToken cancellationToken = default) => Task.FromResult(skills);
+
+        public Task<Codai.Core.Customization.SkillDefinition?> FindAsync(string rootDirectory, string name, CancellationToken cancellationToken = default) =>
+            Task.FromResult(skills.FirstOrDefault(skill => skill.Name == name));
+    }
+
+    [Fact]
+    public async Task Subagents_refresh_workspace_instructions_and_review_nested_guidance_before_reading()
+    {
+        var fileSystem = new InMemoryFileSystem(Root);
+        fileSystem.AddFile(Path.Combine(Root, "AGENTS.md"), "ROOT_SUBAGENT_GUIDANCE");
+        fileSystem.AddFile(Path.Combine(Root, "src", "CLAUDE.md"), "SCOPED_SUBAGENT_GUIDANCE");
+        fileSystem.AddFile(Path.Combine(Root, "src", "Main.cs"), "source");
+        var (runner, factory, _, _) = Create([new Codai.Tools.ReadFileTool(), new StubTool("write_file", isReadOnly: false)], fileSystem: fileSystem);
+        factory.Service.BeforeResponse = async (_, cancellationToken) =>
+        {
+            using var arguments = System.Text.Json.JsonDocument.Parse("{\"path\":\"src/Main.cs\"}");
+            var executor = factory.Executors.Last()!;
+            var review = await executor.ExecuteAsync("read_file", arguments.RootElement, cancellationToken);
+            review.RequiresModelReview.Should().BeTrue();
+            review.Content.Should().Contain("SCOPED_SUBAGENT_GUIDANCE");
+            var read = await executor.ExecuteAsync("read_file", arguments.RootElement, cancellationToken);
+            read.RequiresModelReview.Should().BeFalse();
+            read.Content.Should().Contain("source");
+        };
+        factory.Service.Enqueue("Found source.");
+
+        (await runner.RunAsync(Question())).Succeeded.Should().BeTrue();
+
+        factory.Service.Requests[0].SystemPrompt.Should().Contain("ROOT_SUBAGENT_GUIDANCE").And.NotContain("SCOPED_SUBAGENT_GUIDANCE");
+        factory.OfferedToolNames.Should().NotContain("write_file");
+        fileSystem.AddFile(Path.Combine(Root, "AGENTS.md"), "UPDATED_SUBAGENT_GUIDANCE");
+        factory.Service.BeforeResponse = null;
+        factory.Service.Enqueue("Second report.");
+        (await runner.RunAsync(new SubAgentRequest("Inspect", "Look at @src/Main.cs"))).Succeeded.Should().BeTrue();
+        factory.Service.Requests[1].SystemPrompt.Should().Contain("UPDATED_SUBAGENT_GUIDANCE").And.Contain("SCOPED_SUBAGENT_GUIDANCE").And.NotContain("ROOT_SUBAGENT_GUIDANCE");
+    }
 
     [Fact]
     public void Naming_the_tool_lives_in_one_place()
@@ -237,7 +339,7 @@ public class SubAgentRunnerTests
     {
         // The tokens were spent whether or not a report came back, and a cost report that
         // hides a failed run is a lie.
-        var (runner, factory, tokens, _) = Create([new StubTool("read_file")]);
+        var (runner, factory, tokens, ui) = Create([new StubTool("read_file")]);
 
         factory.Service.EnqueueThenFail(
             "I was halfway through...",
@@ -249,12 +351,14 @@ public class SubAgentRunnerTests
         result.Succeeded.Should().BeFalse();
         tokens.LastUsage.InputTokens.Should().Be(400);
         tokens.SessionUsage.TotalTokens.Should().Be(460);
+        ui.ModelRequests.Should().ContainSingle();
+        ui.CompletedModelRequests.Should().Equal(ui.ModelRequests);
     }
 
     [Fact]
     public async Task What_a_run_spent_is_added_to_the_sessions_totals()
     {
-        var (runner, factory, tokens, _) = Create([new StubTool("read_file")]);
+        var (runner, factory, tokens, ui) = Create([new StubTool("read_file")]);
 
         factory.Service.Enqueue("Found it.", new TokenUsage(120, 30));
 
@@ -262,6 +366,9 @@ public class SubAgentRunnerTests
 
         tokens.LastUsage.InputTokens.Should().Be(120);
         tokens.SessionUsage.TotalTokens.Should().Be(150);
+        ui.ModelRequests.Should().ContainSingle();
+        ui.CompletedModelRequests.Should().Equal(ui.ModelRequests);
+        ui.ModelUpdates.Should().Contain(update => update.Update.Usage == new TokenUsage(120, 30));
     }
 
     [Fact]

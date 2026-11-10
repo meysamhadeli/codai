@@ -96,9 +96,8 @@ public sealed class BackgroundSummarizer : IDisposable
 
             _lastAttemptFailed = false;
 
-            // The task is stored before it can complete, so the state is never InProgress
-            // with nothing to wait for.
-            _flight = RunAsync(instructions, preserveRecentTokens);
+            var flight = RunAsync(instructions, preserveRecentTokens);
+            _flight = flight.IsCompleted ? null : flight;
         }
     }
 
@@ -175,7 +174,17 @@ public sealed class BackgroundSummarizer : IDisposable
         }
 
         // The task never faults — RunAsync catches everything — so awaiting it is safe.
-        return await flight.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var plan = await flight.WaitAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_ready, plan))
+            {
+                return null;
+            }
+
+            _ready = null;
+            return plan;
+        }
     }
 
     /// <summary>

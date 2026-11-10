@@ -8,6 +8,26 @@ namespace Codai.Tools.Tests;
 public sealed class FetchWebToolTests
 {
     [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task Http_failures_recommend_discovery_without_retrying_or_treating_error_pages_as_evidence(HttpStatusCode status)
+    {
+        using var handler = new RecordingHandler { StatusCode = status, Content = "UNTRUSTED_ERROR_PAGE" };
+        using var client = new HttpClient(handler);
+
+        var result = await InvokeAsync(new FetchWebTool(client), "https://example.com/docs");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain($"HTTP {(int)status}")
+            .And.Contain("https://example.com/docs")
+            .And.Contain("Use tool_search if offered")
+            .And.Contain("Do not guess replacement URLs or bypass access restrictions")
+            .And.NotContain("UNTRUSTED_ERROR_PAGE");
+        handler.Calls.Should().Be(1);
+    }
+
+    [Theory]
     [InlineData("file:///secret.txt")]
     [InlineData("ftp://example.com/file")]
     [InlineData("http://localhost/")]
@@ -216,6 +236,7 @@ public sealed class FetchWebToolTests
     {
         public string Content { get; init; } = "<p>documentation</p>";
         public string ContentType { get; init; } = "text/html";
+        public HttpStatusCode StatusCode { get; init; } = HttpStatusCode.OK;
         public Uri? Redirect { get; init; }
         public bool RedirectOnce { get; init; }
         public bool OmitLength { get; init; }
@@ -234,7 +255,7 @@ public sealed class FetchWebToolTests
             }
 
             var redirect = Redirect is not null && (!RedirectOnce || Calls == 1);
-            var response = new HttpResponseMessage(redirect ? HttpStatusCode.Found : HttpStatusCode.OK)
+            var response = new HttpResponseMessage(redirect ? HttpStatusCode.Found : StatusCode)
             {
                 Content = OmitLength ? new StreamContent(new NonSeekableStream(Encoding.UTF8.GetBytes(Content)))
                     : new StringContent(Content, Encoding.UTF8, ContentType),

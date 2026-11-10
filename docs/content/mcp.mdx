@@ -11,6 +11,73 @@ Connect external tools through local processes or remote endpoints. Discovered
 capabilities enter Codai's ordinary tool registry: mode restrictions, budgets,
 access rules, and approval still apply.
 
+## Interactive startup
+
+Interactive CLI sessions open the workspace prompt without connecting MCP servers.
+The first model request, including a delegated or background investigation,
+initializes enabled servers before building its tool list. Local management commands
+and exiting without a model request do not start them. Stdio and remote
+discovery run concurrently. Server startup, package downloads, authentication, and
+discovery timeouts can therefore delay the first request rather than workspace opening.
+
+Definitions and saved selections are re-read immediately before that first connection.
+Changes in `/mcps` before the first request are therefore honored without restarting,
+including an initially empty catalog. Once connections have initialized successfully,
+changing servers or selections still requires a restart to rebuild them. A checkmark
+represents saved availability, not proof of a successful connection or subject coverage.
+
+Definitions are published together after successful discovery, and cancelled or
+failed initialization can be retried on a later request. Disabled servers remain
+disconnected, and imported definitions still require private startup consent.
+This changes connection timing, not workspace trust, mode restrictions, or tool-call
+approval. Request-local `tool_search` continues to select schemas after connection.
+
+One-shot CLI runs and SDK composition retain eager discovery by default. SDK hosts
+can pass `deferMcpStartup: true` to `AddCodaiApplication` or
+`AddCodaiApplicationRuntime`; the composed exchange initializes deferred tools before
+the model request. Hosts using `AddCodaiMcpClientTools(deferDiscovery: true)` directly
+must await `IAsyncToolRegistry.InitializeAsync` before building model requests.
+The optional `serverSource` callback supplies fresh definitions at deferred
+initialization; eager registration continues to use the supplied `McpOptions`.
+
+## Automatic selection
+
+Agent-session guidance asks the model to choose relevant offered capabilities from
+their names, descriptions, and argument schemas without requiring you to name an
+MCP server. Library and product documentation requests prefer a suitable documentation
+MCP tool, using its resolver first when an identifier is required. General external
+research prefers a suitable search tool before retrieving discovered URLs; repository
+tools are not a mandatory first step for non-repository questions.
+
+Guidance distinguishes external product research from repository work. A general
+product question should not trigger unrelated workspace inventories. When the offered
+`tool_search` function provides MCP discovery, research starts by discovering relevant
+resolver, documentation, or search schemas before falling back to `fetch_web`.
+
+The provider loop offers built-in tools immediately and defers MCP argument schemas
+behind `tool_search`. The model searches by concise task keywords or an exact tool
+name, then receives matching names, descriptions, and schemas. Matches become callable
+in the next model round. Up to five schemas load per search, duplicate matches are
+not added twice, and discovery state resets for each request. Searches accept at most
+512 characters and are limited to twelve attempts per request. No match produces
+feedback rather than a guessed tool call. A host that already registers a tool named
+`tool_search` retains eager MCP schemas to avoid a name collision.
+
+Discovery searches only tools already allowed for the request. It does not execute
+MCP tools, start additional servers, enable disabled servers, expand mode permissions,
+or bypass approval. Actual MCP calls retain the ordinary runner's validation, budgets,
+and approval gates. Metadata search has its own bounded attempt limit.
+Coverage depends on the connected source. If it cannot answer the request, the model
+is guided to another offered capability or to explain the limitation rather than
+keep guessing URLs. Explicit user and project instructions still take precedence.
+
+For example, enabling Context7 makes its library documentation tools available; it
+does not make it a general web search engine or guarantee coverage of WSO2. A disabled
+Tavily server is not used as a fallback. Enable an appropriate search server when
+needed, and restart if connections have already initialized. The model still chooses
+actions; these rules and execution checks do not guarantee any provider's reasoning
+quality or an external site's availability.
+
 ## Before you connect
 
 Know who operates the server, what data it receives, and whether its tools can
@@ -24,16 +91,40 @@ you have reviewed the capabilities.
 
 ## Transports
 
+Stdio commands such as `npx` can be used directly on Windows as well as other
+platforms. The official MCP SDK handles Windows command wrappers internally; an
+explicit `cmd.exe` plus `/d /c` prefix is not required. For example:
+
+```json
+{
+  "name": "context7",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@upstash/context7-mcp@1.0.30"]
+}
+```
+
+Existing explicit wrappers remain supported. Changing a saved command changes an
+imported definition's fingerprint, so select it again in `/mcps` if needed before
+restarting.
+
 | Transport | Connection settings |
 | --- | --- |
 | `stdio` | Local `command`, `args`, optional `working_directory` and `env` |
-| `streamableHttp` | Remote `url` and optional `headers` |
+| `http` / `streamableHttp` | Remote `url` and optional `headers` |
 | `sse` | Legacy server-sent events endpoint |
 
 ## Configuration
 
 Add servers under `mcp.servers` in the selected Codai configuration file.
 The names and endpoints below are examples; install or provide your own server.
+
+Native configuration accepts `type` as well as `transport`. If both are supplied,
+`type` takes precedence, matching imported manifests. `http`, `streamableHttp`, and
+`streamable-http` normalize to the same HTTP transport. Existing `transport` settings
+remain supported. Optional `gallery` and `version` fields are retained as informational
+provenance only; they do not trigger gallery requests, install packages, or pin an
+executable version. Metadata-only changes do not invalidate startup consent.
 
 ```yaml
 mcp:
@@ -51,15 +142,138 @@ mcp:
 ```
 
 `timeout_seconds` bounds discovery and each call and must be positive.
+Stdio tools use the SDK-provided argument schemas and return MCP result content to
+the model. A server-declared tool error is reported as a failed call, not a success.
 Set `enabled: false` to retain a definition without loading it.
 `auto_approve` accepts exact Codai-facing tool names and bypasses their approval
 prompts; use it sparingly.
+
+User-wide `.codai.json` also contributes its native `mcp.servers` list to discovery
+when project settings are selected. These entries appear as Global in `/mcps` and
+require project-specific checklist selection before connecting. Selected native entries
+override discovered entries with the same name. Discovery does not merge provider
+settings or inherit `read_only` / `auto_approve` declarations from imported entries.
+For stdio servers, a credential such as `TAVILY_API_KEY` can be inherited from the
+launch environment without adding it to the saved `env` map.
 
 <Callout type="warning">
   `read_only: true` declares every server tool safe for read-only modes. It is
   a trust declaration, not something Codai can prove about a remote server.
   Do not use it to bypass a refusal for tools that can change state.
 </Callout>
+
+## Manifest discovery
+
+Codai reads manifests without starting servers. Supported objects are `mcpServers`
+(Claude-style and Codai discovery metadata) and `servers` (VS Code). Standard imports
+support `command`, `args`, `env`, `url`, `headers`, `type`/`transport`, and
+`cwd`/`working_directory`. `http` maps to `streamableHttp`; `sse` and `stdio` are supported.
+Relative working directories resolve from the manifest directory; that directory is
+also the default for imported processes.
+
+VS Code-style entries can be placed under `servers` in a discovery manifest or the
+user-wide `.codai.json`, alongside other settings:
+
+```json
+{
+  "servers": {
+    "microsoftdocs/mcp": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp",
+      "gallery": "https://api.mcp.github.com",
+      "version": "1.0.0"
+    }
+  }
+}
+```
+
+Qualified server names remain intact in selection and inspection. Generated tool
+names sanitize punctuation and slash separators to underscores.
+
+```json filename=".mcp.json"
+{
+  "mcpServers": {
+    "docs": {
+      "type": "http",
+      "url": "https://tools.example.test/mcp",
+      "headers": { "Authorization": "Bearer ${MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+Sources are merged by case-insensitive server name, in increasing precedence:
+
+1. Opted-in user roots: legacy `~/.claude/.config.json`, `~/.claude.json`,
+  `.codai.json` and `mcp.json`/`.mcp.json` under the selected global directory,
+  and `~/.codai.json`.
+2. Explicit `additionalDirectories` repositories.
+3. Bounded project ancestors, shallow to nearest. At each directory: `.vscode/mcp.json`,
+   `.mcp.json`, `.codai/mcp.json`, then `.codai.json`.
+4. Explicit `mcpConfigFiles` declared in discovery metadata.
+5. Matching `projects[absoluteWorkspacePath].mcpServers` entries in user state files.
+6. Native `mcp.servers` from resolved Codai configuration, including disabled definitions.
+
+Linked manifests are deduplicated by canonical identity at their highest precedence.
+Discovery is bounded to 200 merged servers, 200 arguments per definition, 1 MiB per
+MCP manifest, and JSON depth 32. `.codai.json` additionally has the shared metadata
+64 KiB limit. Comments/trailing commas are supported. Unsupported transports,
+invalid endpoints, malformed metadata/state, missing explicit files, or unresolved
+environment variables fail discovery without starting imported servers.
+
+`${NAME}`, `${NAME:-default}`, `${env:NAME}`, and `${workspaceFolder}` expand before
+fingerprinting. Missing variables require configuration, not a secret prompt.
+VS Code interactive `inputs` and other editor-specific substitutions are not implemented.
+Server names are limited to 100 total ASCII characters: letters, digits, dots,
+underscores, hyphens, and optional slash-separated segments. Every segment must
+start with a letter or digit; empty segments, backslashes, and traversal segments
+are rejected. Imported OAuth metadata, plugin marketplace/managed
+policy discovery, and hot reconnection are not implemented; use native configuration
+for OAuth and restart after connection changes.
+
+### Review before connection
+
+New imports start disabled. `/mcps` shows imported definitions with their transport,
+executable or endpoint origin, working directory, and source path. Check the desired
+servers with Enter, then save and close with Escape. Saving the checklist is startup
+consent for selected imports; there is no second confirmation dialog. Unchecked
+servers remain disabled, and deselecting an enabled import disables it. Closed input
+without a saved selection or invalid input leaves existing settings unchanged.
+Native Codai configuration remains intentional configuration; its existing
+enabled/disabled semantics are unchanged.
+
+Selections are saved atomically in Codai-managed `~/.codai/state/customization.json`
+under `mcp`, keyed by canonical project identity and server name. Runtime settings
+and MCP definitions remain in `.codai.json` or YAML configuration. The state file
+must be outside the project repository; workspace-held or workspace-linked state
+cannot authorize imports. Consent binds canonical
+workspace identity, name, source, scope, transport, command, arguments, working
+directory, URL, environment, and headers. Imported definition changes invalidate
+the previous consent and require selection again, including changes to environment
+substitutions. Credentials are not written to the approval store or shown in the
+checklist. SDK hosts can use `McpManifestCatalog.LoadAsync` and
+`SetEnabledAsync`; hosts without a private global directory cannot persist approval.
+`IFileSystem.GetCanonicalPath` lets custom filesystems provide link-aware identities.
+
+On catalog loading, existing `customization.mcp` entries in private user runtime JSON
+and valid private legacy `mcp-approvals.json` entries migrate into managed state,
+preserving all project fingerprints. Existing private entries win conflicts as
+whole consent records. Runtime selection fields or legacy files are removed only
+after a successful atomic state save; malformed or redirected selection sources
+are not migrated. Provider settings and skill selections are preserved. YAML-only
+settings need no conversion. See [selection storage](/customization/configuration#selection-storage).
+
+Startup approval is not tool-call approval. Imported `read_only` and `auto_approve`
+claims are ignored; mode, access, budget, and ordinary tool approvals still apply.
+Restart Codai after approval changes to rebuild connections.
+
+### HTTP response compatibility
+
+Remote MCP endpoints can return `application/json` or `text/event-stream`. Codai
+uses the response media type and the standard SSE parser, so event metadata, IDs,
+heartbeat comments, CRLF framing, and multiline data can precede or surround JSON
+messages. Requests and initialization notifications advertise both accepted media
+types. Malformed JSON event data is reported as a remote transport failure.
 
 ## OAuth
 
@@ -96,8 +310,21 @@ Inspection reads configuration without starting a server. Mutations update an
 existing configuration entry; remove does not uninstall a server or terminate
 an external service.
 
-In a session, use `:preferences mcp`, choose an operation, then **Save** or
-**Cancel**. Restart Codai to rebuild tool connections after changes.
+In a session, `/mcps` opens the searchable **MCPs** manager, including an empty state
+when no definitions exist. It uses the same multi-select layout as Skills: plain
+checkmarks and theme-colored checked titles, neutral unchecked titles, descriptions,
+source labels, and an enabled count. Enter toggles the highlighted entry without
+closing; Escape closes and saves the selection. Checks survive search filtering;
+Space is a search character, not a toggle. Closed input or invalid selections do not
+change saved configuration.
+
+The footer contains only Enter to confirm and Esc to close, without a second toggle
+or restart hint. A restart notice appears after saved changes. Checkmarks represent
+saved availability or matching private import approval, not connection health;
+new checks are provisional until saved and, for imports, separately approved.
+CLI mutation commands edit native configuration entries only. Restart Codai to
+rebuild tool connections after changes. Removal remains available through
+`codai config mcp remove <name>`.
 
 ## Verify the connection
 

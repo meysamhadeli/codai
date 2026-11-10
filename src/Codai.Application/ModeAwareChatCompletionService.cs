@@ -2,6 +2,7 @@ using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Chat;
 using Codai.Core.Tools;
+using Codai.Providers;
 using Codai.Providers.Abstractions;
 
 namespace Codai.Application;
@@ -14,6 +15,9 @@ internal sealed class ModeAwareChatCompletionService(
     IChatCompletionService plan,
     IChatCompletionService agent) : IChatCompletionService
 {
+    private readonly ResolvedProviderOptions _initialPlan = models.Get(AgentMode.Plan);
+    private readonly ResolvedProviderOptions _initialAgent = models.Get(AgentMode.Agent);
+
     public string ProviderName => Current.ProviderName;
 
     public string ModelName => Current.ModelName;
@@ -35,8 +39,7 @@ internal sealed class ModeAwareChatCompletionService(
                 _ => throw new ArgumentOutOfRangeException(nameof(mode), mode.Mode, "Unknown agent mode."),
             };
 
-            return string.Equals(initial.ProviderName, selected.Provider, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(initial.ModelName, selected.Model, StringComparison.OrdinalIgnoreCase)
+            return selected == (mode.Mode == AgentMode.Plan ? _initialPlan : _initialAgent)
                 ? initial
                 : factory.CreateService(selected, tools);
         }

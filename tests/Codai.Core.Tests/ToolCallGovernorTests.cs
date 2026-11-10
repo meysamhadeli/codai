@@ -68,6 +68,39 @@ public class ToolCallGovernorTests
             .Allowed.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("{\"options\":{\"path\":\"a.cs\",\"line\":1}}", "{\"options\":{\"line\":1,\"path\":\"a.cs\"}}")]
+    [InlineData("{\"edits\":[{\"path\":\"a.cs\",\"text\":\"x\"}]}", "{\"edits\":[{\"text\":\"x\",\"path\":\"a.cs\"}]}")]
+    [InlineData("{\"path\":\"a.cs\"}", "{\"path\":\"\\u0061.cs\"}")]
+    public void Equivalent_nested_arguments_share_repeat_limit(string first, string reordered)
+    {
+        var governor = new ToolCallGovernor { MaxRepeats = 1 };
+
+        governor.Review("edit_file", Args(first)).Allowed.Should().BeTrue();
+
+        governor.Review("edit_file", Args(reordered)).Allowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Tool_name_casing_cannot_bypass_repeat_limit()
+    {
+        var governor = new ToolCallGovernor { MaxRepeats = 1 };
+
+        governor.Review("read_file", Args("{}")).Allowed.Should().BeTrue();
+
+        governor.Review("READ_FILE", Args("{}")).Allowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Array_order_remains_part_of_call_identity()
+    {
+        var governor = new ToolCallGovernor { MaxRepeats = 1 };
+
+        governor.Review("edit_file", Args("{\"edits\":[\"first\",\"second\"]}")).Allowed.Should().BeTrue();
+
+        governor.Review("edit_file", Args("{\"edits\":[\"second\",\"first\"]}")).Allowed.Should().BeTrue();
+    }
+
     [Fact]
     public void Different_arguments_are_a_different_call()
     {

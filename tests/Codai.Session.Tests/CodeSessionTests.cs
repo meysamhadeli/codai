@@ -13,6 +13,135 @@ namespace Codai.Session.Tests;
 public class CodeSessionTests
 {
     [Theory]
+    [InlineData("")]
+    [InlineData("No WSO2 code in this repository. I will check the documentation.")]
+    public async Task Failed_research_remains_in_history_for_tool_follow_up(string partialResponse)
+    {
+        const string question = "Does WSO2 support correlation IDs?";
+        const string followUp = "Use MCP Context7 for finding it";
+        const string failure = "Tool failure limit reached (3 consecutive failures).";
+        var harness = new SessionHarness();
+        harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
+        harness.Chat.EnqueueThenFail(partialResponse, TokenUsage.Empty, new ChatProviderException(failure));
+        harness.Chat.Enqueue("WSO2 supports correlation IDs.");
+        var session = harness.Build();
+
+        (await session.RunTaskAsync(question)).Should().Be(1);
+
+        harness.History.Turns.Should().ContainSingle();
+        harness.History.Turns[0].UserRequest.Should().Be(question);
+        harness.History.Turns[0].AiResponse.Should().Contain("interrupted");
+        if (partialResponse.Length > 0)
+        {
+            harness.History.Turns[0].AiResponse.Should().StartWith(partialResponse);
+        }
+        harness.Ui.Errors.Should().Contain(failure);
+        harness.Ui.CompletedModelRequests.Should().Equal(harness.Ui.ModelRequests);
+        var failedTask = await harness.TaskStore.LoadAsync(harness.Root);
+        failedTask!.Status.Should().Be(AgentTaskStatus.Failed);
+        var saved = await harness.SessionStore.LoadAsync(harness.Root, failedTask.Id);
+        saved.Should().ContainSingle().Which.Should().Be(harness.History.Turns[0]);
+
+        (await session.RunTaskAsync(followUp)).Should().Be(0);
+
+        harness.Chat.Requests.Should().HaveCount(2);
+        harness.Chat.Requests[1].UserMessage.Should().Contain(followUp).And.NotContain(question);
+        harness.Chat.Requests[1].SystemPrompt.Should().Contain(question).And.Contain("interrupted");
+        harness.History.Turns.Should().HaveCount(2);
+        harness.History.Turns[1].UserRequest.Should().Be(followUp);
+    }
+
+    [Fact]
+    public async Task Cancelled_response_retains_partial_history_without_reporting_success()
+    {
+        var harness = new SessionHarness();
+        harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
+        harness.Chat.EnqueueThenFail("Checking WSO2 documentation.", TokenUsage.Empty, new OperationCanceledException());
+        harness.Chat.Enqueue("Continuing the lookup.");
+        var session = harness.Build();
+
+        (await session.RunTaskAsync("Does WSO2 support correlation IDs?")).Should().Be(130);
+        harness.Ui.ModelRequests.Should().ContainSingle();
+        harness.Ui.CompletedModelRequests.Should().Equal(harness.Ui.ModelRequests);
+
+        harness.History.Turns.Should().ContainSingle().Which.AiResponse.Should()
+            .StartWith("Checking WSO2 documentation.").And.Contain("interrupted");
+        var task = await harness.TaskStore.LoadAsync(harness.Root);
+        task!.Status.Should().Be(AgentTaskStatus.Cancelled);
+        (await harness.SessionStore.LoadAsync(harness.Root, task.Id)).Should().ContainSingle();
+
+        (await session.RunTaskAsync("Continue using Context7")).Should().Be(0);
+
+        harness.Chat.Requests[1].SystemPrompt.Should().Contain("Does WSO2 support correlation IDs?");
+        harness.History.Turns.Should().HaveCount(2);
+    }
+
+    [Theory]
+    [InlineData("src/File.cs", true)]
+    [InlineData("notes.md", false)]
+    public async Task Conditional_skill_instructions_only_reach_matching_file_requests(string file, bool expected)
+    {
+        var harness = new SessionHarness();
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, ".codai", "skills", "review", "SKILL.md"),
+            "---\npaths:\n  - 'src/**/*.cs'\n---\nUNIQUE_PATH_SCOPED_SKILL_INSTRUCTIONS");
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, file), "File content.");
+        harness.Chat.Enqueue("Reviewed.");
+        harness.QueueInputs($"Review @{file}", ":exit");
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        harness.Chat.Requests.Should().ContainSingle();
+        harness.Chat.Requests.Single().SystemPrompt.Contains("UNIQUE_PATH_SCOPED_SKILL_INSTRUCTIONS", StringComparison.Ordinal).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Skills_selection_refreshes_advertised_skills_before_next_request(bool keepAudit)
+    {
+        var harness = new SessionHarness();
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, ".codai", "skills", "audit", "SKILL.md"),
+            "---\ndescription: UNIQUE_AUDIT_GUIDANCE\n---\nUNIQUE_AUDIT_INSTRUCTIONS Audit changes.");
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, ".codai", "skills", "testing", "SKILL.md"),
+            "---\ndescription: UNIQUE_TESTING_GUIDANCE\n---\nUNIQUE_TESTING_INSTRUCTIONS Run tests.");
+        harness.Settings = new Codai.Application.SessionSettingsWorkflow(harness.Ui, harness.Inspector,
+            new Codai.Application.Inspection.ConfigurationInspectionContext
+            {
+                ProjectRoot = harness.Root,
+                ConfigurationDirectory = harness.Root,
+                Provider = "ollama",
+                Model = "local-model",
+            }, harness.FileSystem, new Codai.Core.Customization.SkillCatalog(harness.FileSystem));
+        harness.Ui.EnqueueChoice(keepAudit ? "[\"audit\"]" : "[]");
+        harness.Chat.Enqueue("First answer.");
+        harness.Chat.Enqueue("Second answer.");
+        harness.Chat.Enqueue("Audit answer.");
+        harness.QueueInputs("first request", "/skills", "second request", "/audit Inspect changes", ":exit");
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        harness.Chat.Requests.Should().HaveCount(3);
+        harness.Ui.SkillSelections.First().Should().Equal("audit", "testing");
+        harness.Ui.SkillSelections.Last().Should().Equal("audit", "testing");
+        harness.Chat.Requests[2].UserMessage.Should().Contain("UNIQUE_AUDIT_INSTRUCTIONS").And.Contain("Inspect changes");
+        (await new Codai.Core.Customization.SkillCatalog(harness.FileSystem).LoadAsync(harness.Root))
+            .Select(skill => skill.Name).Should().Equal(keepAudit ? ["audit"] : []);
+        harness.Chat.Requests[0].SystemPrompt.Should().Contain("UNIQUE_TESTING_GUIDANCE")
+            .And.Contain("UNIQUE_AUDIT_INSTRUCTIONS").And.Contain("UNIQUE_TESTING_INSTRUCTIONS");
+        harness.Chat.Requests[1].SystemPrompt.Should().NotContain("UNIQUE_TESTING_GUIDANCE").And.NotContain("UNIQUE_TESTING_INSTRUCTIONS");
+        if (keepAudit)
+        {
+            harness.Chat.Requests[1].SystemPrompt.Should().Contain("UNIQUE_AUDIT_GUIDANCE").And.Contain("UNIQUE_AUDIT_INSTRUCTIONS");
+            harness.Chat.Requests[2].SystemPrompt.Should().Contain("UNIQUE_AUDIT_INSTRUCTIONS").And.NotContain("UNIQUE_TESTING_INSTRUCTIONS");
+        }
+        else
+        {
+            harness.Chat.Requests[1].SystemPrompt.Should().NotContain("UNIQUE_AUDIT_GUIDANCE").And.NotContain("UNIQUE_AUDIT_INSTRUCTIONS");
+            harness.Chat.Requests[2].SystemPrompt.Should().NotContain("UNIQUE_AUDIT_INSTRUCTIONS");
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Checkpoint_storage_failure_fails_request_but_allows_next_request(bool denied)
@@ -82,7 +211,12 @@ public class CodeSessionTests
         harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
         harness.Chat.Enqueue("first answer");
         harness.Chat.Enqueue("second answer");
-        harness.Ui.EnqueueChoice("confirm");
+        harness.Ui.EnqueueSelection(items =>
+        {
+            items.Select(item => item.Label).Should().Equal("Continue", "Keep current conversation");
+            items.Select(item => item.Value).Should().Equal("confirm", "cancel");
+            return items[0].Value;
+        });
         harness.QueueInputs("first question", ":session " + operation, "second question", ":exit");
         (await harness.Build().RunAsync()).Should().Be(0);
         harness.History.Turns.Should().HaveCount(expectedTurns);
@@ -460,6 +594,35 @@ public class CodeSessionTests
     }
 
     [Theory]
+    [InlineData(AgentMode.Agent, "Hi")]
+    [InlineData(AgentMode.Plan, "Hi")]
+    [InlineData(AgentMode.Agent, "Thanks!")]
+    [InlineData(AgentMode.Plan, "Thanks!")]
+    public async Task Casual_requests_reach_the_model_once_with_scoped_guidance_and_unchanged_permissions(AgentMode mode, string message)
+    {
+        var harness = new SessionHarness
+        {
+            InstructionsProvider = new FakeProjectInstructionsProvider("After code changes, update docs and run tests."),
+        };
+        harness.Mode.Mode = mode;
+        harness.Chat.Enqueue("Hello!");
+        harness.QueueInputs(message, ":exit");
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        var request = harness.Chat.Requests.Should().ContainSingle().Subject;
+        request.UserMessage.Should().Be("## Here is user request\n" + message);
+        request.SystemPrompt.Should().Contain("one short, natural sentence")
+            .And.Contain("Do not call tools for greetings")
+            .And.Contain("After code changes, update docs and run tests.");
+        request.AllowedTools.Should().Contain("read_file");
+        request.AllowedTools.Contains("write_file").Should().Be(mode == AgentMode.Agent);
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
+        harness.Ui.AssistantOutput.ToString().Should().Be("Hello!");
+        harness.History.Turns.Should().ContainSingle().Which.UserRequest.Should().Be(message);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Opening_and_exiting_or_using_local_commands_does_not_load_project_guidance(bool localCommands)
@@ -478,7 +641,7 @@ public class CodeSessionTests
     }
 
     [Fact]
-    public async Task Loads_project_guidance_once_for_the_first_model_request()
+    public async Task Refreshes_project_instructions_for_each_model_request_without_scanning()
     {
         var instructions = new FakeProjectInstructionsProvider("Always write a test.");
         var harness = new SessionHarness { InstructionsProvider = instructions };
@@ -488,7 +651,7 @@ public class CodeSessionTests
 
         await harness.Build().RunAsync();
 
-        instructions.LoadCount.Should().Be(1);
+        instructions.LoadCount.Should().Be(3);
         harness.Chat.Requests.Should().HaveCount(2).And.OnlyContain(
             request => request.SystemPrompt.Contains("Always write a test.", StringComparison.Ordinal));
         harness.Scanner.ScannedRoots.Should().BeEmpty();
@@ -506,6 +669,42 @@ public class CodeSessionTests
         harness.Chat.Requests.Should().ContainSingle().Which.SystemPrompt.Should().Contain("Always write a test.");
         harness.Scanner.ScannedRoots.Should().BeEmpty();
         harness.Mode.Mode.Should().Be(AgentMode.Plan);
+    }
+
+    [Fact]
+    public async Task Each_request_refreshes_root_instructions_and_selects_only_referenced_nested_guidance()
+    {
+        var harness = new SessionHarness();
+        harness.InstructionsProvider = new Codai.Core.Prompting.ProjectInstructionsProvider(harness.FileSystem);
+        var instructions = Path.Combine(harness.Root, "AGENTS.md");
+        harness.FileSystem.AddFile(instructions, "FIRST_ROOT_GUIDANCE");
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, "src", "instructions.md"), "SOURCE_ONLY_GUIDANCE");
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, "src", "Main.cs"), "source");
+        harness.FileSystem.AddFile(Path.Combine(harness.Root, "other", "CLAUDE.md"), "UNRELATED_GUIDANCE");
+        harness.Chat.BeforeResponse = (_, _) =>
+        {
+            if (harness.Chat.Requests.Count == 1)
+            {
+                harness.FileSystem.AddFile(instructions, "SECOND_ROOT_GUIDANCE");
+            }
+            else if (harness.Chat.Requests.Count == 2)
+            {
+                harness.FileSystem.DeleteFile(instructions);
+            }
+            return Task.CompletedTask;
+        };
+        harness.Chat.Enqueue("first answer");
+        harness.Chat.Enqueue("second answer");
+        harness.Chat.Enqueue("third answer");
+        harness.QueueInputs("Inspect @src/Main.cs", "Another task", "Final task");
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        harness.Chat.Requests.Should().HaveCount(3);
+        harness.Chat.Requests[0].SystemPrompt.Should().Contain("FIRST_ROOT_GUIDANCE").And.Contain("SOURCE_ONLY_GUIDANCE").And.NotContain("UNRELATED_GUIDANCE");
+        harness.Chat.Requests[1].SystemPrompt.Should().Contain("SECOND_ROOT_GUIDANCE").And.NotContain("FIRST_ROOT_GUIDANCE").And.NotContain("SOURCE_ONLY_GUIDANCE");
+        harness.Chat.Requests[2].SystemPrompt.Should().NotContain("FIRST_ROOT_GUIDANCE").And.NotContain("SECOND_ROOT_GUIDANCE").And.NotContain("SOURCE_ONLY_GUIDANCE");
+        harness.Scanner.ScannedRoots.Should().BeEmpty();
     }
 
     [Fact]

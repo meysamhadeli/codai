@@ -22,6 +22,7 @@
     <PackageVersion Include="YamlDotNet" Version="13.0.1" />
   </ItemGroup>
   <ItemGroup Label="DependencyInjection">
+    <PackageVersion Include="JsonSchema.Net" Version="9.6.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
@@ -43,6 +44,7 @@
     <PackageVersion Include="AngleSharp" Version="1.5.0" />
   </ItemGroup>
   <ItemGroup Label="Cli">
+    <PackageVersion Include="ColorCode.Core" Version="2.0.15" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
   </ItemGroup>
   <ItemGroup Label="Build">

@@ -4,6 +4,7 @@ using Codai.Core.Agents;
 using Codai.Core.Chat;
 using Codai.Core.Customization;
 using Codai.Core.Tools;
+using Codai.Mcp.Client;
 using Codai.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -57,7 +58,7 @@ public static class ConfigurationInspectionBuilder
         bool allowShell, bool autoCompact, bool allowSubAgents, string? dataDirectory,
         IReadOnlyList<string>? hookDirectories, CompactionStrategy compactionStrategy,
         string? configurationDirectory, bool externalToolsInspected = true,
-        string? globalConfigurationDirectory = null)
+        string? globalConfigurationDirectory = null, IReadOnlyList<McpServerOptions>? mcpServers = null)
     {
         if (globalConfigurationDirectory is not null)
         {
@@ -69,7 +70,8 @@ public static class ConfigurationInspectionBuilder
                 new SkillCatalog(provider.GetRequiredService<IFileSystem>(), globalConfigurationDirectory)));
         }
 
-        services.AddSingleton(new ConfigurationInspectionContext
+        services.AddSingleton(provider => new McpManifestCatalog(provider.GetRequiredService<IFileSystem>(), globalConfigurationDirectory));
+        services.AddSingleton(container => new ConfigurationInspectionContext
         {
             ProjectRoot = root,
             ConfigurationDirectory = configurationDirectory ?? root,
@@ -90,7 +92,7 @@ public static class ConfigurationInspectionBuilder
             AllowShell = allowShell,
             AllowSubAgents = allowSubAgents,
             DisabledTools = options.DisabledTools,
-            McpServers = options.Mcp.Servers,
+            McpServers = mcpServers ?? container.GetRequiredService<McpManifestCatalog>().LoadAsync(root, options.Mcp.Servers).GetAwaiter().GetResult(),
             PluginPaths = options.PluginPaths,
             HookDirectories = hookDirectories ?? [],
             ExternalToolsInspected = externalToolsInspected,

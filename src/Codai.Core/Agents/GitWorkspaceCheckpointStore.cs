@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -37,6 +38,7 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+        using var repositoryLease = await AcquireRepositoryLeaseAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         var checkpoint = new WorkspaceCheckpoint(Guid.NewGuid().ToString("N"), taskId, label, DateTimeOffset.UtcNow);
         var repository = GetRepositoryPath(projectRoot, taskId);
         _fileSystem.CreateDirectory(Path.Combine(projectRoot, RelativeFolder, MetadataFolder, taskId));
@@ -129,6 +131,7 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+        using var repositoryLease = await AcquireRepositoryLeaseAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         var metadataPath = Path.Combine(projectRoot, RelativeFolder, MetadataFolder, taskId, $"{checkpointId}.json");
         if (!_fileSystem.FileExists(metadataPath))
         {
@@ -139,9 +142,9 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
             await _fileSystem.ReadAllTextAsync(metadataPath, cancellationToken).ConfigureAwait(false))
             ?? throw new IOException("Checkpoint metadata is invalid.");
         var repository = GetRepositoryPath(projectRoot, taskId);
-        await RunGitAsync(projectRoot, repository, $"reset --hard {Quote(checkpoint.Revision)}", cancellationToken)
+        await RunGitAsync(projectRoot, repository, $"read-tree --reset -u {Quote(checkpoint.Revision)}", cancellationToken)
             .ConfigureAwait(false);
-        await RunGitAsync(projectRoot, repository, "clean -fdx -e .codai/", cancellationToken).ConfigureAwait(false);
+        await RunGitAsync(projectRoot, repository, "clean -fd -e .codai/", cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -197,6 +200,11 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
         ArgumentException.ThrowIfNullOrWhiteSpace(projectRoot);
         ValidateId(taskId);
         ValidateId(checkpointId);
+        var gate = RepositoryGates.GetOrAdd(Path.GetFullPath(projectRoot), _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+        using var repositoryLease = await AcquireRepositoryLeaseAsync(projectRoot, cancellationToken).ConfigureAwait(false);
         var metadataPath = Path.Combine(projectRoot, RelativeFolder, MetadataFolder, taskId, $"{checkpointId}.json");
         if (!_fileSystem.FileExists(metadataPath))
         {
@@ -242,6 +250,11 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
         }
 
         return diff.ToString().Trim();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public async Task<WorkspaceCheckpointStorageDiagnostics> GetStorageDiagnosticsAsync(
@@ -286,6 +299,27 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
         }
 
         return new WorkspaceCheckpointStorageDiagnostics(checkpointCount, retainedBytes);
+    }
+
+    private static async Task<FileStream> AcquireRepositoryLeaseAsync(string projectRoot, CancellationToken cancellationToken)
+    {
+        var root = GetRepositoryRoot(projectRoot);
+        Directory.CreateDirectory(root);
+        var started = Stopwatch.GetTimestamp();
+        using var retry = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(Path.Combine(root, "repository.lock"),
+                    FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (Stopwatch.GetElapsedTime(started) < TimeSpan.FromSeconds(30))
+            {
+                await retry.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task EnsureRepositoryAsync(string projectRoot, string repository, CancellationToken cancellationToken)
@@ -336,11 +370,14 @@ public sealed class GitWorkspaceCheckpointStore : IWorkspaceCheckpointStore, IWo
         return result;
     }
 
-    private static string GetRepositoryPath(string projectRoot, string taskId) =>
-        Path.Combine(
-            GetRepositoryRoot(projectRoot),
-            taskId,
-            RepositoryFolder);
+    private string GetRepositoryPath(string projectRoot, string taskId)
+    {
+        var root = GetRepositoryRoot(projectRoot);
+        var legacy = Path.Combine(root, taskId, RepositoryFolder);
+        return _fileSystem.DirectoryExists(legacy)
+            ? legacy
+            : Path.Combine(root, "_shared", RepositoryFolder);
+    }
 
     private static string GetRepositoryRoot(string projectRoot) => Path.Combine(
         Path.GetTempPath(),

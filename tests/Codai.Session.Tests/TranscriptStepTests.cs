@@ -10,22 +10,165 @@ namespace Codai.Session.Tests;
 
 public sealed class TranscriptStepTests
 {
+    [Theory]
+    [InlineData(24, true)]
+    [InlineData(80, true)]
+    [InlineData(24, false)]
+    public void Inline_disclosure_icon_expands_and_collapses_tool_output(int width, bool unicode)
+    {
+        var transcript = new ChatTranscript { Unicode = unicode };
+        AddTool(transcript, "sample.txt", "one\ntwo\nthree\nfour\nfive");
+        using var writer = new StringWriter();
+        var console = Console(writer);
+        console.Profile.Width = width + 3;
+        transcript.Draw(console, 15);
+
+        Text(transcript, width).Should().Contain(unicode ? "\u25b8 2 more lines" : "> 2 more lines")
+            .And.NotContain("ctrl+o").And.NotContain("five");
+        transcript.ToggleStepAtRow(RowOf(transcript, console, 15, "2 more lines"), 15).Should().BeTrue();
+        Text(transcript, width).Should().Contain("five").And.Contain(unicode ? "\u25be" : "v");
+
+        transcript.Draw(console, 15);
+        transcript.ToggleStepAtRow(RowOf(transcript, console, 15, unicode ? "\u25be" : "    v"), 15).Should().BeTrue();
+        Text(transcript, width).Should().NotContain("five").And.Contain("2 more lines");
+        transcript.ToggleTool().Should().BeTrue();
+        Text(transcript, width).Should().Contain("five");
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(80)]
+    public void Transcript_keeps_thoughts_tools_and_public_messages_in_chronological_rows(int width)
+    {
+        var transcript = new ChatTranscript();
+        transcript.StartActivity("Reasoning");
+        transcript.StartTool("run_command", "python --version");
+        transcript.ToolResult("run_command", "Python 3.14.4");
+        transcript.CompleteTool("run_command", true, "done");
+        transcript.AppendMarkdown("Writing the game:", completeActivity: false);
+        transcript.StartActivity("Reasoning");
+        transcript.AppendMarkdown("Game ready.", completeActivity: false);
+        transcript.CompleteActivity();
+
+        var plain = Text(transcript, width);
+        plain.Should().Contain("Thought for").And.Contain("Bash(python --version)")
+            .And.Contain("Python 3.14.4").And.Contain("Writing the game:").And.Contain("Game ready.")
+            .And.NotContain("╭").And.NotContain("╰").And.NotContain("Worked for");
+        plain.IndexOf("Thought for", StringComparison.Ordinal).Should().BeLessThan(plain.IndexOf("Bash(", StringComparison.Ordinal));
+        plain.IndexOf("Python 3.14.4", StringComparison.Ordinal).Should().BeLessThan(plain.IndexOf("Writing the game:", StringComparison.Ordinal));
+        transcript.GetLines(width).Select(line => System.Text.RegularExpressions.Regex.Replace(line, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty))
+            .Should().OnlyContain(line => line.GetCellWidth() <= width);
+    }
+
+    [Theory]
+    [InlineData(24, false)]
+    [InlineData(44, true)]
+    [InlineData(110, true)]
+    public void Unframed_transcript_retains_public_progress_and_mcp_results(int width, bool unicode)
+    {
+        var transcript = new ChatTranscript { Unicode = unicode };
+        transcript.StartActivity("Thinking");
+        transcript.AppendMarkdown("PUBLIC_PROGRESS_START " + new string('x', 180) + " DETAIL_END", completeActivity: false);
+        transcript.StartTool("mcp_docs_search", "correlation IDs");
+
+        var live = Text(transcript, width);
+        live.Should().NotContain("╭").And.Contain("mcp_docs_search").And.Contain("DETAIL_END");
+        transcript.GetLines(width).Select(line => System.Text.RegularExpressions.Regex.Replace(line, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty))
+            .Should().OnlyContain(line => line.GetCellWidth() <= width);
+        transcript.ToggleTool().Should().BeTrue();
+        Text(transcript, width).Should().Contain("DETAIL_END");
+        transcript.ToolOutput("mcp_docs_search", "RESULT");
+        using var writer = new StringWriter();
+        var console = Console(writer);
+        console.Profile.Width = width;
+        transcript.Draw(console, 40);
+        var toolRow = RowOf(transcript, console, 40, "mcp_docs");
+        transcript.ToggleStepAtRow(toolRow, 40).Should().BeTrue();
+        Text(transcript, width).Should().Contain("RESULT");
+        transcript.CompleteTool("mcp_docs_search", true, "Search complete");
+        transcript.AppendMarkdown("Final answer", completeActivity: false);
+        transcript.CompleteActivity();
+        Text(transcript, width).Should().Contain("Final answer").And.Contain("mcp_docs_search").And.Contain("DETAIL_END");
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(80)]
+    public void Running_activity_and_action_animate_without_changing_row_geometry(int width)
+    {
+        var transcript = new ChatTranscript { Accent = "cyan1" };
+        transcript.StartActivity("Thinking");
+        var first = string.Join('\n', transcript.GetLines(width, 0));
+        var second = string.Join('\n', transcript.GetLines(width, 1));
+
+        first.Should().NotBe(second);
+        var firstPlain = System.Text.RegularExpressions.Regex.Replace(first, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty);
+        var secondPlain = System.Text.RegularExpressions.Regex.Replace(second, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty);
+        firstPlain.Should().StartWith("\u2800\u2800 ").And.Contain("Thinking")
+            .And.NotContain("v ").And.NotContain("> ");
+        secondPlain.Should().MatchRegex(@"[\u2800-\u283f][\u2800-\u2807] ");
+        first.Should().Contain("\u001b[38;5;51mThinking").And.NotContain("\u001b[1;38;5;51m");
+        second.Should().Contain("\u001b[38;5;51mThinking");
+        firstPlain.Split('\n').Count(line => line.Contains("esc", StringComparison.Ordinal)).Should().Be(1);
+        firstPlain.Should().NotContain("action");
+        firstPlain.Split('\n').Select(line => line.GetCellWidth()).Should()
+            .Equal(secondPlain.Split('\n').Select(line => line.GetCellWidth()));
+        secondPlain.Split('\n').Should().OnlyContain(line => line.GetCellWidth() <= width);
+
+        transcript.StartTool("read_file", "sample.txt");
+        transcript.CompleteTool("read_file", true, "Read file");
+        transcript.AppendMarkdown("Answer");
+        string.Join('\n', transcript.GetLines(width, 2)).Should().Be(string.Join('\n', transcript.GetLines(width, 3)));
+    }
+
     [Fact]
-    public void Running_and_finished_tool_bodies_stay_closed_until_selected()
+    public void Streaming_public_progress_remains_visible_without_activity_box()
+    {
+        var transcript = new ChatTranscript();
+        transcript.StartActivity("Thinking");
+        transcript.AppendMarkdown(string.Join('\n', Enumerable.Repeat("Output line  ", 40)), completeActivity: false);
+        using var writer = new StringWriter();
+        var console = Console(writer);
+        transcript.Draw(console, 8);
+
+        var plain = System.Text.RegularExpressions.Regex.Replace(writer.ToString(), "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty);
+        plain.Should().Contain("Output line").And.Contain("esc interrupt)");
+        Text(transcript).Should().Contain("Thought for").And.NotContain("╭");
+        transcript.ToggleTool().Should().BeFalse();
+        transcript.CompleteActivity();
+        writer.GetStringBuilder().Clear();
+        transcript.Draw(console, 8);
+        writer.ToString().Should().NotContain("esc interrupt");
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(9)]
+    public void Activity_label_stays_solid_while_dot_grid_animates(long frame)
+    {
+        var transcript = new ChatTranscript { Accent = "cyan1" };
+        transcript.StartActivity("Thinking");
+
+        string.Join('\n', transcript.GetLines(80, frame)).Should().Contain("\u001b[38;5;51mThinking...");
+    }
+
+    [Fact]
+    public void Tool_preview_stays_visible_and_expansion_reveals_remaining_output()
     {
         var transcript = new ChatTranscript();
         transcript.StartTool("run_command", "dotnet test");
-        transcript.ToolOutput("run_command", "live output\n");
-        Text(transcript).Should().Contain("dotnet test").And.Contain("(running)").And.NotContain("live output");
+        transcript.ToolOutput("run_command", "live output\nsecond\nthird\nfourth\n");
+        Text(transcript).Should().Contain("dotnet test").And.Contain("esc interrupt)").And.Contain("live output").And.NotContain("fourth");
         transcript.CompleteTool("run_command", true, "finished");
-        Text(transcript).Should().Contain("(done)").And.NotContain("live output");
+        Text(transcript).Should().Contain("Bash(dotnet test)").And.NotContain("(done)").And.Contain("live output")
+            .And.Contain("\u25b8 1 more lines").And.NotContain("ctrl+o");
 
         transcript.ToggleTool().Should().BeTrue();
-        Text(transcript).Should().Contain("live output");
+        Text(transcript).Should().Contain("fourth");
         transcript.ToolOutput("run_command", "later output\n");
         Text(transcript).Should().Contain("later output");
         transcript.ToggleTool().Should().BeTrue();
-        Text(transcript).Should().NotContain("live output").And.NotContain("later output");
+        Text(transcript).Should().Contain("live output").And.NotContain("fourth").And.NotContain("later output");
     }
 
     [Fact]
@@ -34,8 +177,8 @@ public sealed class TranscriptStepTests
         using var writer = new StringWriter();
         var console = Console(writer);
         var transcript = new ChatTranscript();
-        AddTool(transcript, "one.txt", "first details");
-        AddTool(transcript, "two.txt", "second details");
+        AddTool(transcript, "one.txt", "one\ntwo\nthree\nfirst details");
+        AddTool(transcript, "two.txt", "one\ntwo\nthree\nsecond details");
         transcript.Draw(console, 12);
 
         transcript.ToggleStepAtRow(1, 12).Should().BeTrue();
@@ -57,14 +200,14 @@ public sealed class TranscriptStepTests
         AddTool(transcript, "other.txt", "other details");
         transcript.Add(string.Join('\n', Enumerable.Range(1, 30).Select(index => $"tail {index}")));
         transcript.Draw(console, 10);
-        transcript.Scroll(25);
+        transcript.Scroll(35);
         transcript.Draw(console, 10);
         var row = RowOf(transcript, console, 10, "target.txt");
 
         transcript.ToggleStepAtRow(row, 10).Should().BeTrue();
         transcript.Draw(console, 10);
         RowOf(transcript, console, 10, "target.txt").Should().Be(row);
-        Text(transcript).Should().Contain("detail 20").And.NotContain("other details");
+        Text(transcript).Should().Contain("detail 20").And.Contain("other details");
 
         console.Profile.Width = 38;
         transcript.Draw(console, 10);
@@ -77,18 +220,19 @@ public sealed class TranscriptStepTests
     }
 
     [Fact]
-    public void Edit_summary_shows_real_counts_while_diff_starts_closed()
+    public void Edit_summary_shows_real_counts_and_colored_inline_diff()
     {
         var transcript = new ChatTranscript();
         transcript.StartTool("write_file", "new.cs");
         transcript.CompleteTool("write_file", true, "written");
         transcript.ToolResult("write_file", ToolResult.Success("Created new.cs") with
         {
-            FileChanges = [new("new.cs", 40, 0, "+hidden source")],
+            FileChanges = [new("new.cs", 40, 0, "@@ -1,0 +7,1 @@\n+hidden source")],
         });
 
-        Text(transcript).Should().Contain("Edited new.cs").And.Contain("+40").And.Contain("-0")
-            .And.NotContain("hidden source").And.NotContain("Created new.cs");
+        Text(transcript).Should().Contain("Write(new.cs)").And.Contain("Added 40 lines, removed 0 lines")
+            .And.Contain("7 +hidden source").And.NotContain("Created new.cs");
+        string.Join('\n', transcript.GetLines(80)).Should().Contain("48;2;0;51;0");
         transcript.ToggleTool();
         Text(transcript).Should().Contain("+hidden source");
     }
@@ -104,7 +248,7 @@ public sealed class TranscriptStepTests
             FileChanges = [new("landed.txt", 2, 1, "-old\n+new\n+more")],
         });
 
-        Text(transcript).Should().Contain("landed.txt").And.Contain("+2").And.Contain("-1").And.Contain("(failed)");
+        Text(transcript).Should().Contain("landed.txt").And.Contain("Added 2 lines, removed 1 line").And.Contain("(failed)");
         transcript.ToggleTool();
         Text(transcript).Should().Contain("missing file").And.Contain("+more");
     }
@@ -116,15 +260,136 @@ public sealed class TranscriptStepTests
         transcript.StartActivity("Thinking");
         transcript.StartActivity("Thinking");
         transcript.StartActivity("Reasoning");
-        transcript.GetLines(80).Should().ContainSingle();
-        Text(transcript).Should().Contain("Reasoning").And.Contain("(running)");
+        transcript.GetLines(80).Should().HaveCount(1);
+        Text(transcript).Should().Contain("Reasoning").And.NotContain("Elapsed:")
+            .And.NotContain("private model reasoning");
         transcript.AppendMarkdown("Public answer");
 
-        Text(transcript).Should().Contain("Finished reasoning").And.Contain("Public answer").And.NotContain("Elapsed:");
+        Text(transcript).Should().Contain("Thought for").And.Contain("Public answer").And.NotContain("Elapsed:");
         transcript.ToggleTool();
-        Text(transcript).Should().Contain("Elapsed:").And.Contain("private model reasoning is not displayed");
+        Text(transcript).Should().Contain("Thought for").And.NotContain("Reasoning: done").And.NotContain("Elapsed:");
         transcript.StartTool("read_file", "next.txt");
-        Text(transcript).Should().Contain("Finished reasoning");
+        Text(transcript).Should().Contain("Thought for");
+    }
+
+    [Fact]
+    public void Actions_and_results_remain_visible_after_answer()
+    {
+        var transcript = new ChatTranscript();
+        transcript.StartActivity("Reasoning");
+        AddTool(transcript, "one.txt", "first details");
+        AddTool(transcript, "two.txt", "second details");
+
+        var plain = System.Text.RegularExpressions.Regex.Replace(Text(transcript), "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty);
+        plain.Should().Contain("Thought for").And.NotContain("(esc interrupt").And.NotContain("2 actions")
+            .And.Contain("Read(one.txt)").And.Contain("Read(two.txt)").And.Contain("first details").And.NotContain("Elapsed:");
+        transcript.AppendMarkdown("Public answer");
+        Text(transcript).Should().Contain("Thought for").And.NotContain("2 actions").And.Contain("Public answer")
+            .And.Contain("one.txt").And.Contain("two.txt");
+
+        transcript.ToggleTool().Should().BeTrue();
+        Text(transcript).Should().Contain("one.txt").And.Contain("two.txt").And.Contain("first details");
+        transcript.ToggleTool().Should().BeTrue();
+        Text(transcript).Should().Contain("one.txt").And.Contain("two.txt");
+        transcript.ToggleTool().Should().BeTrue();
+        using var writer = new StringWriter();
+        var console = Console(writer);
+        transcript.Draw(console, 12);
+        transcript.ToggleStepAtRow(RowOf(transcript, console, 12, "one.txt"), 12).Should().BeTrue();
+        Text(transcript).Should().Contain("first details").And.Contain("second details");
+        transcript.ToggleTool().Should().BeTrue();
+        Text(transcript).Should().Contain("first details");
+    }
+
+    [Fact]
+    public void Completed_activity_does_not_inherit_recoverable_tool_failure_status()
+    {
+        var transcript = new ChatTranscript();
+        transcript.StartActivity("Reasoning");
+        transcript.StartTool("read_file", "missing.txt");
+        transcript.CompleteTool("read_file", false, "File not found");
+        transcript.AppendMarkdown("Could not read the file.");
+
+        Text(transcript).Should().Contain("Thought for").And.NotContain("Reasoning (failed)").And.NotContain("1 action")
+            .And.Contain("missing.txt").And.Contain("(failed)");
+        transcript.ToggleTool();
+        Text(transcript).Should().Contain("Read(missing.txt)").And.Contain("(failed)");
+    }
+
+    [Fact]
+    public void New_actions_keep_previous_results_visible()
+    {
+        var transcript = new ChatTranscript();
+        transcript.StartActivity("Thinking");
+        AddTool(transcript, "one.txt", "first details");
+        using var writer = new StringWriter();
+        var console = Console(writer);
+        transcript.Draw(console, 12);
+        AddTool(transcript, "two.txt", "second details");
+
+        Text(transcript).Should().Contain("Thought for").And.NotContain("2 actions").And.Contain("one.txt").And.Contain("two.txt")
+            .And.Contain("first details").And.Contain("second details");
+        transcript.ToggleTool().Should().BeTrue();
+        Text(transcript).Should().Contain("one.txt").And.Contain("two.txt");
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(44)]
+    [InlineData(110)]
+    public void Public_progress_tools_and_final_answer_remain_visible(int width)
+    {
+        var transcript = new ChatTranscript();
+        transcript.StartActivity("Thinking");
+        transcript.AppendMarkdown("FIRST_PROGRESS: looking for documentation", completeActivity: false);
+        AddTool(transcript, "one.txt", "PRIVATE_TOOL_DETAILS");
+        transcript.AppendMarkdown("SECOND_PROGRESS: checking another source", completeActivity: false);
+        AddTool(transcript, "two.txt", "MORE_TOOL_DETAILS");
+
+        var live = Text(transcript, width);
+        live.Should().Contain("FIRST_PROGRESS").And.Contain("one.txt").And.Contain("two.txt")
+            .And.Contain("PRIVATE_TOOL_DETAILS").And.Contain("MORE_TOOL_DETAILS");
+        transcript.AppendMarkdown("FINAL_ANSWER: verified result", completeActivity: false);
+        transcript.CompleteActivity();
+
+        Text(transcript, width).Should().Contain("FINAL_ANSWER").And.Contain("FIRST_PROGRESS")
+            .And.Contain("SECOND_PROGRESS").And.Contain("one.txt").And.Contain("two.txt");
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(44)]
+    [InlineData(110)]
+    public void Assistant_marker_and_tool_timing_fit_without_navigation_tabs(int width)
+    {
+        var transcript = new ChatTranscript();
+        transcript.AppendMarkdown("Hello. Ready.");
+        transcript.StartTool("run_command", "Check existing source and validate syntax");
+        transcript.CompleteTool("run_command", true, "done");
+
+        var lines = transcript.GetLines(width).Select(line =>
+            System.Text.RegularExpressions.Regex.Replace(line, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty)).ToArray();
+        string.Join('\n', lines).Should().Contain("\u25cf").And.Contain("Bash(")
+            .And.NotContain("(done)").And.NotContain("Sessions").And.NotContain("Pull requests");
+        lines.Should().OnlyContain(line => line.GetCellWidth() <= width);
+    }
+
+    [Theory]
+    [InlineData(24)]
+    [InlineData(44)]
+    [InlineData(110)]
+    public void Submitted_prompt_uses_unpadded_strip_without_timestamp(int width)
+    {
+        var transcript = new ChatTranscript();
+        transcript.AddUser("Hi\nSecond line");
+        var lines = transcript.GetLines(width).Select(line =>
+            System.Text.RegularExpressions.Regex.Replace(line, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty)).ToArray();
+
+        lines.Should().HaveCount(2);
+        lines[0].Should().StartWith("\u276f Hi");
+        lines[1].Should().StartWith("  Second line");
+        System.Text.RegularExpressions.Regex.IsMatch(lines[0], @"\d{2}:\d{2}$").Should().BeFalse();
+        lines.Should().OnlyContain(line => line.GetCellWidth() <= width);
     }
 
     [Theory]
@@ -138,7 +403,7 @@ public sealed class TranscriptStepTests
 
         Text(transcript).Should().Contain($"({status})").And.NotContain("Finished thinking");
         transcript.ToggleTool();
-        Text(transcript).Should().Contain($"Thinking: {status}");
+        Text(transcript).Should().Contain($"Thinking ({status})").And.NotContain("Elapsed:");
     }
 
     [Fact]
@@ -172,11 +437,11 @@ public sealed class TranscriptStepTests
             JsonSerializer.SerializeToElement(new { path = "test.txt", content = "source" }));
         result.IsSuccess.Should().BeTrue();
         (await files.ReadAllTextAsync(Path.Combine(root, "test.txt"))).Should().Be("source");
-        writer.ToString().Should().Contain("+1").And.NotContain("+source");
+        writer.ToString().Should().Contain("Added 1 line").And.Contain("+source");
         writer.GetStringBuilder().Clear();
 
         var stepRow = Enumerable.Range(1, 18).First(row => ui.HandleMouse(new(4, row, TerminalMouseAction.Press)));
-        writer.ToString().Should().Contain("+source").And.Contain("[Agent]");
+        writer.ToString().Should().Contain("configured model");
         writer.GetStringBuilder().Clear();
         ui.HandleMouse(new(4, stepRow, TerminalMouseAction.Press)).Should().BeTrue();
         writer.ToString().Should().NotContain("+source");
@@ -211,18 +476,22 @@ public sealed class TranscriptStepTests
     {
         var lines = transcript.GetLines(console.Profile.Width - 3).ToList();
         var first = Math.Max(0, lines.Count - rows - transcript.ScrollOffset);
-        var row = lines.FindIndex(line => line.Contains(text, StringComparison.Ordinal)) - first + 1;
+        var row = lines.FindIndex(line => System.Text.RegularExpressions.Regex.Replace(line, "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty)
+            .Contains(text, StringComparison.Ordinal)) - first + 1;
         row.Should().BeInRange(1, rows);
         return row;
     }
 
-    private static string Text(ChatTranscript transcript, int width = 80) => string.Join('\n', transcript.GetLines(width));
+    private static string Text(ChatTranscript transcript, int width = 80) =>
+        System.Text.RegularExpressions.Regex.Replace(string.Join('\n', transcript.GetLines(width)), "\u001b\\[[0-?]*[ -/]*[@-~]", string.Empty);
 
     private static IAnsiConsole Console(StringWriter writer)
     {
         var console = AnsiConsole.Create(new AnsiConsoleSettings
         {
-            Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes, Interactive = InteractionSupport.Yes,
+            Out = new AnsiConsoleOutput(writer),
+            Ansi = AnsiSupport.Yes,
+            Interactive = InteractionSupport.Yes,
         });
         console.Profile.Width = 83;
         console.Profile.Height = 24;

@@ -145,6 +145,19 @@ public sealed class EmbeddedPricingCatalog : IPricingCatalog
             }
         }
 
+        if (document.RootElement.TryGetProperty("context_limits", out var contextLimits))
+        {
+            foreach (var property in contextLimits.EnumerateObject())
+            {
+                if (result.TryGetValue(property.Name, out var pricing))
+                {
+                    pricing.MaxContextTokens = property.Value.GetProperty("max_context_tokens").GetInt32();
+                    pricing.MaxInputTokens = property.Value.GetProperty("max_input_tokens").GetInt32();
+                    pricing.MaxOutputTokens = property.Value.GetProperty("max_output_tokens").GetInt32();
+                }
+            }
+        }
+
         return result;
     }
 }

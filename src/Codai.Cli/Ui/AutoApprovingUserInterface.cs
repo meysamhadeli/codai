@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Codai.Core.Abstractions;
+using Codai.Core.Chat;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
 
@@ -12,6 +13,12 @@ public sealed class ApprovalState(bool autoApprove = false)
 
 internal sealed class AutoApprovingUserInterface(IUserInterface inner, ApprovalState state) : IUserInterface
 {
+    public void ModelRequestStarted(Guid requestId) => inner.ModelRequestStarted(requestId);
+
+    public void ModelRequestUpdated(Guid requestId, ChatStreamUpdate update) => inner.ModelRequestUpdated(requestId, update);
+
+    public void ModelRequestCompleted(Guid requestId) => inner.ModelRequestCompleted(requestId);
+
     public Task<string?> ReadInputAsync(CancellationToken cancellationToken = default) =>
         inner.ReadInputAsync(cancellationToken);
 
@@ -21,10 +28,18 @@ internal sealed class AutoApprovingUserInterface(IUserInterface inner, ApprovalS
     public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, CancellationToken cancellationToken = default) =>
         inner.ChooseAsync(title, items, cancellationToken);
 
+    public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, SessionMenuOptions options, CancellationToken cancellationToken = default) =>
+        inner.ChooseAsync(title, items, options, cancellationToken);
+
+    public Task ShowDiffAsync(string workingTree, string staged, CancellationToken cancellationToken = default) =>
+        inner.ShowDiffAsync(workingTree, staged, cancellationToken);
+
     public Task<string?> ReadValueAsync(string title, string initialValue = "", bool secret = false, CancellationToken cancellationToken = default) =>
         inner.ReadValueAsync(title, initialValue, secret, cancellationToken);
 
     public void SetTheme(string name) => inner.SetTheme(name);
+
+    public void SetSkills(IReadOnlyList<string> skillNames) => inner.SetSkills(skillNames);
 
     public void InsertInput(string text) => inner.InsertInput(text);
 

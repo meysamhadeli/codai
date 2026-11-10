@@ -6,7 +6,8 @@ using Codai.Core.Agents;
 namespace Codai.Core.Tools;
 
 /// <summary>
-/// Default <see cref="IToolExecutor"/>: gates state-changing tools behind
+/// Default <see cref="IToolExecutor"/>: validates arguments against the advertised schema,
+/// gates state-changing tools behind
 /// <see cref="IToolApprover"/>, reports progress through <see cref="IToolObserver"/>,
 /// and turns any tool failure into a result the model can react to.
 /// </summary>
@@ -31,6 +32,7 @@ public sealed class ToolRunner : IToolExecutor
     private readonly IToolGuidance? _guidance;
     private readonly IWorkspaceCheckpointStore? _checkpoints;
     private readonly AgentTaskContext? _taskContext;
+    private readonly ToolInputValidator _inputValidator = new();
 
     /// <summary>Creates a runner.</summary>
     /// <param name="registry">The tools the model may call.</param>
@@ -140,7 +142,28 @@ public sealed class ToolRunner : IToolExecutor
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            if (_guidance?.GetGuidance(tool, arguments) is { } guidance)
+            var validationError = ToolInputValidator.ValidateObject(arguments) ?? _inputValidator.Validate(tool, arguments);
+            if (validationError is not null)
+            {
+                var reason = Truncate($"Invalid arguments for '{toolName}': {validationError} Correct the arguments and try again.");
+                _observer.OnToolDenied(toolName, reason);
+                return _governor.RecordOutcome(ToolResult.Failure(reason));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var reason = Truncate($"Cannot validate arguments for '{toolName}': {exception.Message} Tool was not executed.");
+            _observer.OnToolDenied(toolName, reason);
+            return _governor.RecordOutcome(ToolResult.Failure(reason)) with { StopsExecution = true };
+        }
+
+        try
+        {
+            if (_guidance is not null && await _guidance.GetGuidanceAsync(tool, arguments, cancellationToken).ConfigureAwait(false) is { } guidance)
             {
                 if (guidance.Length > _maxResultChars)
                 {

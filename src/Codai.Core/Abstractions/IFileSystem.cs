@@ -6,6 +6,9 @@ namespace Codai.Core.Abstractions;
 /// </summary>
 public interface IFileSystem
 {
+    /// <summary>Returns a normalized identity path, resolving symbolic links when supported.</summary>
+    string GetCanonicalPath(string path) => Path.GetFullPath(path);
+
     bool FileExists(string path);
 
     bool DirectoryExists(string path);

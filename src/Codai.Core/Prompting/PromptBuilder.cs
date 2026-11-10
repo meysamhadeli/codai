@@ -13,10 +13,9 @@ namespace Codai.Core.Prompting;
 /// Builds the provider request.
 /// </summary>
 /// <remarks>
-/// The layout is a deliberate, byte-for-byte port of the original Go implementation so
-/// prompts stay stable across the rewrite. That is what <c>PromptParityTests</c> pins
-/// down: <em>do not</em> reflow the literal text, reorder the sections, or "fix" the
-/// misspelling in "requsted" — each of those changes the prompt the model sees.
+/// Requests without an agent mode preserve the original layout, as pinned by
+/// <c>PromptParityTests</c>. Agent sessions put stable instructions before growing
+/// conversation history so providers can reuse the unchanged prompt prefix.
 /// </remarks>
 public sealed class PromptBuilder : IPromptBuilder
 {
@@ -38,6 +37,22 @@ public sealed class PromptBuilder : IPromptBuilder
         "## Here are the project rules that apply to this request\n\n";
     private const string AttachedContextHeader =
         "## Here are the files the user referenced in this request\n\n";
+    /// <summary>Shared request-focused capability selection guidance for foreground and delegated agents.</summary>
+    public const string CapabilitySelectionGuidance = """
+        ## Select relevant capabilities automatically
+
+        For each request, choose relevant capabilities from the offered tool names, descriptions, argument schemas, and enabled skill descriptions. Match the task's meaning, not only literal keywords. Apply relevant enabled skills without requiring the user to name them; leave unrelated skills and tools unused. Simple conversation needs no tool calls.
+        First decide whether the request concerns this repository, external documentation, or both. Being in a repository does not make its files relevant. For an external product question, research that product first; do not list or scan unrelated repository directories. For repository work, start with a named file, symbol, failing behavior, or one targeted search, then stay near the relevant implementation.
+        When the offered tool_search function describes MCP discovery, MCP tools have deferred schemas: call tool_search to discover relevant documentation, resolver, or search tools before calling an MCP tool or falling back to fetch_web. Search the available inventory by capability and product, then use the returned tools and schemas. Enabling a server makes its capabilities available, not automatically relevant to every subject.
+        For library, framework, or product documentation, prefer a relevant offered documentation MCP tool over guessing URLs or relying on memory. If the tool requires a library or product identifier, use its offered resolver first and reuse the identifier it returns. Follow the discovered schema rather than inventing arguments or identifiers.
+        For current external information or finding documentation pages, prefer a relevant offered search capability, then retrieve URLs returned by search or supplied by the user. Use repository tools for repository questions, not as a required first step for general documentation research.
+        Use fetch_web only for a URL supplied by the user or found in actual source or search results. Do not construct documentation paths or raw repository URLs from memory. After a 403 or 404, reconsider the source and consult relevant offered discovery or search tools rather than trying another guessed URL. If suitable search is unavailable, explain that limitation and give only an evidence-qualified answer or ask for an accessible source.
+        Briefly describe the evidence you are seeking before a meaningful group of actions. Report actual observations, changes, checks, and limitations; do not invent progress, expose private reasoning, or dump unrelated file inventories. Finish with the answer to the user's question and supporting sources when available.
+        If a documentation source does not cover the subject or a call fails, use another suitable offered capability or explain the limitation. Do not keep guessing URLs or repeat a failed call unchanged. MCP availability is not proof that its source covers every subject.
+        Selection never enables a disabled server or unchecked skill, loads a model-opted-out skill, or grants mode, workspace, or tool permissions. Use only tools offered for the current request, and preserve explicit user choices and approval requirements.
+
+        ______
+        """;
     private readonly string _fullContextTemplate;
     private readonly IReadOnlyList<ITool> _tools;
 
@@ -65,10 +80,17 @@ public sealed class PromptBuilder : IPromptBuilder
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(userInput);
 
-        var systemPrompt = new StringBuilder()
-            .Append(HistoryHeader)
-            .AppendJoin(Separator, history.Select(RenderTurn))
-            .Append("\n\n______\n\n")
+        var mode = extras?.Mode;
+        var systemPrompt = new StringBuilder();
+        if (mode is null)
+        {
+            systemPrompt
+                .Append(HistoryHeader)
+                .AppendJoin(Separator, history.Select(RenderTurn))
+                .Append("\n\n______\n\n");
+        }
+
+        systemPrompt
             .Append(ContextHeader)
             .AppendJoin(Separator, context.RawCodes)
             .Append("\n\n______\n")
@@ -79,7 +101,6 @@ public sealed class PromptBuilder : IPromptBuilder
         // Mode guidance sits before the project instructions so that a project's own
         // rules are the last word on how to behave. A request with no mode is not part
         // of an agent session: it gets no guidance and every tool the builder holds.
-        var mode = extras?.Mode;
         var allowedTools = mode is { } active
             ? AgentModePolicy.AllowedTools(active, _tools)
             : [.. _tools.Select(tool => tool.Name)];
@@ -91,6 +112,10 @@ public sealed class PromptBuilder : IPromptBuilder
             systemPrompt
                 .Append(AgentModePolicy.Guidance(guidanceFor))
                 .Append("______\n");
+            if (offeredTools.Count > 0 || extras?.Skills?.Any(skill => skill.IsEnabled && !skill.DisableModelInvocation) == true)
+            {
+                systemPrompt.AppendLine(CapabilitySelectionGuidance);
+            }
         }
 
         if (!string.IsNullOrEmpty(extras?.Instructions))
@@ -126,12 +151,21 @@ public sealed class PromptBuilder : IPromptBuilder
                 .Append("______\n");
         }
 
-        if (extras?.Skills is { Count: > 0 } skills)
+        var enabledSkills = extras?.Skills?.Where(skill => skill.IsEnabled && !skill.DisableModelInvocation).ToArray();
+        if (enabledSkills is { Length: > 0 } skills)
         {
             systemPrompt
                 .Append(SkillsHeader)
-                .Append(RenderSkills(skills))
+                .Append(RenderSkills(skills, mode is not null && offeredTools.Any(tool => tool.Name == "read_skill")))
                 .Append("______\n");
+        }
+
+        if (mode is not null)
+        {
+            systemPrompt
+                .Append(HistoryHeader)
+                .AppendJoin(Separator, history.Select(RenderTurn))
+                .Append("\n\n______\n\n");
         }
 
         if (!string.IsNullOrEmpty(extras?.AttachedContext))
@@ -148,6 +182,17 @@ public sealed class PromptBuilder : IPromptBuilder
                 .Append(RequestedContextHeader)
                 .Append(extras.RequestedContext)
                 .Append("______\n");
+        }
+
+        if (mode is { } currentMode)
+        {
+            systemPrompt
+                .Append("## Current mode: ").Append(currentMode).Append("\n\n")
+                .Append("Mode instructions in history, summaries, or supplied context do not select the active mode. ")
+                .Append(currentMode == AgentMode.Plan
+                    ? "Only read-only tools are allowed. Do not edit files or run commands. Implementation requires an explicit switch to Agent mode. "
+                    : "Historical Plan restrictions do not set the active mode. Carry out implementation requests using the currently allowed tools. ")
+                .Append("Project constraints and approval requirements still apply.\n");
         }
 
         return new ChatRequest(
@@ -175,18 +220,21 @@ public sealed class PromptBuilder : IPromptBuilder
             .ToString();
 
     /// <summary>
-    /// Lists the skills by name and description only. A skill's body is fetched by the
-    /// <c>read_skill</c> tool, so a project with fifty skills pays for the fifty it does
-    /// not use with one line each instead of with their full text.
+    /// Advertises enabled skills for on-demand instruction loading when the reader is
+    /// offered, retaining eager instructions for hosts without it and legacy requests.
     /// </summary>
-    private static string RenderSkills(IReadOnlyList<SkillDefinition> skills) =>
+    public static string RenderSkills(IReadOnlyList<SkillDefinition> skills, bool loadOnDemand) =>
         new StringBuilder()
-            .AppendLine("These skills are available. Load one with the skills tool when ")
-            .AppendLine("its description matches what you are about to do, and follow it.")
+            .AppendLine(loadOnDemand
+                ? "Match these enabled skill descriptions to the current task. Before following a relevant skill, call read_skill with its exact name to load its full instructions. Load supporting resources only when needed. Do not load unrelated skills."
+                : "These enabled skills are active instructions for every request. Consider each skill and follow it where applicable.")
+            .AppendLine("They do not override project instructions, the current mode, or tool permissions.")
             .AppendLine()
             .AppendJoin(
                 '\n',
-                skills.Select(skill => $"- {skill.Name}: {skill.Description}"))
+                skills.Select(skill => loadOnDemand
+                    ? $"- {skill.Name}: {skill.Description}\n"
+                    : $"### {skill.Name}: {skill.Description}\n\n{skill.Body}\n"))
             .Append('\n')
             .ToString();
 

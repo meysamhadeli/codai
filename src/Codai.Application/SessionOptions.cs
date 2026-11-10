@@ -53,6 +53,9 @@ public sealed class SessionOptions
     /// </summary>
     public bool AutoCompact { get; init; } = true;
 
+    /// <summary>Live automatic-compaction window in tokens; zero uses the model window.</summary>
+    public int AutoCompactWindow { get; set; }
+
     /// <summary>
     /// How automatic compaction is allowed to shorten a conversation. The manual
     /// <c>:compact</c> command uses the same strategy, and a request the provider refused

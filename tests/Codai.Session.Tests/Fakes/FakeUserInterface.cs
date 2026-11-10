@@ -1,5 +1,6 @@
 using System.Text;
 using Codai.Core.Abstractions;
+using Codai.Core.Chat;
 using Codai.Core.Tokens;
 
 namespace Codai.Session.Tests.Fakes;
@@ -10,13 +11,23 @@ namespace Codai.Session.Tests.Fakes;
 /// </summary>
 public sealed class FakeUserInterface : IUserInterface
 {
+    public List<Guid> ModelRequests { get; } = [];
+    public List<(Guid RequestId, ChatStreamUpdate Update)> ModelUpdates { get; } = [];
+    public List<Guid> CompletedModelRequests { get; } = [];
+
+    public void ModelRequestStarted(Guid requestId) => ModelRequests.Add(requestId);
+    public void ModelRequestUpdated(Guid requestId, ChatStreamUpdate update) => ModelUpdates.Add((requestId, update));
+    public void ModelRequestCompleted(Guid requestId) => CompletedModelRequests.Add(requestId);
+
     private readonly Queue<string?> _inputs = new();
     private readonly Queue<bool> _confirmations = new();
     private readonly Queue<Func<IReadOnlyList<SessionMenuItem>, string?>> _choices = new();
     private readonly Queue<string?> _values = new();
     public List<string> Themes { get; } = [];
+    public List<string[]> SkillSelections { get; } = [];
     public List<string> Insertions { get; } = [];
     public List<string> Dialogs { get; } = [];
+    public List<SessionMenuOptions> Menus { get; } = [];
     public List<bool> SecretInputs { get; } = [];
 
     public void EnqueueChoice(string? value) => _choices.Enqueue(_ => value);
@@ -32,6 +43,12 @@ public sealed class FakeUserInterface : IUserInterface
         return Task.FromResult(_choices.Count > 0 ? _choices.Dequeue()(items) : null);
     }
 
+    public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, SessionMenuOptions options, CancellationToken cancellationToken = default)
+    {
+        Menus.Add(options);
+        return ChooseAsync(title, items, cancellationToken);
+    }
+
     public Task<string?> ReadValueAsync(string title, string initialValue = "", bool secret = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -40,6 +57,8 @@ public sealed class FakeUserInterface : IUserInterface
     }
 
     public void SetTheme(string name) => Themes.Add(name);
+
+    public void SetSkills(IReadOnlyList<string> skillNames) => SkillSelections.Add(skillNames.ToArray());
 
     public void InsertInput(string text) => Insertions.Add(text);
 

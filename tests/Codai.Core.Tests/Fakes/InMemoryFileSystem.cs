@@ -25,6 +25,13 @@ internal sealed class InMemoryFileSystem : IFileSystem
 
     public bool FailAtomicWrites { get; set; }
 
+    public string? AtomicWriteFailurePath { get; set; }
+
+    public Dictionary<string, string> CanonicalPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public string GetCanonicalPath(string path) => CanonicalPaths.TryGetValue(Normalize(path), out var canonical)
+        ? Path.GetFullPath(canonical) : Path.GetFullPath(path);
+
     public InMemoryFileSystem AddDirectory(string path)
     {
         for (var current = Normalize(path); !string.IsNullOrEmpty(current); current = Parent(current))
@@ -75,7 +82,7 @@ internal sealed class InMemoryFileSystem : IFileSystem
 
     public Task WriteAllTextAtomicallyAsync(string path, string contents, CancellationToken cancellationToken = default)
     {
-        if (FailAtomicWrites)
+        if (FailAtomicWrites || string.Equals(Normalize(path), AtomicWriteFailurePath is null ? null : Normalize(AtomicWriteFailurePath), StringComparison.OrdinalIgnoreCase))
         {
             throw new IOException("Atomic replacement failed.");
         }

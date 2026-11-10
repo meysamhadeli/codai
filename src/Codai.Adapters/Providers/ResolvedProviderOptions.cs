@@ -1,4 +1,6 @@
 using Codai.Configuration;
+using Codai.Core.Context;
+using Codai.Pricing;
 
 namespace Codai.Providers;
 
@@ -25,6 +27,23 @@ public sealed record ResolvedProviderOptions
     public ReasoningEffortLevel? ReasoningEffort { get; init; }
 
     public int MaxTokens { get; init; }
+
+    /// <summary>Catalog input ceiling or combined window, then a model-family estimate when unavailable.</summary>
+    public int ContextWindowTokens
+    {
+        get
+        {
+            var metadata = EmbeddedPricingCatalog.Instance.Find(Provider, Model);
+            var input = metadata?.MaxInputTokens ?? 0;
+            var context = metadata?.MaxContextTokens ?? 0;
+            return input > 0 ? (context > 0 ? Math.Min(input, context) : input)
+                : context > 0 ? context : ContextWindow.For(Model);
+        }
+    }
+
+    /// <summary>Configured output allowance, or bounded model-specific default headroom.</summary>
+    public int OutputReserveTokens => MaxTokens > 0 ? MaxTokens : Math.Min(ContextWindowTokens / 4,
+        EmbeddedPricingCatalog.Instance.Find(Provider, Model)?.MaxOutputTokens is > 0 and var tokens ? Math.Min(tokens, 20_000) : 4_096);
 
     /// <summary>
     /// When false the provider is asked for a single (non-streamed) completion.
@@ -79,7 +98,7 @@ public sealed record ResolvedProviderOptions
         if (RequiresApiKey && string.IsNullOrWhiteSpace(ApiKey))
         {
             throw new ProviderConfigurationException(
-                $"Provider '{Provider}' requires an API key. Set it in codai-config.yml, " +
+                $"Provider '{Provider}' requires an API key. Set it in .codai.yml, " +
                 "the API_KEY environment variable, or the --api_key flag.");
         }
     }

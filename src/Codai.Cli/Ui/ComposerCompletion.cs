@@ -4,6 +4,12 @@ namespace Codai.Cli.Ui;
 
 public sealed class ComposerCompletion
 {
+    private static readonly Dictionary<string, string> CommandDescriptions = SlashCommandParser.HelpText.Split('\n')
+        .Select(line => line.Split("  ", 2, StringSplitOptions.None))
+        .ToDictionary(parts => parts[0].Split(' ', 2)[0], parts => parts[1], StringComparer.OrdinalIgnoreCase);
+
+    internal static string Describe(string command) => CommandDescriptions.GetValueOrDefault(command, "Run skill");
+
     private int _start;
     private int _length;
     private string[] _matches = [];
@@ -12,6 +18,9 @@ public sealed class ComposerCompletion
     public IReadOnlyList<string> Options { get; private set; } = [];
 
     public int Selected { get; private set; }
+
+    /// <summary>Discovered skill names offered alongside built-in slash commands, independently of checks.</summary>
+    public IReadOnlyList<string> SkillNames { get; set; } = [];
 
     public void Update(ComposerBuffer editor, IReadOnlyList<string> files)
     {
@@ -34,11 +43,13 @@ public sealed class ComposerCompletion
             matches = files.Where(path => !path.Any(char.IsWhiteSpace) && path.Contains(token[1..], StringComparison.OrdinalIgnoreCase))
                 .Select(path => "@" + path);
         }
-        else if (_start == 0 && token.Length > 0 && token[0] is ':' or '/')
+        else if (_start == 0 && token.StartsWith('/'))
         {
             matches = SlashCommandParser.HelpText.Split('\n')
             .Select(line => token[0] + line.Split(' ', 2)[0][1..])
+                .Concat(SkillNames.Where(name => !name.Any(char.IsWhiteSpace)).Select(name => "/" + name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(command => !command.Equals("/settings", StringComparison.OrdinalIgnoreCase))
                 .Where(command => command.StartsWith(token, StringComparison.OrdinalIgnoreCase));
         }
         _matches = matches.ToArray();

@@ -8,7 +8,8 @@ namespace Codai.Core.Tools;
 /// </summary>
 /// <remarks>
 /// Implementations receive arguments that came from a model response and must treat
-/// them as untrusted: validate types, resolve paths through
+/// them as untrusted. <see cref="ToolRunner"/> validates the advertised schema before
+/// approval, but direct invocations still require defensive checks: validate types, resolve paths through
 /// <see cref="Codai.Core.IO.ProjectPaths"/> and fail with
 /// <see cref="ToolResult.Failure"/> rather than throwing.
 /// </remarks>

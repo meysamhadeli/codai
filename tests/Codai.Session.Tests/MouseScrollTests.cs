@@ -7,6 +7,42 @@ namespace Codai.Session.Tests;
 
 public sealed class MouseScrollTests
 {
+    [Theory]
+    [InlineData(24, true)]
+    [InlineData(100, true)]
+    [InlineData(24, false)]
+    [InlineData(100, false)]
+    public void Scrollbar_uses_thin_outermost_rail_and_proportional_thumb_without_wrapping(int width, bool unicode)
+    {
+        using var writer = new StringWriter();
+        var console = CreateConsole(writer);
+        console.Profile.Width = width;
+        var transcript = new ChatTranscript { Unicode = unicode };
+        transcript.Add(Lines());
+        transcript.Draw(console, 18);
+
+        var output = writer.ToString();
+        var glyph = unicode ? "\u2595" : "\\|";
+        var cells = System.Text.RegularExpressions.Regex.Matches(output,
+            $"\u001b\\[(\\d+);{width}H\u001b\\[38;5;(237|247)m{glyph}\u001b\\[0m\u001b\\[\\1;{width}H");
+        cells.Should().HaveCount(18);
+        cells.Count(cell => cell.Groups[2].Value == "247").Should().Be(5);
+        cells.TakeLast(5).Should().OnlyContain(cell => cell.Groups[2].Value == "247");
+        output.Should().NotContain("\u2588").And.NotContain("\u2502");
+        output.Should().NotContain("\u001b[48;5;237m").And.NotContain("\u001b[48;5;247m");
+
+        writer.GetStringBuilder().Clear();
+        transcript.Draw(console, 18);
+        writer.ToString().Should().BeEmpty();
+
+        transcript.Scroll(1000);
+        writer.GetStringBuilder().Clear();
+        transcript.Draw(console, 18);
+        var top = System.Text.RegularExpressions.Regex.Matches(writer.ToString(),
+            $"\u001b\\[(\\d+);{width}H\u001b\\[38;5;(237|247)m{glyph}\u001b\\[0m\u001b\\[\\1;{width}H");
+        top.Take(5).Should().OnlyContain(cell => cell.Groups[2].Value == "247");
+    }
+
     [Fact]
     public async Task Wheel_scrolls_transcript_both_ways_without_moving_footer()
     {
@@ -19,7 +55,7 @@ public sealed class MouseScrollTests
 
         ui.HandleMouse(new(30, 8, TerminalMouseAction.ScrollUp)).Should().BeTrue();
         writer.ToString().Should().Contain("row057").And.NotContain("row060");
-        writer.ToString().Should().Contain("\u001b[19;1H").And.Contain("[Agent]");
+        writer.ToString().Should().Contain("\u001b[19;1H").And.Contain("configured model");
         writer.GetStringBuilder().Clear();
 
         ui.HandleMouse(new(30, 8, TerminalMouseAction.ScrollDown)).Should().BeTrue();
@@ -36,16 +72,17 @@ public sealed class MouseScrollTests
         ui.WriteLine(Lines());
         writer.GetStringBuilder().Clear();
 
-        ui.HandleMouse(new(99, 1, TerminalMouseAction.Press)).Should().BeTrue();
+        ui.HandleMouse(new(99, 1, TerminalMouseAction.Press)).Should().BeFalse();
+        ui.HandleMouse(new(100, 1, TerminalMouseAction.Press)).Should().BeTrue();
         writer.ToString().Should().Contain("row001").And.NotContain("row060");
         writer.GetStringBuilder().Clear();
         ui.HandleMouse(new(98, 24, TerminalMouseAction.Drag)).Should().BeTrue();
         writer.ToString().Should().Contain("row060").And.NotContain("row001");
 
-        ui.HandleMouse(new(99, 18, TerminalMouseAction.Release));
-        ui.HandleMouse(new(99, 1, TerminalMouseAction.Drag)).Should().BeFalse();
+        ui.HandleMouse(new(100, 18, TerminalMouseAction.Release));
+        ui.HandleMouse(new(100, 1, TerminalMouseAction.Drag)).Should().BeFalse();
         ui.HandleMouse(new(10, 1, TerminalMouseAction.Press)).Should().BeFalse();
-        ui.HandleMouse(new(99, 21, TerminalMouseAction.Press)).Should().BeFalse();
+        ui.HandleMouse(new(100, 24, TerminalMouseAction.Press)).Should().BeFalse();
     }
 
     [Fact]
@@ -118,7 +155,9 @@ public sealed class MouseScrollTests
     {
         var console = AnsiConsole.Create(new AnsiConsoleSettings
         {
-            Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes, Interactive = InteractionSupport.Yes,
+            Out = new AnsiConsoleOutput(writer),
+            Ansi = AnsiSupport.Yes,
+            Interactive = InteractionSupport.Yes,
         });
         console.Profile.Width = 100;
         console.Profile.Height = 24;

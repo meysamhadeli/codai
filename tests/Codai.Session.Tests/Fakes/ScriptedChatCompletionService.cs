@@ -18,6 +18,10 @@ public sealed class ScriptedChatCompletionService : IChatCompletionService
 
     public Queue<Exception> Failures { get; } = new();
 
+    public Task? ResponseGate { get; set; }
+
+    public Func<ChatRequest, CancellationToken, Task>? BeforeResponse { get; set; }
+
     public string ProviderName => "fake";
 
     public string ModelName => "fake-model";
@@ -38,7 +42,16 @@ public sealed class ScriptedChatCompletionService : IChatCompletionService
     {
         await Task.Yield();
 
+        if (ResponseGate is { } gate)
+        {
+            await gate.WaitAsync(cancellationToken);
+        }
+
         Requests.Add(request);
+        if (BeforeResponse is not null)
+        {
+            await BeforeResponse(request, cancellationToken);
+        }
 
         if (Failures.Count > 0)
         {

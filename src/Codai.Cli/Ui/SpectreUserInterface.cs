@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Codai.Application;
 using Codai.Core;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
+using Codai.Core.Chat;
 using Codai.Core.Context;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
@@ -19,6 +21,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 {
     private readonly IAnsiConsole _console;
     private readonly IConsoleInput _input;
+    private readonly Action<Uri> _openBrowser;
+    private const string DocumentationUrl = "https://meysamhadeli.github.io/codai";
     private readonly string? _provider;
     private readonly string? _model;
     private readonly AgentModeState _modeState;
@@ -27,8 +31,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private readonly ChatTranscript _transcript = new();
     private readonly object _renderLock = new();
     private readonly SessionDisplayState _state = new();
-    private const int ComposerRows = 6;
-    private const int MinimumLabelWidth = 12;
+    private const int ComposerRows = 8;
     private const int FrameIntervalMs = 60;
     private static readonly TimeSpan MinimumDrawInterval = TimeSpan.FromMilliseconds(45);
     private bool WideWelcome => _console.Profile.Width >= 64 && TerminalHeight() >= 16;
@@ -43,7 +46,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private int _busyDepth;
     private int _activityFrame;
     private long _lastDrawTicks;
-    private readonly ActivityStatus _activity = new();
+    private ActivityStatus _activity = new();
+    private readonly List<(Guid Id, ActivityStatus Status)> _modelRequests = [];
     private string _loadingLabel = "Loading";
     private volatile bool _waitingForResponse;
     private ComposerBuffer _draft = new([]);
@@ -61,61 +65,214 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private IOverlay? _setupPaintedPalette;
     private string _setupNotice = string.Empty;
     private string _setupNoticeStyle = "grey";
-    private static readonly Spinner _unicodePulse = new PulseSpinner(true);
-    private static readonly Spinner _asciiPulse = new PulseSpinner(false);
-    private Spinner WorkSpinner => _console.Profile.Capabilities.Unicode ? _unicodePulse : _asciiPulse;
-    private string WorkFrame => WorkSpinner.Frames[_activityFrame / 2 % WorkSpinner.Frames.Count];
+    private readonly DotMatrixSpinner _unicodeDots = new(true);
+    private readonly DotMatrixSpinner _asciiDots = new(false);
+    private DotMatrixSpinner WorkSpinner => _console.Profile.Capabilities.Unicode ? _unicodeDots : _asciiDots;
+    private string WorkFrame => WorkSpinner.GetFrame(_activityFrame / 2);
 
-    private Markup RenderActivity(string activity, int width, ActivitySnapshot? snapshot = null)
+    /// <inheritdoc />
+    public void ModelRequestStarted(Guid requestId)
     {
-        var glyphColor = Accent;
-        var parts = new List<string>();
-        if (snapshot is { ShowMetrics: true, Tokens: > 0 })
+        lock (_renderLock)
         {
-            parts.Insert(0, (WorkSpinner.IsUnicode ? "↓ " : "v ") + ActivityStatus.FormatTokens(snapshot.Tokens) + " tokens");
+            var label = _state.Activity == "loading" ? _loadingLabel : "Thinking";
+            var status = new ActivityStatus();
+            status.Begin(label);
+            _modelRequests.Add((requestId, status));
+            _activity = status;
+            _transcript.StartActivity(label);
+            RefreshComposer();
         }
-
-        if (snapshot is { ShowMetrics: true })
-        {
-            parts.Insert(0, ActivityStatus.FormatElapsed(snapshot.Elapsed));
-        }
-
-        if (snapshot?.Interruptible == true)
-        {
-            parts.Insert(0, "esc to interrupt");
-        }
-
-        // Width decides what survives: tokens go first, then the timer, then the interrupt hint,
-        // so a narrow terminal still says what the agent is doing before it says anything else.
-        var available = Math.Max(4, width - 3);
-        while (parts.Count > 0 && SuffixWidth(parts) + MinimumLabelWidth > available)
-        {
-            parts.RemoveAt(parts.Count - 1);
-        }
-
-        var suffix = parts.Count == 0
-            ? string.Empty
-            : " [grey](" + string.Join("[grey] · [/]", parts.Select(Markup.Escape)) + ")[/]";
-        var label = ComposerLayout.Clip(TranscriptMarkdown.Clean(activity).Replace('\n', ' '),
-            Math.Max(1, available - (suffix.Length == 0 ? 0 : SuffixWidth(parts) + 1)));
-        var highlight = label.Length == 0 ? 0 : _activityFrame % (label.Length + 3);
-        var start = Math.Min(highlight, label.Length);
-        var end = Math.Min(highlight + 3, label.Length);
-        var dots = parts.Count == 0 ? new string('.', _activityFrame / 3 % 4).PadRight(3) : string.Empty;
-        return new Markup($"[{glyphColor}]{WorkFrame} [/][grey]{Markup.Escape(label[..start])}[/]"
-            + $"[bold {glyphColor}]{Markup.Escape(label[start..end])}[/][grey]{Markup.Escape(label[end..])}[/]{suffix}[{glyphColor}]{dots}[/]");
     }
 
-    private static int SuffixWidth(List<string> parts) =>
-        parts.Sum(part => part.Length) + Math.Max(0, parts.Count - 1) * 3 + 2;
-
-    private sealed class PulseSpinner(bool unicode) : Spinner
+    /// <inheritdoc />
+    public void ModelRequestUpdated(Guid requestId, ChatStreamUpdate update)
     {
+        lock (_renderLock)
+        {
+            var index = _modelRequests.FindIndex(request => request.Id == requestId);
+            if (index < 0)
+            {
+                return;
+            }
+            var status = _modelRequests[index].Status;
+            if (!string.IsNullOrEmpty(update.ContentDelta))
+            {
+                status.Observe(update.ContentDelta.Length);
+            }
+            if (update.IsReasoning)
+            {
+                status.SetReasoning(true);
+            }
+            if (update.Usage.HasValue)
+            {
+                status.ReportUsage(update.Usage);
+            }
+            if (update.IsCompleted)
+            {
+                status.SetReasoning(false);
+            }
+            if (ReferenceEquals(status, _activity))
+            {
+                RequestRefresh();
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void ModelRequestCompleted(Guid requestId)
+    {
+        lock (_renderLock)
+        {
+            var index = _modelRequests.FindIndex(request => request.Id == requestId);
+            if (index < 0)
+            {
+                return;
+            }
+            _modelRequests[index].Status.SetReasoning(false);
+            _modelRequests.RemoveAt(index);
+            if (_modelRequests.Count > 0)
+            {
+                _activity = _modelRequests[^1].Status;
+            }
+            RefreshComposer();
+        }
+    }
+
+    private Markup RenderActivity(string activity, int width)
+    {
+        var snapshot = _activity.Snapshot();
+        var metrics = FormatActivityMetrics(snapshot.Elapsed, snapshot.Tokens,
+            _console.Profile.Capabilities.Unicode, _viewportInitialized && _busyDepth > 0, width,
+            snapshot.TokensEstimated, _modelRequests.Count > 0 || snapshot.Tokens > 0 || snapshot.InputTokens > 0,
+            snapshot.InputTokens);
+        var label = ComposerLayout.Clip(TranscriptMarkdown.Clean(activity).Replace('\n', ' ').TrimEnd('.') + "...",
+            Math.Max(0, width - WorkFrame.GetCellWidth() - metrics.GetCellWidth() - 2));
+        return new Markup($"[{Accent}]{WorkFrame}[/] [{Accent}]{Markup.Escape(label)}[/] [grey]{Markup.Escape(metrics)}[/]");
+    }
+
+    internal static string FormatActivityMetrics(TimeSpan elapsed, long tokens, bool unicode, bool interruptible, int width,
+        bool estimated = true, bool showTokens = true, long inputTokens = 0)
+    {
+        var separator = unicode ? " · " : " - ";
+        var metrics = ActivityStatus.FormatElapsed(elapsed);
+        if (showTokens && width >= 64)
+        {
+            if (inputTokens > 0 && width >= 96)
+            {
+                metrics += separator + (unicode ? "\u2191 " : "in ") + ActivityStatus.FormatTokens(inputTokens) + (unicode ? " in" : string.Empty);
+            }
+            metrics += separator + (unicode ? "\u2193 " : "out ") + (estimated ? "~" : string.Empty) + ActivityStatus.FormatTokens(tokens) + " tokens";
+        }
+        if (interruptible)
+        {
+            metrics += separator + (width >= 40 ? "esc interrupt" : "esc");
+        }
+        return "(" + metrics + ")";
+    }
+
+    internal sealed class DotMatrixSpinner : Spinner
+    {
+        private readonly Random _random;
+        private string[] _frames;
+        private int _cycle;
+        private int _previousPattern = -1;
+
+        public DotMatrixSpinner(bool unicode, Random? random = null)
+        {
+            IsUnicode = unicode;
+            _random = random ?? Random.Shared;
+            _frames = CreateFrames();
+        }
+
         public override TimeSpan Interval => TimeSpan.FromMilliseconds(160);
-        public override bool IsUnicode => unicode;
-        public override IReadOnlyList<string> Frames { get; } = unicode
-            ? ["·", "✧", "✦", "✶", "✦", "✧"]
-            : [".", "+", "*", "+", ".", "*"];
+        public override bool IsUnicode { get; }
+        public override IReadOnlyList<string> Frames => _frames;
+
+        public string GetFrame(int frame)
+        {
+            var cycle = frame / _frames.Length;
+            if (cycle != _cycle)
+            {
+                _frames = CreateFrames();
+                _cycle = cycle;
+            }
+            return _frames[frame % _frames.Length];
+        }
+
+        private string[] CreateFrames()
+        {
+            var count = IsUnicode ? 9 : 4;
+            var frames = new string[count * 2];
+            var mask = 0;
+            frames[0] = Encode(mask);
+            var fill = NextOrder(count);
+            for (var index = 0; index < count; index++)
+            {
+                mask |= 1 << fill[index];
+                frames[index + 1] = Encode(mask);
+            }
+            var empty = NextOrder(count);
+            for (var index = 0; index < count - 1; index++)
+            {
+                mask &= ~(1 << empty[index]);
+                frames[count + index + 1] = Encode(mask);
+            }
+            return frames;
+        }
+
+        private int[] NextOrder(int count)
+        {
+            var pattern = _previousPattern < 0 ? _random.Next(5) : (_previousPattern + _random.Next(1, 5)) % 5;
+            _previousPattern = pattern;
+            int[] order = pattern switch
+            {
+                0 => [0, 1, 2, 3, 4, 5, 6, 7, 8],
+                1 => [0, 3, 6, 1, 4, 7, 2, 5, 8],
+                2 => [0, 1, 2, 5, 8, 7, 6, 3, 4],
+                3 => [4, 1, 5, 7, 3, 0, 2, 8, 6],
+                _ => [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            };
+            order = order.Where(point => point < count).ToArray();
+            if (pattern == 4)
+            {
+                _random.Shuffle(order);
+            }
+            else if (_random.Next(2) == 1)
+            {
+                Array.Reverse(order);
+            }
+            return order;
+        }
+
+        private string Encode(int mask)
+        {
+            if (!IsUnicode)
+            {
+                const string dots = " ..:";
+                return $"{dots[mask & 3]}{dots[mask >> 2]}";
+            }
+            var left = 0;
+            var right = 0;
+            for (var point = 0; point < 9; point++)
+            {
+                if ((mask & (1 << point)) == 0)
+                {
+                    continue;
+                }
+                var row = point / 3;
+                var column = point % 3;
+                if (column < 2)
+                {
+                    left |= 1 << (row + column * 3);
+                }
+                else
+                {
+                    right |= 1 << row;
+                }
+            }
+            return $"{(char)('\u2800' + left)}{(char)('\u2800' + right)}";
+        }
     }
 
     private sealed class ActivityColumn(SpectreUserInterface owner) : ProgressColumn
@@ -130,8 +287,42 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, CancellationToken cancellationToken = default) =>
         RunDialogAsync(new SettingsPalette(title, items), cancellationToken);
 
+    internal async Task<string?> RequestWorkspaceTrustAsync(string directory, CancellationToken cancellationToken)
+    {
+        if (_console.Profile.Capabilities.Ansi && _console.Profile.Capabilities.Interactive)
+        {
+            return await RunDialogAsync(new WorkspaceTrustPanel(directory), cancellationToken).ConfigureAwait(false);
+        }
+
+        new WorkspaceTrustPanel(directory).Draw(_console, _theme);
+        _console.WriteLine();
+        _console.WriteLine("Trust this directory? [Y/n]");
+        var response = await _input.ReadResponseAsync(cancellationToken).ConfigureAwait(false);
+        return response is not null && (string.IsNullOrWhiteSpace(response) ||
+            string.Equals(response.Trim(), "y", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(response.Trim(), "yes", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(response.Trim(), "trust", StringComparison.OrdinalIgnoreCase)) ? "trust" : "leave";
+    }
+
+    public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, SessionMenuOptions options, CancellationToken cancellationToken = default) =>
+        RunDialogAsync(new SettingsPalette(title, items, options: options), cancellationToken);
+
     public Task<string?> ReadValueAsync(string title, string initialValue = "", bool secret = false, CancellationToken cancellationToken = default) =>
         RunDialogAsync(new SettingsPalette(title, initialValue: initialValue, secret: secret), cancellationToken);
+
+    public async Task ShowDiffAsync(string workingTree, string staged, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_console.Profile.Capabilities.Ansi || !_console.Profile.Capabilities.Interactive)
+        {
+            WriteLine("Working-tree changes");
+            WriteLine(string.IsNullOrWhiteSpace(workingTree) ? "No diff!" : workingTree);
+            WriteLine("Staged changes");
+            WriteLine(string.IsNullOrWhiteSpace(staged) ? "No diff!" : staged);
+            return;
+        }
+        await RunDialogAsync(new DiffViewer(workingTree, staged), cancellationToken).ConfigureAwait(false);
+    }
 
     public void SetTheme(string name)
     {
@@ -140,6 +331,18 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         _transcript.Invalidate();
         _restorePaletteBackground = true;
         RefreshComposer();
+    }
+
+    /// <inheritdoc />
+    public void SetSkills(IReadOnlyList<string> skillNames)
+    {
+        ArgumentNullException.ThrowIfNull(skillNames);
+        var names = skillNames.ToArray();
+        _draftCompletion.SkillNames = names;
+        if (_input is SystemConsoleInput input)
+        {
+            input.SkillNames = names;
+        }
     }
 
     public void InsertInput(string text)
@@ -162,10 +365,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             return null;
         }
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (ConnectionSetup)
-        {
-            InitializeViewport();
-        }
+        InitializeViewport();
         var waiting = _waitingForResponse;
         lock (_renderLock)
         {
@@ -202,7 +402,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 _palette = null;
                 _dialogResult = null;
                 _waitingForResponse = waiting;
-                _restorePaletteBackground = true;
+                _restorePaletteBackground = palette is not IInlineDecision;
+                _transcript.InvalidateDisplay();
                 RedrawInput(_draft.Text, _draft.Cursor);
             }
         }
@@ -219,6 +420,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     /// <param name="modeState">Shared mutable mode state for keyboard shortcuts.</param>
     /// <param name="approvalState">Shared mutable approval state for keyboard shortcuts.</param>
     /// <param name="theme">Initial appearance selected by configuration.</param>
+    /// <param name="openBrowser">Optional browser launcher for the command palette's documentation action.</param>
     public SpectreUserInterface(
         IAnsiConsole? console = null,
         IConsoleInput? input = null,
@@ -229,12 +431,18 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         string? projectRoot = null,
         AgentModeState? modeState = null,
         ApprovalState? approvalState = null,
-        string theme = "graphite")
+        string theme = "graphite",
+        Action<Uri>? openBrowser = null)
     {
         _console = console ?? AnsiConsole.Console;
         _input = input ?? SystemConsoleInput.Instance;
+        _openBrowser = openBrowser ?? (address =>
+        {
+            using var browser = Process.Start(new ProcessStartInfo(address.AbsoluteUri) { UseShellExecute = true });
+        });
         _provider = provider;
         _model = model;
+        _state.Model = string.IsNullOrWhiteSpace(model) ? "configured model" : model;
         _modeState = modeState ?? new AgentModeState(mode);
         _approvalState = approvalState ?? new ApprovalState(autoApprove);
         _projectRoot = projectRoot;
@@ -272,7 +480,10 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 _console.Write("> ");
             }
             var input = await ReadAndTrackInputAsync(cancellationToken).ConfigureAwait(false);
-            if (_console.Profile.Capabilities.Interactive && !string.IsNullOrWhiteSpace(input))
+            var command = SlashCommandParser.Parse(input);
+            var localControl = command == SlashCommand.Settings ||
+                input?.TrimStart().StartsWith('/') == true && command is not (SlashCommand.None or SlashCommand.Init);
+            if (_console.Profile.Capabilities.Interactive && !string.IsNullOrWhiteSpace(input) && !localControl)
             {
                 lock (_renderLock)
                 {
@@ -302,15 +513,15 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         {
             if (options.Count == 0)
             {
-                return await RunDialogAsync(new SettingsPalette(question, question: true), cancellationToken).ConfigureAwait(false);
+                return await RunDialogAsync(new DecisionPanel("Question", question), cancellationToken).ConfigureAwait(false);
             }
-            var items = options.Select((option, index) => new SessionMenuItem($"{index + 1}. {option}", string.Empty,
+            var items = options.Select((option, index) => new SessionMenuItem(option, string.Empty,
                 index.ToString(CultureInfo.InvariantCulture))).ToList();
             items.Add(new SessionMenuItem("Write another answer", string.Empty, "custom"));
-            var selected = await RunDialogAsync(new SettingsPalette(question, items, question: true), cancellationToken).ConfigureAwait(false);
+            var selected = await RunDialogAsync(new DecisionPanel("Question", question, items), cancellationToken).ConfigureAwait(false);
             if (selected == "custom")
             {
-                return await RunDialogAsync(new SettingsPalette(question, question: true), cancellationToken).ConfigureAwait(false);
+                return await RunDialogAsync(new DecisionPanel("Question", question), cancellationToken).ConfigureAwait(false);
             }
             return int.TryParse(selected, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)
                 && index >= 0 && index < options.Count ? options[index] : null;
@@ -349,22 +560,37 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             return false;
         }
 
+        var waiting = _waitingForResponse;
+        var activity = _state.Activity;
         _state.Activity = "waiting for approval";
-        _waitingForResponse = true;
-        Present(question + " [y/N]", Accent);
-        MoveToTranscriptEnd();
         try
         {
-            var answer = await _input.ReadResponseAsync(cancellationToken).ConfigureAwait(false);
-            var accepted = string.Equals(answer?.Trim(), "y", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(answer?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
+            bool accepted;
+            if (_console.Profile.Capabilities.Ansi)
+            {
+                var answer = await RunDialogAsync(new DecisionPanel("Confirm action", question,
+                    [new SessionMenuItem("Yes", "Continue", "yes"), new SessionMenuItem("No", "Keep current state", "no")]),
+                    cancellationToken).ConfigureAwait(false);
+                accepted = answer == "yes";
+            }
+            else
+            {
+                _waitingForResponse = true;
+                Present(question + " [Y/n]", Accent);
+                MoveToTranscriptEnd();
+                var answer = await _input.ReadResponseAsync(cancellationToken).ConfigureAwait(false);
+                accepted = answer is not null && (string.IsNullOrWhiteSpace(answer) ||
+                    string.Equals(answer.Trim(), "y", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(answer.Trim(), "yes", StringComparison.OrdinalIgnoreCase));
+            }
+            cancellationToken.ThrowIfCancellationRequested();
             Present(accepted ? "Approved" : "Declined", Accent);
             return accepted;
         }
         finally
         {
-            _waitingForResponse = false;
-            _state.Activity = "ready";
+            _waitingForResponse = waiting;
+            _state.Activity = activity;
             RefreshComposer();
         }
     }
@@ -423,7 +649,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         lock (_renderLock)
         {
             _transcript.CompleteActivity("failed");
-            Present("! " + message, Accent);
+            Present("! " + message, "red");
         }
     }
 
@@ -441,23 +667,28 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         {
             return;
         }
-        if (message is "Thinking..." or "Reasoning..." or "Loading..." or "Working...")
+        if (message is "Thinking..." or "Reasoning..." or "Loading..." or "Working..." or "Considering..." or "Ruminating..."
+            or "Planning..." or "Analyzing..." or "Searching..." or "Reviewing..." or "Compacting...")
         {
             lock (_renderLock)
             {
+                if (message == "Reasoning...")
+                {
+                    _activity.SetReasoning(true);
+                }
                 _state.Activity = message switch
                 {
                     "Reasoning..." => "reasoning",
                     "Loading..." => "loading",
                     "Working..." => "working",
-                    _ => "thinking",
+                    _ => message.TrimEnd('.').ToLowerInvariant(),
                 };
                 _transcript.StartActivity(message.TrimEnd('.'));
                 RefreshComposer();
             }
             return;
         }
-        Present(message, "grey");
+        Present(message, "white");
     }
 
     /// <inheritdoc />
@@ -471,13 +702,16 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         lock (_renderLock)
         {
             _state.Activity = "generating";
-            _activity.Observe(markdown.Length);
+            if (_modelRequests.Count == 0)
+            {
+                _activity.Observe(markdown.Length);
+            }
             if (!_viewportInitialized)
             {
                 _console.Write(TranscriptMarkdown.Render(markdown));
                 return;
             }
-            _transcript.AppendMarkdown(markdown);
+            _transcript.AppendMarkdown(markdown, completeActivity: _busyDepth == 0);
             RequestRefresh();
         }
     }
@@ -487,7 +721,10 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         lock (_renderLock)
         {
             _state.Activity = "running " + toolName;
-            _activity.ClearOutput();
+            if (_modelRequests.Count == 0)
+            {
+                _activity.ClearOutput();
+            }
             _activity.Pulse();
             _transcript.StartTool(toolName, summary);
             RefreshComposer();
@@ -562,6 +799,10 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             if (!_console.Profile.Capabilities.Interactive)
             {
                 return await work(cancellationToken).ConfigureAwait(false);
+            }
+            if (_busyDepth == 0)
+            {
+                _activity.Begin(_loadingLabel);
             }
             if (_viewportInitialized)
             {
@@ -640,8 +881,13 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         var completed = false;
         try
         {
+            var initialActivity = _state.Activity == "loading" ? _loadingLabel : "Thinking";
             _state.Activity = "thinking";
             _activity.Begin("Thinking");
+            lock (_renderLock)
+            {
+                _transcript.StartActivity(initialActivity);
+            }
             RefreshComposer();
             var pending = Task.Run(() => work(turnCancellation.Token), turnCancellation.Token);
             while (!pending.IsCompleted)
@@ -678,6 +924,10 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                             _draftCompletion.Update(_draft, []);
                         }
                     }
+                    else if (_input is SystemConsoleInput systemInput && systemInput.TryPaste(key, _draft))
+                    {
+                        _draftCompletion.Update(_draft, []);
+                    }
                     else if (_draft.Text.Length < 16384 || char.IsControl(key.KeyChar))
                     {
                         _draft.HandleKey(key);
@@ -706,7 +956,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             if (stopped && !cancellationToken.IsCancellationRequested)
             {
-                Present("Request stopped. Session remains open.", Accent);
+                WriteInfo("Request stopped. Session remains open.");
             }
             RefreshComposer();
         }
@@ -957,7 +1207,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             {
                 if (ansi)
                 {
-                    _console.Write(new ControlCode("\u001b[?25h\u001b[?2026l"));
+                    _console.Write(new ControlCode(_palette is IInlineDecision { ShowCursor: false } or SettingsPalette { ShowCursor: false }
+                        ? "\u001b[?25l\u001b[?2026l" : "\u001b[2 q\u001b[?25h\u001b[?2026l"));
                 }
             }
         }
@@ -965,12 +1216,31 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 
     private void RenderComposer(string text, int cursor, IReadOnlyList<string> suggestions, int selected)
     {
+        var activity = _activity.Snapshot();
+        _transcript.OutputTokens = _busyDepth > 0 ? activity.Tokens : 0;
+        _transcript.ModelMetrics = _busyDepth > 0 ? activity : null;
+        _transcript.ShowActivityTokens = _modelRequests.Count > 0 || activity.Tokens > 0 || activity.InputTokens > 0;
+        if (_palette is IInlineDecision decision && _console.Profile.Capabilities.Ansi)
+        {
+            ClearComposer();
+            _renderWidth = _console.Profile.Width;
+            _renderHeight = TerminalHeight();
+            var height = decision.MeasureHeight(_console.Profile.Width, Math.Max(1, TerminalHeight() - 4));
+            var transcriptRows = _transcript.GetLines(Math.Max(4, _console.Profile.Width - 3)).Count;
+            var decisionTop = Math.Max(2, Math.Min(transcriptRows + 2, TerminalHeight() - height));
+            _composerTop = decisionTop;
+            _composerRows = TerminalHeight() - decisionTop + 1;
+            _console.Write(new ControlCode("\u001b[r"));
+            _transcript.Draw(_console, decisionTop - 1);
+            decision.Draw(_console, _theme, decisionTop);
+            return;
+        }
         if (ConnectionSetup)
         {
             RenderConnectionPage();
             return;
         }
-        var homeView = IsHomeView();
+        var homeView = IsHomeView() && _busyDepth == 0;
         var resized = _renderWidth != 0 && (_renderWidth != _console.Profile.Width || _renderHeight != TerminalHeight());
         if (resized && _palette is not null)
         {
@@ -1001,47 +1271,49 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             ClearComposer();
         }
         var width = homeView ? ComposerWidth() : ChatWidth();
-        var layout = ComposerLayout.Create(text, cursor, width - 2, Math.Min(3, Math.Max(1, TerminalHeight() - 9)));
-        var optionCount = Math.Min(suggestions.Count, Math.Max(0, TerminalHeight() - layout.Lines.Count - 9));
-        var activityRows = _busyDepth > 0 && !_waitingForResponse ? 1 : 0;
-        _composerRows = 5 + layout.Lines.Count + optionCount + activityRows;
+        _transcript.Unicode = _console.Profile.Capabilities.Unicode;
+        var layout = ComposerLayout.Create(text, cursor, PromptBlock.ContentWidth(width), Math.Min(12, Math.Max(1, TerminalHeight() - 10)));
+        var contentRows = Math.Max(layout.Lines.Count, 1);
+        var inputPadding = TerminalHeight() >= 12 ? 1 : 0;
+        var optionCount = Math.Min(suggestions.Count, Math.Max(0, TerminalHeight() - contentRows - 10));
+        _composerRows = 2 + inputPadding * 2 + contentRows + optionCount;
         var indent = Math.Max(0, (_console.Profile.Width - width) / 2);
         var top = homeView
             ? Math.Min(HomeTop() + HeaderRows + 1, Math.Max(1, TerminalHeight() - _composerRows + 1))
-            : Math.Max(1, TerminalHeight() - _composerRows + 1);
+            : Math.Min(Math.Max(1, TerminalHeight() - _composerRows + 1),
+                _transcript.GetLines(Math.Max(4, _console.Profile.Width - 3)).Count + 2);
+        var moved = _composerTop != top;
         _composerTop = top;
 
         if (_console.Profile.Capabilities.Ansi)
         {
+            if (resized || moved)
+            {
+                for (var row = top; row <= TerminalHeight(); row++)
+                {
+                    _console.Write(new ControlCode($"\u001b[{row};1H\u001b[2K"));
+                }
+            }
             _console.Write(new ControlCode($"\u001b[r\u001b[{top};1H"));
         }
 
-        if (activityRows > 0)
+        var unicode = _console.Profile.Capabilities.Unicode;
+        var promptReady = homeView && _busyDepth == 0 && !_waitingForResponse;
+        if (inputPadding > 0)
         {
-            _activity.Label = ActivityLabel();
-            _activity.Interruptible = true;
             _console.Write(new string(' ', indent));
-            _console.Write(RenderActivity(_activity.Label, width, _activity.Snapshot()));
+            _console.Write(PromptBlock.Border(width, unicode));
             _console.WriteLine();
         }
-        var rule = new string('─', width);
-        _console.Write(new string(' ', indent));
-        _console.MarkupLine($"[grey]{rule}[/]");
-        var promptReady = _busyDepth == 0 && !_waitingForResponse;
-        for (var row = 0; row < layout.Lines.Count; row++)
+        for (var row = 0; row < contentRows; row++)
         {
             _console.Write(new string(' ', indent));
-            var marker = promptReady ? "›" : " ";
-            _console.Markup(row == 0 ? $"[bold {Accent}]{marker}[/] " : "  ");
-            if (text.Length == 0)
+            var content = row < layout.Lines.Count ? layout.Lines[row] : string.Empty;
+            if (row == 0 && text.Length == 0 && promptReady)
             {
-                var placeholder = promptReady ? "What shall we work on?" : string.Empty;
-                _console.Write(new Text(ComposerLayout.Clip(placeholder, width - 2), Style.Parse("grey")));
+                content = "What shall we work on?";
             }
-            else
-            {
-                _console.Write(layout.Lines[row]);
-            }
+            _console.Write(PromptBlock.Row(content, width, Accent, unicode, text.Length == 0 ? "grey62" : "white", isInput: true, showPrompt: row == 0));
             _console.WriteLine();
         }
         var firstOption = Math.Clamp(selected - optionCount + 1, 0, Math.Max(0, suggestions.Count - optionCount));
@@ -1049,21 +1321,28 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         {
             _console.Write(new string(' ', indent));
             var label = (row == selected ? "> " : "  ") + suggestions[row];
-            _console.Write(new Text(ComposerLayout.Clip(label, width), Style.Parse(row == selected ? "bold " + Accent : "grey")));
+            _console.Write(suggestions[row].StartsWith('/')
+                ? PromptBlock.SuggestionRow(suggestions[row], width, Accent, row == selected, unicode)
+                : PromptBlock.Row(label, width, Accent, unicode, row == selected ? "bold " + Accent : "grey62", isInput: true, showPrompt: false));
             _console.WriteLine();
         }
-        _console.Write(new string(' ', indent));
-        _console.MarkupLine($"[grey]{rule}[/]");
+        if (inputPadding > 0)
+        {
+            _console.Write(new string(' ', indent));
+            _console.Write(PromptBlock.Border(width, unicode));
+            _console.WriteLine();
+        }
+        _console.WriteLine();
         RenderStatus(width, indent);
 
         if (_console.Profile.Capabilities.Ansi)
         {
-            var transcriptBottom = Math.Max(1, TerminalHeight() - _composerRows);
+            var transcriptBottom = homeView ? Math.Max(1, TerminalHeight() - _composerRows) : Math.Max(1, top - 1);
             if (_viewportInitialized && !homeView)
             {
                 _transcript.Draw(_console, top - 1);
             }
-            _console.Write(new ControlCode($"\u001b[1;{transcriptBottom}r\u001b[{top + activityRows + 1 + layout.CursorRow};{indent + 3 + layout.CursorColumn}H"));
+            _console.Write(new ControlCode($"\u001b[1;{transcriptBottom}r\u001b[{top + inputPadding + layout.CursorRow};{indent + PromptBlock.ContentOffset + 1 + layout.CursorColumn}H"));
             if (_palette is not null)
             {
                 _console.Write(new ControlCode("\u001b[r"));
@@ -1144,7 +1423,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         }
         _viewportInitialized = true;
         var transcriptBottom = Math.Max(1, TerminalHeight() - ComposerRows);
-        _console.Write(new ControlCode($"\u001b[?1049h\u001b[?1002h\u001b[?1006h\u001b[2J\u001b[1;1H\u001b[1;{transcriptBottom}r"));
+        _console.Write(new ControlCode($"\u001b[?1049h\u001b[2 q\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[2J\u001b[1;1H\u001b[1;{transcriptBottom}r"));
     }
 
     private void MoveToTranscriptEnd()
@@ -1170,7 +1449,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             finally
             {
-                _console.Write(new ControlCode("\u001b[?2026l\u001b[r\u001b[0m\u001b[?25h\u001b[?1002l\u001b[?1006l\u001b[?1049l"));
+                _console.Write(new ControlCode("\u001b[?2026l\u001b[r\u001b[0m\u001b[0 q\u001b[?25h\u001b[?2004l\u001b[?1002l\u001b[?1006l\u001b[?1049l"));
             }
         }
         _composerTop = 0;
@@ -1188,6 +1467,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             input.RedrawHandler = null;
             input.ComposerRedrawHandler = null;
             input.CompletionRoot = null;
+            input.SkillNames = [];
             input.Placeholder = null;
             input.InitialText = string.Empty;
         }
@@ -1197,7 +1477,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 
     private int ComposerWidth()
     {
-        return Math.Max(3, Math.Min(80, _console.Profile.Width - 2));
+        return Math.Max(3, _console.Profile.Width - 2);
     }
 
     private int ChatWidth()
@@ -1207,61 +1487,77 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 
     private void RenderStatus(int width, int indent)
     {
-        var mode = _modeState.Mode;
-        var modes = mode == AgentMode.Agent ? "[Agent]  Plan" : "Agent  [Plan]";
-
-        void StatusLine(string value, string style = "grey", bool newline = true)
-        {
-            _console.Write(new string(' ', indent));
-            _console.Write(new Text(ComposerLayout.Clip(value, width), Style.Parse(style)));
-            if (newline)
-            {
-                _console.WriteLine();
-            }
-        }
-
         var model = _state.Model;
-        var usage = UsesAccountPlan
-            ? $"({_state.TotalTokens.ToString("N0", CultureInfo.InvariantCulture)}) ChatGPT plan"
-            : $"({_state.TotalTokens.ToString("N0", CultureInfo.InvariantCulture)}) ${_state.Cost.ToString("0.00", CultureInfo.InvariantCulture)}";
-        var modeLabel = width >= 60 ? modes + " (Tab)" : $"[{mode}]";
-        var usageWidth = Math.Max(0, width - modeLabel.GetCellWidth() - 2);
-        var barWidth = usageWidth >= usage.GetCellWidth() + 10 ? 6 : 0;
-        var modelWidth = Math.Max(0, usageWidth - usage.GetCellWidth() - (barWidth > 0 ? barWidth + 2 : 1));
-        var modelLabel = ComposerLayout.Clip(model, modelWidth);
-        var leftWidth = 0;
-        _console.Write(new string(' ', indent));
-        if (modelLabel.Length > 0)
+        var percentage = (Math.Clamp((double)_state.ContextTokens / ContextWindow.For(model), 0, 1) * 100)
+            .ToString("0", CultureInfo.InvariantCulture) + "%";
+        var costLabel = UsesAccountPlan ? "ChatGPT plan" : "$" + _state.Cost.ToString("0.00", CultureInfo.InvariantCulture);
+        var separator = _console.Profile.Capabilities.Unicode ? " · " : " - ";
+        var shortLabels = width < 60;
+        var usage = shortLabels ? percentage + " " + (UsesAccountPlan ? "plan" : costLabel) :
+            $"{ActivityStatus.FormatTokens(_state.TotalTokens).ToUpperInvariant()} ({percentage}){separator}{costLabel}";
+        var approval = _approvalState.AutoApprove ? "auto-approval" : "manual-approval";
+        var shortApproval = _approvalState.AutoApprove ? "auto" : "manual";
+        var mode = _modeState.Mode == AgentMode.Plan ? "plan" : "agent";
+        var controlParts = new (string Value, string Style)[]
         {
-            _console.Write(new Text(modelLabel + " ", Style.Parse("grey")));
-            leftWidth += modelLabel.GetCellWidth() + 1;
-        }
-        if (barWidth > 0)
+            (approval, "white on grey7"),
+            (" (shift-tab)", "grey62 on grey7"),
+            (separator, "grey35 on grey7"),
+            (mode, "white on grey7"),
+            (" (tab)", "grey62 on grey7"),
+        };
+        var controls = string.Concat(controlParts.Select(part => part.Value));
+        if (controls.GetCellWidth() + usage.GetCellWidth() + 7 > width)
         {
-            var fraction = Math.Clamp((double)_state.ContextTokens / ContextWindow.For(model), 0, 1);
-            var filled = (int)Math.Ceiling(fraction * barWidth);
-            _console.Write(new Text(new string(' ', filled), Style.Parse("on grey")));
-            _console.Write(new Text(new string(' ', barWidth - filled), Style.Parse("on grey23")));
-            _console.Write(" ");
-            leftWidth += barWidth + 1;
+            controlParts = [(shortApproval, "white on grey7"), (" (S-T) ", "grey62 on grey7"),
+                (mode, "white on grey7"), (" (T)", "grey62 on grey7")];
+            controls = string.Concat(controlParts.Select(part => part.Value));
         }
-        var usageLabel = ComposerLayout.Clip(usage, Math.Max(0, usageWidth - leftWidth));
-        _console.Write(UsesAccountPlan
-            ? new Markup("[grey link=https://chatgpt.com/settings/usage]" + Markup.Escape(usageLabel) + "[/]")
-            : new Text(usageLabel, Style.Parse("grey")));
-        leftWidth += usageLabel.GetCellWidth();
-        _console.Write(new Text(new string(' ', Math.Max(1, width - leftWidth - modeLabel.GetCellWidth())), Style.Parse("grey")));
-        var activeLabel = $"[{mode}]";
-        var activeStart = modeLabel.IndexOf(activeLabel, StringComparison.Ordinal);
-        _console.Write(new Text(modeLabel[..activeStart], Style.Parse("grey")));
-        _console.Write(new Text(ComposerLayout.Clip(activeLabel, width), Style.Parse(Accent)));
-        _console.Write(new Text(modeLabel[(activeStart + activeLabel.Length)..], Style.Parse("grey")));
-        _console.WriteLine();
-        StatusLine(string.IsNullOrWhiteSpace(_projectRoot) ? "current workspace" : _projectRoot);
-        var approvalLabel = ComposerLayout.Clip(_approvalState.AutoApprove ? "Auto-approval ON" : "Approval required", width);
-        _console.Write(new string(' ', indent));
-        _console.Write(new Text(approvalLabel, Style.Parse(_approvalState.AutoApprove ? Accent : "grey")));
-        _console.Write(new Text(ComposerLayout.Clip("  (Shift+Tab)", Math.Max(0, width - approvalLabel.GetCellWidth())), Style.Parse("grey")));
+        if (controls.GetCellWidth() + usage.GetCellWidth() + 7 > width)
+        {
+            controlParts = [((_approvalState.AutoApprove ? "auto" : width < 32 ? "man" : "manual"), "white on grey7"),
+                (" ", "grey62 on grey7"), (mode, "white on grey7")];
+            controls = string.Concat(controlParts.Select(part => part.Value));
+        }
+        if (controls.GetCellWidth() + usage.GetCellWidth() + 6 > width)
+        {
+            usage = UsesAccountPlan ? "plan" : costLabel;
+        }
+        if (controls.GetCellWidth() + usage.GetCellWidth() + 4 > width)
+        {
+            usage = string.Empty;
+        }
+        controls = ComposerLayout.Clip(controls, Math.Max(0, width - usage.GetCellWidth() - 4));
+        var modelGap = usage.Length > 0 ? shortLabels ? " " : "  " : string.Empty;
+        var modelWidth = Math.Max(1, Math.Min(Math.Min(40, width / 3), width - controls.GetCellWidth() - usage.GetCellWidth() - modelGap.Length - 1));
+        var parts = new (string Value, string Style)[]
+        {
+            (usage, "grey62 on grey7"),
+            (modelGap, "grey62 on grey7"),
+            (ComposerLayout.Clip(model, modelWidth), "grey62 on grey7"),
+        };
+        var rightWidth = parts.Sum(part => part.Value.GetCellWidth());
+        var background = Style.Parse("on grey7");
+        _console.Write(new Text(new string(' ', indent), background));
+        var remainingControls = controls.GetCellWidth();
+        foreach (var part in controlParts)
+        {
+            var value = ComposerLayout.Clip(part.Value, remainingControls);
+            _console.Write(new Text(value, Style.Parse(part.Style)));
+            remainingControls -= value.GetCellWidth();
+        }
+        var used = controls.GetCellWidth();
+        var gap = Math.Max(0, width - used - rightWidth);
+        _console.Write(new Text(new string(' ', gap), background));
+        used += gap;
+        foreach (var part in parts)
+        {
+            var value = ComposerLayout.Clip(part.Value, Math.Max(0, width - used));
+            _console.Write(UsesAccountPlan && part.Value == usage
+                ? new Markup("[grey62 on grey7 link=https://chatgpt.com/settings/usage]" + Markup.Escape(value) + "[/]")
+                : new Text(value, Style.Parse(part.Style)));
+            used += value.GetCellWidth();
+        }
     }
 
     private async Task<string?> ReadAndTrackInputAsync(CancellationToken cancellationToken)
@@ -1309,7 +1605,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 _transcript.Scroll(mouse.Action == TerminalMouseAction.ScrollUp ? 3 : -3);
             }
             else if (mouse.Action == TerminalMouseAction.Press &&
-                mouse.Column >= _console.Profile.Width - 1 && mouse.Row > 0 && mouse.Row <= rows)
+                mouse.Column == _console.Profile.Width && mouse.Row > 0 && mouse.Row <= rows)
             {
                 _draggingScrollbar = true;
                 _transcript.ScrollToRow(mouse.Row - 1, rows);
@@ -1319,7 +1615,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 _transcript.ScrollToRow(mouse.Row - 1, rows);
             }
             else if (mouse.Action == TerminalMouseAction.Press && mouse.Column > 0 &&
-                mouse.Column < _console.Profile.Width - 1 && mouse.Row > 0 && mouse.Row <= rows &&
+                mouse.Column < _console.Profile.Width && mouse.Row > 0 && mouse.Row <= rows &&
                 _transcript.ToggleStepAtRow(mouse.Row, rows))
             {
                 _draggingScrollbar = false;
@@ -1398,7 +1694,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 {
                     return false;
                 }
-                _palette = new SettingsPalette(_modeState.Mode);
+                _palette = new SettingsPalette();
                 return true;
             }
             if (shortcut)
@@ -1421,13 +1717,17 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 _dialogResult.TrySetResult(command);
                 return true;
             }
-            if (command == "approval")
+            if (command == ":docs")
             {
-                _approvalState.AutoApprove = !_approvalState.AutoApprove;
-            }
-            else if (command?.StartsWith("mode:", StringComparison.Ordinal) == true)
-            {
-                _modeState.Mode = Enum.Parse<AgentMode>(command[5..]);
+                try
+                {
+                    _openBrowser(new Uri(DocumentationUrl));
+                }
+                catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                {
+                    WriteError($"Could not open documentation: {exception.Message}");
+                }
+                WriteInfo(DocumentationUrl);
             }
             else if (command is not null)
             {

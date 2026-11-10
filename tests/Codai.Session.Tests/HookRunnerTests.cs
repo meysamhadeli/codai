@@ -261,7 +261,7 @@ public sealed class HookRunnerTests : IDisposable
             args.Add("--no-hooks");
         }
 
-        (await app.RunAsync([.. args])).Should().Be(expected);
+        (await app.RunTrustedAsync([.. args])).Should().Be(expected);
     }
 
     private sealed class HookSession(IAgentHooks hooks, string root) : ICodaiSession
@@ -335,7 +335,7 @@ public sealed class HookRunnerTests : IDisposable
         var app = new CliApplication(output, () => _directory.FullName, input: new TerminalInput(),
             sessionFactory: provider => new HookSession(provider.GetRequiredService<IAgentHooks>(), _directory.FullName));
 
-        (await app.RunAsync(["task", "--json", "--hooks-dir", _directory.FullName, "--auto-approve", "true"])).Should().Be(0);
+        (await app.RunTrustedAsync(["task", "--json", "--hooks-dir", _directory.FullName, "--auto-approve", "true"])).Should().Be(0);
         var hooks = output.Lines.Select(line => JsonSerializer.Deserialize<JsonElement>(line))
             .Where(entry => entry.GetProperty("type").GetString() == "hook_event").ToArray();
         hooks.Select(entry => entry.GetProperty("event").GetProperty("type").GetString())
@@ -381,7 +381,7 @@ public sealed class HookRunnerTests : IDisposable
             args.AddRange(["--hooks-dir", _directory.FullName]);
         }
 
-        (await app.RunAsync([.. args])).Should().Be(expected);
+        (await app.RunTrustedAsync([.. args])).Should().Be(expected);
     }
 
     private sealed class HookEnvironment(string directory) : IEnvironmentReader

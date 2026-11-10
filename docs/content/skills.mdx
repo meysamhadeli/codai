@@ -1,15 +1,16 @@
 ---
 title: "Skills"
-description: "Package reusable workflows as progressively loaded instructions with optional reference resources."
+description: "Discover shared and nested skills, control automatic activation, and invoke workflows independently through slash commands."
 ---
 
 import { Callout, Steps } from "nextra/components";
 
 # Skills
 
-A skill gives Codai a repeatable workflow without adding its full instructions to
-every request. Descriptions are advertised first; instructions and resources load
-when the skill is invoked.
+A skill gives Codai a repeatable workflow. Agent requests advertise checked skills by
+name and description. The model matches these descriptions to the task and calls
+`read_skill` to load relevant instructions before following them. Unchecked skills
+contribute no automatic guidance. Reference resources load only when needed.
 
 Use skills for multi-step reviews, release checks, migrations, or other work that
 benefits from a consistent method. For a short prompt template, use a
@@ -21,9 +22,9 @@ benefits from a consistent method. For a short prompt template, use a
 
 ### Add a skill folder
 
-Create `.codai/skills/review/SKILL.md`. The folder name identifies the skill:
+Create `.codai/skills/audit/SKILL.md`. The folder name identifies the skill:
 
-```markdown filename=".codai/skills/review/SKILL.md"
+```markdown filename=".codai/skills/audit/SKILL.md"
 ---
 description: Review a focused change for correctness and missing tests.
 ---
@@ -39,11 +40,28 @@ description: Review a focused change for correctness and missing tests.
 ### Invoke the workflow
 
 ```text
-/review src/Parser.cs
+/audit src/Parser.cs
 ```
 
-The `:review src/Parser.cs` form also works. A project command with the same name
-takes precedence over a skill.
+The `:audit src/Parser.cs` form also works. A project command with the same name
+takes precedence over a skill. Built-in slash names such as `/auth` are reserved;
+choose another skill name or invoke its legacy colon form.
+All manually invocable discovered skill names appear in `/` completion, including before the first
+request. Type a prefix such as `/au` and use Tab to insert `/audit`. Unchecked skills
+can also be invoked explicitly; manual invocation does not change their checks.
+
+Agent-session guidance selects relevant checked skills by their descriptions without
+requiring a slash invocation. Full bodies enter model context through `read_skill`
+only when needed; unrelated skills are not eagerly injected. Unchecked or
+model-opted-out skills are not automatically activated. Hosts without an offered
+`read_skill` tool and requests without an agent mode retain eager checked bodies.
+Manual commands, path activation, project instructions, mode restrictions, and
+tool approval keep their existing behavior.
+
+Foreground, background, and team subagents receive the same checked-skill catalog
+and selection guidance. Supporting bodies stay deferred when `read_skill` is offered;
+unchecked and model-opted-out skills remain absent. Skill instructions cannot expand
+a read-only subagent's permissions.
 
 ### Keep references separate
 
@@ -52,15 +70,85 @@ Put supporting files inside the skill folder. Codai can load them with
 
 </Steps>
 
+## Description metadata
+
+Descriptions support plain or quoted YAML values and multiline folded (`>`, `>-`)
+or literal (`|`, `|-`) blocks. The manager and skill discovery show a compact
+single-line summary, not the block marker:
+
+```yaml
+description: >
+  Ultra-compressed communication mode.
+  Keeps full technical accuracy.
+```
+
+`FrontMatter.Parse` reads top-level scalar values, preserves YAML folding and
+line breaks, and flattens scalar lists into comma-separated values. Nested mappings
+are ignored. Malformed YAML falls back to tolerant line-based fields; a header
+without its closing `---` remains part of the body. Skills, commands, and rules
+share this metadata parser.
+
 ## Project and global skills
+
+Project discovery walks nearest-first through bounded ancestors to the nearest Git
+root, including worktree `.git` files. It does not inherit home or filesystem root.
+`additionalDirectories` and `skillDirectories` in `.codai.json` configuration
+files add repositories and direct skill roots; see [discovery metadata](/customization/configuration#file-discovery).
 
 | Scope | Location |
 | --- | --- |
 | Project | `.codai/skills/<name>/SKILL.md` |
+| Shared project | `.agents/skills/<name>/SKILL.md`, `.claude/skills/<name>/SKILL.md`, `.opencode/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md` |
 | Global | `skills/<name>/SKILL.md` under the selected global configuration directory |
+| Shared home | `~/.agents/skills/<name>/SKILL.md`, `~/.claude/skills/<name>/SKILL.md`, `~/.config/opencode/skills/<name>/SKILL.md`, `~/.copilot/skills/<name>/SKILL.md` |
 
-Project skills take precedence over global skills with the same name.
-Use `codai config paths` to check the selected configuration scope.
+These locations are discovered automatically; no `skillDirectories` entry is
+required. Shared project roots also apply to bounded ancestors, referenced-file
+nested scopes, and repositories listed in `additionalDirectories`. Shared home
+discovery requires an explicit global directory for SDK hosts, as described below.
+
+Project skills take precedence over global skills with the same name, ignoring
+case. Within each scope, Codai roots precede shared agent roots in table order.
+Discovery reads immediate skill folders, not recursively nested packages, and
+advertises at most 200 skills. Empty/invalid project entries do not hide valid
+global fallbacks. Only load skills whose instructions and resources you trust.
+Canonical filesystem identities deduplicate linked roots. Explicit extra roots
+follow ordinary project roots and precede the global fallback.
+
+Requests referencing workspace files reveal skill roots in their containing directories
+and intermediate nested scopes without recursively scanning the repository. The
+catalog remembers at most 128 nested directories per workspace during the session;
+deeper scopes take precedence for duplicate names. Workspace checkmarks still apply.
+Newly discovered names appear in completion before the next input. This is driven by
+resolved file mentions, not every arbitrary tool visit, and does not scan outside the
+canonical workspace root.
+
+## Invocation and path metadata
+
+```yaml
+user-invocable: true
+disable-model-invocation: false
+paths:
+  - "src/**/*.cs"
+```
+
+`user-invocable` defaults to true. Setting it false hides the manual command and its
+completion entry without disabling automatic guidance. `disable-model-invocation`
+defaults to false; true prevents automatic bodies and enabled-only model skill tools
+even when checked, but keeps explicit invocation available when `user-invocable`
+permits it. Neither flag changes saved checkmarks.
+
+`paths` limits automatic bodies to requests with matching resolved file mentions;
+an empty list applies unconditionally. Globs are workspace-relative and use the same
+matcher as project rules and file tools. Explicit invocation bypasses path activation,
+not mode restrictions or tool approval. These flags do not provide a sandbox.
+
+The CLI resolves shared home roots from `USERPROFILE` on Windows or `HOME` elsewhere,
+including when `--config-dir` selects another configuration scope. Use `codai config
+paths` to check configuration roots. SDK hosts must opt in to global discovery:
+`new SkillCatalog(fileSystem, globalDirectory, userHomeDirectory)` supplies explicit
+roots without reading the host machine's profile implicitly. A global directory
+named `.codai` also enables sibling shared-home roots when home is omitted.
 
 ## Discover and inspect
 
@@ -68,22 +156,67 @@ Use `codai config paths` to check the selected configuration scope.
 codai config skills
 ```
 
-In a session, type `/` or open **Skills and workflows** in settings.
-The settings browser inserts a command into the composer; it does not send it.
+In a session, `/skills` opens the **Skills** manager. The minimal search band stays
+at the top; enabled rows show a plain checkmark and theme-colored skill name, while
+disabled names remain neutral without an empty box. Rows include a description below the name and
+Repository or Global source. The heading counts enabled skills across the whole
+catalog, even when search filters the visible rows. Disabled skills remain visible
+so they can be enabled again. It opens even when discovery is empty.
+
+Use arrows to move and Enter to enable or disable the highlighted skill without
+closing the manager. Searching does not discard checked choices. Escape closes
+the manager and saves all choices together. Selection does not insert or submit a chat command. Workflows remain
+available through their own slash commands; this page manages skills only.
+
+Changes are saved atomically to Codai-managed `~/.codai/state/customization.json`,
+under `skills` with a separate entry per canonical project, and apply to the
+next request without restarting. Existing messages and skill instructions already
+in conversation history are not erased. Checked skill descriptions are advertised
+for automatic relevance matching, subject to invocation metadata and path matching.
+Unchecking all skills removes the active skill section from new requests, but manual
+skill commands and slash suggestions remain available. Checking many skills adds
+description overhead, but large bodies consume model context only when loaded.
+Skills do not override project constraints, mode restrictions, or tool permissions.
 The `skills` and `read_skill` tools let the model discover and load skill content.
 
 ## Disable a skill
 
-```json filename=".codai/skills.json"
-{
-  "disabled": ["review", "deploy"]
-}
-```
+Open `/skills`, uncheck the skill, then save and close with Escape. The manager
+keeps choices in private state rather than adding fields to runtime configuration.
 
-Names are case-insensitive. Global configuration can provide `skills.json` in the
-selected global directory; project and global disabled lists are combined.
-Disabled skills are excluded from advertisement, direct invocation, and skill tools.
-Invalid optional settings do not prevent valid skills from loading.
+Names are case-insensitive. Global defaults and project disabled lists are combined.
+The manager writes `enabled` and `disabled` arrays under the project's
+`skills` entry to explicitly re-enable global defaults for that
+project. Project `disabled` entries take precedence
+over its `enabled` entries. Unrelated settings and unavailable skill names are preserved.
+Unchecked skills are excluded from automatic guidance and enabled-only model skill
+tools. Their manual slash commands remain available independently of automatic selection.
+Existing user-wide `.codai.json` skill selections migrate into private state on
+catalog loading and are removed from runtime settings only after a successful save.
+Valid legacy global `skills.json` and project `.codai/skills.json` migrate into
+`skillDefaults` and project selections respectively. Existing private
+entries win. Legacy files are deleted only after a successful atomic save; malformed
+optional legacy files stay untouched. Malformed state is not overwritten. YAML-only
+runtime settings remain unchanged when saving selections.
+See [selection storage](/customization/configuration#selection-storage).
+
+Hosts can use `ISkillCatalog.LoadAllAsync` to include disabled entries and their
+`SkillDefinition.IsEnabled` state. `SaveEnabledAsync` persists enabled names as one
+selection; `LoadAsync` and `FindAsync` expose enabled skills that permit model invocation.
+`LoadForFilesAsync` reveals nested scopes from referenced workspace files.
+SDK hosts without an explicit global directory retain project-only
+`.codai/skills.json` storage. `UserCustomizationSettings` provides shared private-state
+read/update operations, `GetFilePath`, and canonical project keys for hosts with global storage.
+`SessionMenuOptions.MultiSelect` enables Enter toggles and returns a JSON array of
+selected row values on Escape through the existing `ChooseAsync` surface.
+`PromptExtras.Skills` supplies skill definitions; `PromptBuilder` renders enabled
+metadata when an agent request offers `read_skill`, otherwise retaining eager bodies.
+Entries with `IsEnabled = false` or `DisableModelInvocation = true` are ignored.
+`IUserInterface.SetSkills` lets hosts update discovered skill
+names in completion; the session refreshes them before input and after management.
+`ProjectGuidanceLoader.LoadCommandSkillsAsync` supplies manually invocable discovered skills for
+completion without eagerly loading project instructions, rules, or memory during
+local terminal commands. `LoadSkillsAsync` separately supplies checked automatic guidance.
 
 <Callout type="info">
   Skills are instructions, not new capabilities. They cannot bypass Plan mode,

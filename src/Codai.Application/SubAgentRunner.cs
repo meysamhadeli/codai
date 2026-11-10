@@ -1,6 +1,7 @@
 using System.Text;
 using Codai.Core.Abstractions;
 using Codai.Core.Chat;
+using Codai.Core.Customization;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
@@ -54,6 +55,9 @@ public sealed class SubAgentRunner : ISubAgent
     private readonly ResolvedProviderOptions _providerOptions;
     private readonly IToolRegistry _registry;
     private readonly IFileSystem _fileSystem;
+    private readonly IProjectInstructionsProvider _instructionsProvider;
+    private readonly IProjectRuleCatalog _ruleCatalog;
+    private readonly ISkillCatalog? _skillCatalog;
     private readonly ITokenTracker _tokenTracker;
     private readonly IUserInterface? _ui;
     private readonly string _projectRoot;
@@ -75,6 +79,9 @@ public sealed class SubAgentRunner : ISubAgent
     /// <param name="maxReportChars">Upper bound on the report handed back.</param>
     /// <param name="maxToolCalls">Tool calls one run may make.</param>
     /// <param name="maxConsecutiveToolFailures">Consecutive tool failures allowed before the run stops.</param>
+    /// <param name="instructionsProvider">Scoped instruction discovery; defaults to filesystem discovery.</param>
+    /// <param name="ruleCatalog">Project and configured user rules; defaults to project filesystem discovery.</param>
+    /// <param name="skillCatalog">Checked skill discovery shared with the host; absent catalogs advertise no skills.</param>
     public SubAgentRunner(
         IChatClientFactory clientFactory,
         ResolvedProviderOptions providerOptions,
@@ -85,7 +92,10 @@ public sealed class SubAgentRunner : ISubAgent
         string projectRoot,
         int maxReportChars = DefaultMaxReportChars,
         int maxToolCalls = DefaultMaxToolCalls,
-        int maxConsecutiveToolFailures = ToolCallGovernor.DefaultMaxConsecutiveFailures)
+        int maxConsecutiveToolFailures = ToolCallGovernor.DefaultMaxConsecutiveFailures,
+        IProjectInstructionsProvider? instructionsProvider = null,
+        IProjectRuleCatalog? ruleCatalog = null,
+        ISkillCatalog? skillCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(clientFactory);
         ArgumentNullException.ThrowIfNull(providerOptions);
@@ -101,6 +111,9 @@ public sealed class SubAgentRunner : ISubAgent
         _providerOptions = providerOptions;
         _registry = registry;
         _fileSystem = fileSystem;
+        _instructionsProvider = instructionsProvider ?? new ProjectInstructionsProvider(fileSystem);
+        _ruleCatalog = ruleCatalog ?? new ProjectRuleCatalog(fileSystem);
+        _skillCatalog = skillCatalog;
         _tokenTracker = tokenTracker;
         _ui = ui;
         _projectRoot = projectRoot;
@@ -118,7 +131,7 @@ public sealed class SubAgentRunner : ISubAgent
 
         var tools = ReadOnlyTools();
 
-        if (tools.Count == 0)
+        if (tools.Count == 0 && _registry is not IAsyncToolRegistry)
         {
             return SubAgentResult.Failure(
                 "This session offers no read-only tools, so a sub-agent would have no way " +
@@ -135,22 +148,52 @@ public sealed class SubAgentRunner : ISubAgent
                 $"Sub-agent: {request.Description}",
                 async ct =>
                 {
-                    var chat = CreateChat(tools);
-
-                    await foreach (var update in chat
-                        .StreamAsync(BuildRequest(tools, request), ct)
-                        .WithCancellation(ct)
-                        .ConfigureAwait(false))
+                    if (_registry is IAsyncToolRegistry deferred)
                     {
-                        if (!string.IsNullOrEmpty(update.ContentDelta))
+                        await deferred.InitializeAsync(ct).ConfigureAwait(false);
+                        tools = ReadOnlyTools();
+                        if (tools.Count == 0)
                         {
-                            report.Append(update.ContentDelta);
+                            failure = "This session offers no read-only tools, so a sub-agent would have no way to find anything out. Answer from what you already have.";
+                            return false;
                         }
+                    }
+                    var mentions = await new MentionResolver(_fileSystem).ResolveAsync(_projectRoot, request.Prompt, ct).ConfigureAwait(false);
+                    var instructions = await _instructionsProvider.LoadForFilesAsync(_projectRoot, mentions.Files, ct).ConfigureAwait(false);
+                    var rules = await _ruleCatalog.LoadAsync(_projectRoot, ct).ConfigureAwait(false);
+                    var skills = _skillCatalog is null ? [] :
+                        (await _skillCatalog.LoadForFilesAsync(_projectRoot, mentions.Files, ct).ConfigureAwait(false))
+                        .Where(skill => skill.IsEnabled && !skill.DisableModelInvocation).ToArray();
+                    var guidance = new RequestRuleGuidance(new SessionOptions
+                    {
+                        ProjectRoot = _projectRoot,
+                        Provider = _providerOptions.Provider,
+                        Model = _providerOptions.Model,
+                    }, _instructionsProvider);
+                    guidance.BeginRequest(rules, mentions.Files, instructions);
+                    var chat = CreateChat(tools, guidance);
 
-                        if (update.IsCompleted && update.Usage.HasValue)
+                    try
+                    {
+                        await foreach (var update in chat
+                            .StreamWithActivityAsync(BuildRequest(tools, request, instructions?.Content, RuleSelector.Render(rules, mentions.Files), skills), _ui, ct)
+                            .WithCancellation(ct)
+                            .ConfigureAwait(false))
                         {
-                            usage = update.Usage;
+                            if (!string.IsNullOrEmpty(update.ContentDelta))
+                            {
+                                report.Append(update.ContentDelta);
+                            }
+
+                            if (update.IsCompleted && update.Usage.HasValue)
+                            {
+                                usage = update.Usage;
+                            }
                         }
+                    }
+                    finally
+                    {
+                        guidance.EndRequest();
                     }
 
                     return true;
@@ -162,7 +205,7 @@ public sealed class SubAgentRunner : ISubAgent
         {
             throw;
         }
-        catch (ChatProviderException ex)
+        catch (Exception ex) when (ex is ChatProviderException or IOException or UnauthorizedAccessException)
         {
             failure =
                 $"The sub-agent could not run: {ex.Message} Continue without it, or answer " +
@@ -211,7 +254,7 @@ public sealed class SubAgentRunner : ISubAgent
     /// its calls are neither charged to the parent's budget nor restricted by the parent's
     /// mode.
     /// </summary>
-    private IChatCompletionService CreateChat(IReadOnlyList<ITool> tools)
+    private IChatCompletionService CreateChat(IReadOnlyList<ITool> tools, IToolGuidance guidance)
     {
         var executor = new ToolRunner(
             new ToolRegistry(tools),
@@ -227,7 +270,7 @@ public sealed class SubAgentRunner : ISubAgent
             {
                 MaxCalls = _maxToolCalls,
                 MaxConsecutiveFailures = _maxConsecutiveToolFailures,
-            });
+            }, guidance: guidance);
 
         return _clientFactory.CreateService(_providerOptions, executor);
     }
@@ -236,7 +279,7 @@ public sealed class SubAgentRunner : ISubAgent
     /// The request. The system prompt carries the role, the rules and the tool list; the
     /// task stays in the user message, because that is what it is.
     /// </summary>
-    private static ChatRequest BuildRequest(IReadOnlyList<ITool> tools, SubAgentRequest request) =>
+    private static ChatRequest BuildRequest(IReadOnlyList<ITool> tools, SubAgentRequest request, string? instructions, string? rules, SkillDefinition[] skills) =>
         new(
             new StringBuilder()
                 .AppendLine("You are a sub-agent. Another assistant asked you to look into a")
@@ -255,6 +298,12 @@ public sealed class SubAgentRunner : ISubAgent
                 .AppendLine("- Be brief: a few hundred words. Whoever asked can open a file")
                 .AppendLine("  themselves if they want the whole thing.")
                 .AppendLine()
+                .AppendLine(PromptBuilder.CapabilitySelectionGuidance)
+                .AppendLine("## Workspace instructions")
+                .AppendLine(instructions)
+                .AppendLine(rules)
+                .AppendLine()
+                .AppendLine(skills.Length == 0 ? string.Empty : PromptBuilder.RenderSkills(skills, tools.Any(tool => tool.Name == "read_skill")))
                 .AppendLine("## Tools you can call")
                 .AppendLine()
                 .Append(ToolCatalogText.Lines(tools))

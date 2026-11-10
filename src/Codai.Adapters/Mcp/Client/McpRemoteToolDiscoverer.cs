@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.ServerSentEvents;
 using System.Text;
 using System.Text.Json;
 using Codai.Configuration;
@@ -195,8 +196,6 @@ public sealed class McpRemoteToolDiscoverer(HttpClient? httpClient = null) : IMc
             {
                 Content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json"),
             };
-            message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
             AddHeaders(message);
 
             HttpResponseMessage response;
@@ -216,7 +215,9 @@ public sealed class McpRemoteToolDiscoverer(HttpClient? httpClient = null) : IMc
                 response.EnsureSuccessStatusCode();
                 var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
                 if (bytes.Length > MaxResponseBytes) throw new InvalidOperationException("MCP response exceeded the 1 MB limit.");
-                var messages = ExtractMessages(Encoding.UTF8.GetString(bytes)).ToArray();
+                var messages = await ExtractMessagesAsync(bytes,
+                    string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase),
+                    cancellationToken).ConfigureAwait(false);
                 foreach (var notification in messages.SkipLast(1))
                 {
                     if (notification.RootElement.TryGetProperty("method", out var methodElement) &&
@@ -227,7 +228,7 @@ public sealed class McpRemoteToolDiscoverer(HttpClient? httpClient = null) : IMc
                     notification.Dispose();
                 }
 
-                using var document = messages.Length == 0 ? throw new InvalidOperationException("MCP response contained no JSON message.") : messages[^1];
+                using var document = messages.Count == 0 ? throw new InvalidOperationException("MCP response contained no JSON message.") : messages[^1];
                 if (document.RootElement.TryGetProperty("error", out var error)) throw new InvalidOperationException($"MCP '{method}' failed: {error.GetRawText()}");
                 return JsonDocument.Parse(document.RootElement.GetProperty("result").GetRawText());
             }
@@ -247,6 +248,8 @@ public sealed class McpRemoteToolDiscoverer(HttpClient? httpClient = null) : IMc
 
         private void AddHeaders(HttpRequestMessage message)
         {
+            message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            message.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
             foreach (var header in _server.Headers)
             {
                 if (!string.IsNullOrWhiteSpace(header.Key) && header.Value is not null)
@@ -256,19 +259,33 @@ public sealed class McpRemoteToolDiscoverer(HttpClient? httpClient = null) : IMc
             if (!string.IsNullOrWhiteSpace(_authorization)) message.Headers.TryAddWithoutValidation("Authorization", "Bearer " + _authorization);
         }
 
-        private static IEnumerable<JsonDocument> ExtractMessages(string text)
+        private static async Task<List<JsonDocument>> ExtractMessagesAsync(byte[] bytes, bool eventStream, CancellationToken cancellationToken)
         {
-            if (!text.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            var messages = new List<JsonDocument>();
+            try
             {
-                yield return JsonDocument.Parse(text);
-                yield break;
-            }
-            foreach (var line in text.Split('\n'))
-            {
-                if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && line[5..].Trim() is { Length: > 0 } data)
+                if (!eventStream)
                 {
-                    yield return JsonDocument.Parse(data);
+                    messages.Add(JsonDocument.Parse(bytes));
+                    return messages;
                 }
+                using var stream = new MemoryStream(bytes, writable: false);
+                await foreach (var item in SseParser.Create(stream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    if (!string.IsNullOrWhiteSpace(item.Data))
+                    {
+                        messages.Add(JsonDocument.Parse(item.Data));
+                    }
+                }
+                return messages;
+            }
+            catch (JsonException exception)
+            {
+                foreach (var message in messages)
+                {
+                    message.Dispose();
+                }
+                throw new IOException("Remote MCP response contained invalid JSON.", exception);
             }
         }
 

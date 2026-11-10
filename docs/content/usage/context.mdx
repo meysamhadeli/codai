@@ -15,16 +15,38 @@ when you already know where the work belongs.
 
 | Source | Loading behavior |
 | --- | --- |
-| Project instructions | Available before the first request that needs guidance |
+| Project instructions | Refreshed each model request; nested scopes selected by file mentions and file tools |
 | Conditional rules | Selected per request and before relevant file tools |
 | Skill metadata | Descriptions advertised first; full instructions on invocation |
 | Project memory | Bounded Markdown documents from `.codai/memory` |
 | Mentioned files | Explicit `@path` attachments |
 | Tool results | Files, searches, and command output discovered during the task |
 
-Interactive guidance is loaded lazily and reused. Opening help, changing modes,
-or leaving a session does not force a project scan.
+Interactive guidance is loaded lazily. Instructions are refreshed per request;
+other guidance catalogs may be reused. Opening help, changing modes, or leaving a
+session does not force a project scan.
 See [Project instructions](/customization/instructions) for file locations and precedence.
+
+Agent-session prompts place stable instructions and tool guidance before growing
+conversation history. This keeps the unchanged prefix reusable by provider prompt
+caches across turns. Direct prompt-builder requests without an agent mode retain
+their existing section order. Project rules, tool permissions, and configured
+reasoning effort are unchanged.
+
+Plan and Agent select capabilities from offered tool schemas and enabled skill
+descriptions, starting with a concrete file, symbol, failure, or targeted search
+for repository tasks. Relevant skill instructions load through `read_skill`.
+Documentation research discovers relevant MCP schemas with `tool_search` before
+using available resolvers and documentation tools. Current-information questions
+use an offered search capability; `fetch_web` retrieves grounded URLs rather than
+guessing documentation paths. These are model instructions, not a guarantee of tool
+choice. Selection never enables an unchecked skill/server or overrides permissions.
+
+Even greetings still use the selected model and session context; they are not
+answered with hardcoded local replies. Response time also depends on the exact
+provider, model, reasoning settings, input size, cache state, and network load.
+Compare runs in the same project with the same configuration. Displayed activity
+timings are not provider-only reasoning benchmarks.
 
 ## Automatic compaction
 
@@ -40,14 +62,116 @@ Replaced turns are archived under `.codai/transcripts` before being dropped.
 The summary names the archive so later work can recover details. Recently active
 files are restored into the summary turn to preserve working context.
 
+Background summaries are prepared before the conversation becomes urgent, but a
+completed summary stays parked until automatic compaction is due. Completing an
+answer does not immediately rewrite the history prefix. This avoids unnecessary
+prefix changes that can reduce provider prompt-cache reuse; actual cache savings
+depend on the provider and request shape.
+
+With the default policy, background preparation starts at 80% of the estimated
+usable input budget; urgent compaction applies or waits for a checkpoint at 95%.
+That budget subtracts output reserve, tool schemas, and a safety margin from the
+active model's effective window. The default compaction buffer is the smaller of
+13,000 tokens or one quarter of that window, so small-window models do not compact
+every short conversation. Non-default host policy reserves remain respected.
+
+Checkpoints emphasize current goals, constraints, decisions, remaining work, and
+essential references rather than reproducing every user message. Summary calls
+have no tools. Their estimated total input, including prior checkpoints and system
+instructions, is capped at the smaller of 90,000 tokens or the selected model's
+input allowance after output reserve and headroom. Switching Plan/Agent models
+changes this summary budget too. Summary calls do not recursively auto-compact.
+Oversized fields keep their beginning and ending. These are character-based
+estimates, not provider tokenizer counts; overflow retries and deterministic
+fallback remain available.
+
+Before sending a conversation, Codai measures its prepared non-history prompt,
+including project context, attachments, instructions, memory, and skill metadata,
+alongside history and the initialized tool inventory. It uses bundled per-model
+input ceilings when available, otherwise their reviewed context windows, then
+conservative family/fallback estimates. The provider-qualified snapshot covers
+every bundled hosted choice; [Model context limits](/providers/models#context-limits-and-compaction)
+lists review dates, sources, and default-model limits. A combined context window
+is not always the maximum allowed input: GPT-5.4 Mini has 400,000 combined tokens
+but a separate 272,000-token input ceiling, which is the compaction budget's basis.
+Configured output tokens are reserved explicitly; unspecified output uses bounded
+model-specific headroom. These estimates do not change provider response settings.
+
+During a tool-call loop, each provider call is measured again, including newly
+discovered schemas and accumulated tool results. Older ordinary tool payloads are
+omitted first. If necessary, large current results retain their beginning and end
+with an explicit compaction notice. Call IDs and tool-result pairs survive; loaded
+skill instructions and mandatory rule-review payloads are protected. This changes
+only the request-local view, not original tool results or conversation history.
+If protected content alone cannot fit, the request fails clearly instead of
+silently discarding instructions. This tier uses no extra model call and works for
+streaming and non-streaming requests. Disabling automatic compaction disables it.
+
+Before a prepared summary is applied, its source history must still match. Clearing
+or rewriting history invalidates it; turns appended after its snapshot survive.
+Automatic compaction discards stale summaries and prepares current replacements.
+
 ```text
-:compact Preserve the parser decisions and failing test names.
+/compact Preserve the parser decisions and failing test names.
 :new-task Hand off the remaining validation work.
 ```
 
-`:compact` condenses the current conversation. `:new-task` produces a compact
+`/compact` condenses the current conversation, keeping recent turns verbatim and
+archiving replaced turns. Optional text directs the summary's focus. It works
+even when automatic compaction is disabled; legacy `:compact` remains supported.
+Both manual and automatic compaction cap the recent-tail target at one quarter of
+the active model's input allowance after output reserve and compaction buffer,
+also honoring a smaller configured window. Complete recent turns can exceed that
+target. Requested summary length scales down for smaller input budgets; a summary
+plus retained turns must fit the estimated history allowance as well as shorten
+the original conversation. Restored file content is omitted if it prevents this.
+If needed, the deterministic fallback also shortens oversized endpoint fields,
+keeping their beginning and ending with a truncation marker. The full originals
+remain archived. If even the minimal digest cannot fit, history is left unchanged.
+Foreground summarization displays `Compacting conversation...` with the terminal's
+existing 3x3 dot animation and elapsed timer. `:new-task` produces a compact
 handoff for a fresh task. Use `--no-auto-compact` or `--compaction off` to disable
 automatic compaction; `--compaction basic` selects the basic strategy.
+
+### Choose the automatic window
+
+`/autocompact` opens a window selector, also available from Ctrl+P's Auto-compact
+action. Left/Right changes the value, Enter saves and applies it, and Escape
+cancels. Auto retains the default model-based behavior. Explicit windows start at
+32,000 tokens. Direct arguments accept integer token counts and `k`/`m` suffixes:
+
+```text
+/autocompact 800k
+/autocompact 1m
+/autocompact auto
+```
+
+The saved `auto_compact_window` key defaults to `0` (Auto). It applies to the
+current and future sessions, using the existing configuration file when present.
+Hosts without configuration persistence apply the selection for their session only.
+The effective window is the smaller of the selected value and the active model's
+known window; unknown models use Codai's conservative fallback. Switching models
+recalculates this cap. Response reserves, tool-schema costs, safety margins, and
+the existing proactive/urgent thresholds still apply, so compaction starts before
+the entire window is consumed. This changes neither the provider's context limit
+nor the response token limit. It does not re-enable a session launched with
+`--no-auto-compact` or `--compaction off`.
+
+Bundled metadata can lag provider changes, and custom deployments or local servers
+may impose smaller limits than their model name suggests. Unknown models retain
+the conservative 128,000-token fallback; automatic provider-overflow recovery is
+still a safeguard, not live discovery of a server's configured context length.
+
+### Responsiveness
+
+Normal sessions avoid a full source scan; MCP startup is deferred and skills use
+on-demand instruction loading. Background summaries reuse asynchronous provider
+I/O rather than creating a worker per file or tool result. Tool-output compaction
+is deterministic and request-local, without another network round trip. Tool
+execution remains sequential under existing permission and approval checks.
+These choices bound unnecessary work, but do not guarantee low latency or absence
+of thread-pool starvation. Provider latency, source size, storage, and model/tool
+choices still require representative runtime profiling.
 
 ## Delegate a focused investigation
 
@@ -56,6 +180,12 @@ report instead of filling the main conversation with every file it read.
 
 Sub-agents are read-only, cannot run nested delegation, and cannot gain write access
 by receiving instructions in a prompt. Their model usage contributes to session totals.
+Each run refreshes standard project instructions and uses independent nested-scope
+review before file tools. Background and team investigations use the same runner.
+They also share request-focused capability selection and checked-skill metadata.
+Progress should report observable actions and evidence, not private reasoning or
+invented work. Repository listings in a tool transcript are actual requested tool
+calls, not a required automatic project scan.
 Disable delegation with `--no-sub-agents`.
 
 ## Background investigations
@@ -97,6 +227,36 @@ their own `ProjectContext`.
 `ModeModelState` accepts Plan and Agent selections in that order; the former Ask
 selection was removed. Hosts must not rely on a mode/model transition to grant
 additional capabilities.
+
+`ResolvedProviderOptions.ContextWindowTokens` resolves bundled input metadata with
+a model-family fallback; `OutputReserveTokens` reports configured or bounded default
+output headroom. `AutoCompactor.BeforeRequestAsync(string, int, CancellationToken)`
+accepts non-history context tokens separately from the rendered pending user message.
+`HistoryCompactor` accepts optional live `ModeModelState` and `AgentModeState`
+dependencies for selected-model summary budgets. Existing constructor calls remain
+source-compatible.
+
+`ChatRequest.AutoCompact` defaults to true and enables request-local tool-output
+compaction. `ContextWindowTokens` is an optional lower cap; zero uses the model's
+limit and larger caps cannot expand it. Session execution forwards its automatic
+compaction setting and window. Summary requests set `AutoCompact` to false to
+prevent recursion while applying their own bounded input construction.
+
+`IUserInterface` offers optional `ModelRequestStarted`, `ModelRequestUpdated`, and
+`ModelRequestCompleted` callbacks for chat, foreground compaction, and delegated model
+streams. Request IDs distinguish nested or overlapping work. Updates carry streamed
+content, reasoning-status signals, and provider usage; completion runs even after
+failure or cancellation. Background compaction does not emit these UI callbacks.
+Defaults are no-ops; UI decorators must forward them to expose request activity.
+These callbacks are presentation events, not additional token-accounting records.
+
+Planner-produced `CompactionPlan.SourceTurns` exposes a read-only source snapshot.
+Hosts can change `SessionOptions.AutoCompactWindow` between turns; zero restores
+the model-derived window. Terminal pickers use `SessionMenuOptions.HorizontalSelection`
+and `Description` to present the adjustable window.
+`HistoryCompactor.Apply` and `ApplyAsync` reject mismatched source history before
+replacement. Externally constructed plans may leave this property null for
+compatibility; they receive count validation, not source-identity validation.
 
 <Callout type="info">
   Context is guidance, not authority. Rules, skills, memory, web pages, and

@@ -34,6 +34,62 @@ Configuration inspection does not start MCP processes or load plugin assemblies.
 External tools are discovered separately when needed, so offline inspection is not
 a live inventory of every remote capability.
 
+## How tool calls run
+
+Codai advertises built-in tools allowed for the current request with their input
+schemas. MCP schemas load on demand through request-local `tool_search` metadata
+discovery; see [automatic MCP selection](/mcp#automatic-selection). When the model
+requests an actual tool call, the shared runner applies these gates:
+
+1. Resolve the tool and enforce the request's tool-access policy.
+2. Check repeat, total-call, and task budgets.
+3. Validate arguments against the tool's advertised JSON Schema.
+4. Apply any guidance that requires the model to reconsider the call.
+5. Request approval when required, then run the pre-tool hook.
+6. Execute the tool, bound its output, and report its outcome.
+7. Run the post-tool hook and capture a checkpoint when configured for a successful mutation.
+
+The provider loop returns tool results to the model so it can correct arguments,
+choose another tool, or answer. Streaming and non-streaming requests use the same
+execution gates. Calls remain serial; read-only does not imply concurrency safety.
+
+File reads, writes, edits, and structured patches review newly applicable or changed
+[scoped instructions](/customization/instructions#request-and-file-scopes) before
+approval or execution. This review does not grant permission or consume write approval.
+
+Host and plugin file tools can implement `IFileTargetTool.GetTargetPaths` to
+participate in scoped review. Standard `path` and `paths` fields have a default
+implementation; structured tools supply their parsed targets. `IToolGuidance`
+supports asynchronous discovery while retaining its synchronous default fallback.
+
+`fetch_web` reads a known URL; it does not search for pages. Research guidance prefers
+relevant offered MCP discovery and documentation/search tools, then URLs from actual
+sources or the user. HTTP failures report their status and source with recovery
+guidance, without automatically retrying, bypassing access restrictions, or treating
+error pages as evidence. Consecutive failure limits remain unchanged.
+
+### Argument validation and recovery
+
+Shared validation applies to built-in, plugin, and MCP tools invoked through the
+runner. It checks the advertised contract, including nested objects and arrays,
+required fields, enums, numeric limits, composition, and local schema references.
+Arguments must be a JSON object. Schemas without a declared dialect use JSON
+Schema draft 2020-12; extra properties are rejected only when the schema forbids
+them. Values are not coerced and defaults are not inserted.
+
+Invalid arguments produce bounded feedback with JSON Pointer field locations
+before approval or execution. The model can submit a corrected call. Invalid
+attempts still consume call budgets and count toward the consecutive-failure
+limit, so repeated mistakes cannot create an unlimited repair loop. Invalid
+schemas and unresolved external references stop execution; validation never
+downloads referenced schemas. Bundle dependencies into the tool schema using
+local definitions instead.
+
+Repeat detection ignores object key order at every nesting level, equivalent
+JSON string escapes, and tool-name casing. Array order and string values remain
+significant. These checks complement tool-specific path, content, and permission
+checks; passing schema validation is not authorization.
+
 ## Files and search
 
 These tools are read-only and available in Plan and Agent unless disabled.
@@ -51,6 +107,16 @@ These tools are read-only and available in Plan and Agent unless disabled.
 `read_file` accepts one path or up to 20 paths sharing an output budget. Its default
 is 2,000 lines per file, with a 5,000-line ceiling and a 5 MB file-size limit.
 Large results should be narrowed with paths and line ranges, not repeatedly read in full.
+
+`git_diff` accepts `source`: `working` (default), `staged`, `commit`, or `branch`.
+Commit and branch comparisons require `target`; branch mode compares
+`target...HEAD`. Targets must be simple refs or hashes of at most 256 ASCII
+letters, digits, `/`, `-`, `_`, and `.`, without a leading option or `..`.
+Revision expressions such as `HEAD~1` are not accepted; resolve a commit hash
+instead. Git external diff/text conversion drivers are disabled. Each call has
+a 30-second timeout and a 60,000-character output limit. Untracked files must be
+identified with `git_status` and read separately. These read-only tools remain
+available in Plan mode unless disabled by policy.
 
 ## File changes
 
@@ -100,11 +166,13 @@ Delegation spends model tokens even though it cannot write files.
 
 | Tool | Purpose |
 | --- | --- |
-| `skills` | Discover available skill metadata |
+| `skills` | Load an available skill's instructions |
 | `read_skill` | Load a selected skill's instructions |
 | `read_skill_resource` | Read a resource from a skill |
 
 Skill instructions guide a workflow; they do not enable tools blocked by mode or policy.
+Agent prompts list checked skill descriptions first and use `read_skill` to load
+relevant instructions rather than injecting all checked bodies.
 See [Skills](/skills) to create and invoke a reusable workflow.
 
 ## Limit tool access

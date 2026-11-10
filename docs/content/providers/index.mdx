@@ -67,7 +67,7 @@ unrelated settings. **Cancel** leaves the existing connection unchanged.
 | DeepSeek | `deepseek` | Hosted API | `deepseek-flash` |
 | OpenRouter | `openrouter` | Hosted router | `openai/gpt-5.4-mini` |
 | Qwen / DashScope | `qwen` | Hosted API | `qwen3.7-plus` |
-| Mistral | `mistral` | Hosted API | `mistral-medium-3-5` |
+| Mistral | `mistral` | Hosted API | `mistral-large-4` |
 | Grok / xAI | `grok` | Hosted API | `grok-4.7` |
 
 Defaults favor Codai's existing transports. A newer or discovered model is not
@@ -108,7 +108,7 @@ The terminal shows a plan indicator and usage-settings link instead of API dolla
 ## Where settings are saved
 
 First-run onboarding updates an existing project configuration; otherwise it creates
-`~/.codai/codai-config.json` for user-wide defaults. Other unconfigured projects reuse
+`~/.codai/.codai.json` for user-wide defaults. Other unconfigured projects reuse
 that file. A project configuration takes precedence rather than merging with it.
 
 Explicit `--config`, `--config-dir`, or `CODAI_CONFIG_DIR` keeps a separate scope.

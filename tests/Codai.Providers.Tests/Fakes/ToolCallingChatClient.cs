@@ -20,6 +20,8 @@ internal sealed class ToolCallingChatClient : IChatClient
     /// <summary>The messages seen on each request, in order.</summary>
     public List<IReadOnlyList<ChatMessage>> SeenMessages { get; } = [];
 
+    public List<string[]> SeenToolNames { get; } = [];
+
     public ChatOptions? LastOptions { get; private set; }
 
     public ChatClientMetadata Metadata { get; } = new("tool-calling");
@@ -75,6 +77,7 @@ internal sealed class ToolCallingChatClient : IChatClient
     {
         CallCount++;
         SeenMessages.Add(messages.ToList());
+        SeenToolNames.Add(options?.Tools?.Select(tool => tool.Name).ToArray() ?? []);
         LastOptions = options;
 
         return _turns.Count > 0 ? _turns.Dequeue() : Says("done");

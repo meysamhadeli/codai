@@ -7,6 +7,29 @@ namespace Codai.Core.Tests;
 
 public class CommandLineParserTests
 {
+    [Theory]
+    [InlineData("--trust-directory")]
+    [InlineData("--trust_directory")]
+    public void Directory_trust_is_explicit_and_never_a_configuration_override(string option)
+    {
+        var result = CommandLineParser.Parse([option, "task"]);
+
+        result.TrustDirectory.Should().BeTrue();
+        result.Prompt.Should().Be("task");
+        result.Errors.Should().BeEmpty();
+        result.Overrides.Should().BeEmpty();
+        CommandLineParser.Parse([]).TrustDirectory.Should().BeFalse();
+        CommandLineParser.Parse(["--auto-approve", "true"]).TrustDirectory.Should().BeFalse();
+        CommandLineParser.Parse(["--", option]).TrustDirectory.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("false")]
+    [InlineData("")]
+    public void Directory_trust_switch_rejects_inline_values(string value) =>
+        CommandLineParser.Parse([$"--trust-directory={value}"]).Errors.Should().ContainSingle();
+
     [Fact]
     public void Disabled_tools_are_repeatable_run_restrictions_not_prompt_text()
     {
@@ -121,10 +144,13 @@ public class CommandLineParserTests
     public void Auto_approval_requires_explicit_true_and_is_not_a_provider_override()
     {
         CommandLineParser.Parse([]).AutoApprove.Should().BeFalse();
+        CommandLineParser.Parse([]).AutoApproveSpecified.Should().BeFalse();
         CommandLineParser.Parse(["task"]).AutoApprove.Should().BeFalse();
         CommandLineParser.Parse(["--auto-approve", "false"]).AutoApprove.Should().BeFalse();
+        CommandLineParser.Parse(["--auto-approve", "false"]).AutoApproveSpecified.Should().BeTrue();
         var parsed = CommandLineParser.Parse(["--auto-approve=true", "task"]);
         parsed.AutoApprove.Should().BeTrue();
+        parsed.AutoApproveSpecified.Should().BeTrue();
         parsed.Prompt.Should().Be("task");
         parsed.Overrides.Should().BeEmpty();
     }

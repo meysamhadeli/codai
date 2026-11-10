@@ -5,14 +5,25 @@ namespace Codai.Configuration;
 /// <summary>Configuration for Model Context Protocol integration.</summary>
 public sealed class McpOptions
 {
-    /// <summary>Configured stdio MCP servers whose tools should be offered to Codai.</summary>
+    /// <summary>Configured local or remote MCP servers whose tools should be offered to Codai.</summary>
     [ConfigurationKeyName("servers")]
     public List<McpServerOptions> Servers { get; set; } = [];
 }
 
-/// <summary>A stdio MCP server launched by Codai for tool discovery and calls.</summary>
+/// <summary>A local or remote MCP server used by Codai for discovery and calls.</summary>
 public sealed class McpServerOptions
 {
+    private string _transport = "stdio";
+
+    /// <summary>Manifest path for a discovered server; null for native configuration.</summary>
+    public string? DiscoverySourcePath { get; set; }
+
+    /// <summary>Discovery scope used for source display.</summary>
+    public string? DiscoveryScope { get; set; }
+
+    /// <summary>Definition fingerprint bound to explicit private startup approval.</summary>
+    public string? DiscoveryFingerprint { get; set; }
+
     /// <summary>Whether this server participates in the next host composition.</summary>
     [ConfigurationKeyName("enabled")]
     public bool Enabled { get; set; } = true;
@@ -21,9 +32,31 @@ public sealed class McpServerOptions
     [ConfigurationKeyName("name")]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Transport type: <c>stdio</c>, <c>streamableHttp</c>, or <c>sse</c>.</summary>
+    /// <summary>Effective transport; HTTP aliases normalize to <c>streamableHttp</c>. An explicit <see cref="Type"/> takes precedence.</summary>
     [ConfigurationKeyName("transport")]
-    public string Transport { get; set; } = "stdio";
+    public string Transport
+    {
+        get => (Type ?? _transport).ToLowerInvariant() switch
+        {
+            "http" or "streamablehttp" or "streamable-http" => "streamableHttp",
+            "stdio" => "stdio",
+            "sse" => "sse",
+            _ => Type ?? _transport,
+        };
+        set => _transport = value;
+    }
+
+    /// <summary>VS Code-compatible transport key; takes precedence over <see cref="Transport"/> when supplied.</summary>
+    [ConfigurationKeyName("type")]
+    public string? Type { get; set; }
+
+    /// <summary>Optional gallery provenance metadata; does not trigger gallery requests or installation.</summary>
+    [ConfigurationKeyName("gallery")]
+    public string? Gallery { get; set; }
+
+    /// <summary>Optional gallery version metadata; does not pin or install an executable version.</summary>
+    [ConfigurationKeyName("version")]
+    public string? Version { get; set; }
 
     /// <summary>Remote MCP endpoint used by HTTP transports.</summary>
     [ConfigurationKeyName("url")]

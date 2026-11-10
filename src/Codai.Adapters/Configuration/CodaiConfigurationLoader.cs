@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.FileProviders.Physical;
 
 namespace Codai.Configuration;
 
@@ -8,7 +10,7 @@ namespace Codai.Configuration;
 /// </summary>
 public static class CodaiConfigurationLoader
 {
-    private static readonly string[] CandidateExtensions = [".yml", ".yaml", ".json"];
+    private static readonly string[] CandidateExtensions = [".json", ".yml", ".yaml"];
 
     /// <summary>Environment variables that map onto configuration keys.</summary>
     private static readonly (string Variable, string Key)[] EnvironmentMap =
@@ -45,8 +47,15 @@ public static class CodaiConfigurationLoader
         var filePath = ResolveConfigFile(request.WorkingDirectory, explicitPath, out var isExplicit);
 
         var builder = new ConfigurationBuilder();
+        using var jsonStream = filePath is not null && Path.GetExtension(filePath).Equals(".json", StringComparison.OrdinalIgnoreCase)
+            ? File.OpenRead(filePath)
+            : null;
 
-        if (filePath is not null)
+        if (jsonStream is not null)
+        {
+            builder.AddJsonStream(jsonStream);
+        }
+        else if (filePath is not null)
         {
             AddConfigurationFile(builder, filePath, isExplicit);
         }
@@ -54,7 +63,15 @@ public static class CodaiConfigurationLoader
         builder.AddInMemoryCollection(ReadEnvironmentOverrides(environment));
         builder.AddInMemoryCollection(cli.Overrides);
 
-        var configuration = builder.Build();
+        IConfigurationRoot configuration;
+        try
+        {
+            configuration = builder.Build();
+        }
+        catch (System.Text.Json.JsonException exception) when (jsonStream is not null)
+        {
+            throw new InvalidDataException($"Failed to load configuration from file '{filePath}'.", exception);
+        }
 
         CodaiOptions options;
         try
@@ -75,7 +92,7 @@ public static class CodaiConfigurationLoader
     }
 
     /// <summary>
-    /// Locates <c>codai-config.(yml|yaml|json)</c> in <paramref name="workingDirectory"/>.
+    /// Locates <c>.codai.(json|yml|yaml)</c> in <paramref name="workingDirectory"/>, preferring JSON.
     /// </summary>
     public static string? FindDefaultConfigFile(string workingDirectory)
     {
@@ -118,11 +135,8 @@ public static class CodaiConfigurationLoader
         {
             case ".yml":
             case ".yaml":
-                builder.AddYamlFile(filePath, optional: !isExplicit);
-                break;
-
-            case ".json":
-                builder.AddJsonFile(filePath, optional: !isExplicit, reloadOnChange: false);
+                builder.AddYamlFile(new PhysicalFileProvider(Path.GetDirectoryName(Path.GetFullPath(filePath))!, ExclusionFilters.None),
+                    Path.GetFileName(filePath), optional: !isExplicit, reloadOnChange: false);
                 break;
 
             default:
@@ -163,6 +177,11 @@ public static class CodaiConfigurationLoader
 
     private static void Validate(CodaiOptions options)
     {
+        if (options.AutoCompactWindow != 0 && options.AutoCompactWindow < CodaiOptions.MinimumAutoCompactWindow)
+        {
+            throw new CodaiConfigurationException("Option 'auto_compact_window' must be 0 (auto) or at least 32000 tokens.");
+        }
+
         if (options.CheckpointRetention < 1)
         {
             throw new CodaiConfigurationException("Option 'checkpoint_retention' must be at least 1.");
