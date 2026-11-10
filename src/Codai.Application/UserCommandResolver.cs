@@ -31,7 +31,7 @@ public sealed class UserCommandResolver
         _options = options;
     }
 
-    /// <summary>Expands a project command line into the request to send.</summary>
+    /// <summary>Expands a project command or skill invocation without changing automatic skill selection.</summary>
     /// <returns>
     /// The expanded request, or <c>null</c> when the input does not name a project
     /// command. Null means "not one of mine", which the caller reports as an unknown
@@ -58,8 +58,8 @@ public sealed class UserCommandResolver
                 definition.SourcePath);
         }
 
-        var skill = await _skills.FindAsync(
-            _options.ProjectRoot, invocation.Name, cancellationToken).ConfigureAwait(false);
+        var skills = await _skills.LoadAllAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false);
+        var skill = skills.FirstOrDefault(candidate => candidate.UserInvocable && string.Equals(candidate.Name, invocation.Name, StringComparison.OrdinalIgnoreCase));
 
         return skill is null
             ? null

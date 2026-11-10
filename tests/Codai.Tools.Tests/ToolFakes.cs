@@ -19,7 +19,7 @@ internal sealed class FakeTool : ITool
 
     public bool IsReadOnly { get; }
 
-    public string ParametersSchema => """{"type":"object","properties":{}}""";
+    public string ParametersSchema { get; init; } = """{"type":"object","properties":{}}""";
 
     public System.Text.Json.JsonElement Schema => JsonSchema.Parse(ParametersSchema);
 

@@ -1,10 +1,50 @@
 using Codai.Cli.Ui;
+using Codai.Core.Tokens;
 using FluentAssertions;
 
 namespace Codai.Session.Tests;
 
 public class ActivityStatusTests
 {
+    [Fact]
+    public void Provider_usage_replaces_estimate_with_exact_input_and_output_counts()
+    {
+        var status = new ActivityStatus(() => TimeSpan.Zero);
+        status.Begin();
+        status.Observe(400);
+        status.ReportUsage(new TokenUsage(3_000, 2_100));
+
+        var snapshot = status.Snapshot();
+
+        snapshot.Tokens.Should().Be(2_100);
+        snapshot.InputTokens.Should().Be(3_000);
+        snapshot.TokensEstimated.Should().BeFalse();
+        status.Begin();
+        status.Snapshot().Tokens.Should().Be(0);
+        status.Snapshot().TokensEstimated.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Thought_duration_only_counts_reported_reasoning_and_stops_with_output()
+    {
+        var clock = new ManualClock();
+        var status = new ActivityStatus(clock.Now);
+        status.Begin();
+        clock.Advance(TimeSpan.FromSeconds(2));
+        status.SetReasoning(true);
+        clock.Advance(TimeSpan.FromSeconds(9));
+        status.Snapshot().ThoughtElapsed.Should().Be(TimeSpan.FromSeconds(9));
+        status.Observe(40);
+        clock.Advance(TimeSpan.FromSeconds(4));
+
+        var snapshot = status.Snapshot();
+
+        snapshot.Elapsed.Should().Be(TimeSpan.FromSeconds(15));
+        snapshot.ThoughtElapsed.Should().Be(TimeSpan.FromSeconds(9));
+        status.Begin();
+        status.Snapshot().ThoughtElapsed.Should().Be(TimeSpan.Zero);
+    }
+
     [Fact]
     public void Begin_starts_a_fresh_wait_without_metrics()
     {

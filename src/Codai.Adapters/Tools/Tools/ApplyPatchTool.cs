@@ -4,7 +4,7 @@ using Codai.Core.Tools;
 
 namespace Codai.Tools;
 
-internal sealed class ApplyPatchTool : ToolBase
+internal sealed class ApplyPatchTool : ToolBase, IFileTargetTool
 {
     public const int MaxPatchChars = 200_000;
 
@@ -31,6 +31,22 @@ internal sealed class ApplyPatchTool : ToolBase
           "additionalProperties": false
         }
         """;
+
+    public IReadOnlyList<string> GetTargetPaths(JsonElement arguments)
+    {
+        if (!ToolWrites.TryGetText(arguments, "patch", out var patch, out _) || patch.Length is 0 or > MaxPatchChars)
+        {
+            return [];
+        }
+        try
+        {
+            return PatchParser.Parse(patch).Select(operation => operation.Path).Distinct(StringComparer.Ordinal).ToArray();
+        }
+        catch (FormatException)
+        {
+            return [];
+        }
+    }
 
     public override async Task<ToolResult> InvokeAsync(
         JsonElement arguments,

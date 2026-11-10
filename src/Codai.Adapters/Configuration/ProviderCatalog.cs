@@ -51,11 +51,11 @@ public static class ProviderCatalog
         new(AzureOpenAi, "https://{your-resource}.openai.azure.com", "gpt-5.4-mini", ProviderWireFormat.AzureOpenAi),
         new(Anthropic, "https://api.anthropic.com/v1", "claude-sonnet-4-6", ProviderWireFormat.Anthropic)
         {
-            SuggestedModels = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5"],
+            SuggestedModels = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-2", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5"],
         },
         new(Gemini, "https://generativelanguage.googleapis.com/v1beta", "gemini-3.8-flash", ProviderWireFormat.Gemini)
         {
-            SuggestedModels = ["gemini-4-argon", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"],
+            SuggestedModels = ["gemini-4-carbon", "gemini-4-argon", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview", "gemini-3-flash-preview"],
         },
         new(Ollama, "http://localhost:11434/api", "qwen3-coder", ProviderWireFormat.OpenAiCompatible, RequiresApiKey: false),
         new(DeepSeek, "https://api.deepseek.com", "deepseek-flash", ProviderWireFormat.OpenAiCompatible)
@@ -68,11 +68,11 @@ public static class ProviderCatalog
         },
         new(Qwen, "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.7-plus", ProviderWireFormat.OpenAiCompatible)
         {
-            SuggestedModels = ["qwen3.8-max", "qwen3.8-flash", "qwen3.8-omni-flash", "qwen3-coder-plus", "qwen3-coder-flash", "qwen-plus", "qwen-max", "qwen-flash"],
+            SuggestedModels = ["qwen3.8-max", "qwen3.8-flash", "qwen3-coder-flash"],
         },
-        new(Mistral, "https://api.mistral.ai/v1", "mistral-medium-3-5", ProviderWireFormat.OpenAiCompatible)
+        new(Mistral, "https://api.mistral.ai/v1", "mistral-large-4", ProviderWireFormat.OpenAiCompatible)
         {
-            SuggestedModels = ["mistral-large-4", "mistral-small-2603", "mistral-large-latest", "mistral-small-latest", "codestral-latest", "ministral-3b-2512", "ministral-8b-2512", "ministral-14b-2512"],
+            SuggestedModels = ["mistral-small-2603", "codestral-latest", "ministral-3b-2512", "ministral-8b-2512", "ministral-14b-2512"],
         },
         new(Grok, "https://api.x.ai/v1", "grok-4.7", ProviderWireFormat.OpenAiCompatible)
         {

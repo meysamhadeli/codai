@@ -1,7 +1,10 @@
 using Codai.Core.Abstractions;
 using Codai.Core.Chat;
+using Codai.Core.Context;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
+using Codai.Configuration;
+using Codai.Providers;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
 
@@ -20,14 +23,14 @@ public class HistoryCompactorTests
         ScriptedChatCompletionService Chat,
         ChatHistory History,
         FakeUserInterface Ui,
-        InMemoryFileSystem FileSystem) Create()
+        InMemoryFileSystem FileSystem) Create(string model = "gpt-4o", ModeModelState? models = null)
     {
         var chat = new ScriptedChatCompletionService();
         var history = new ChatHistory();
         var ui = new FakeUserInterface();
         var tokens = new TokenTracker();
         var fileSystem = new InMemoryFileSystem();
-        var options = new SessionOptions { ProjectRoot = Root, Provider = "openai", Model = "gpt-4o" };
+        var options = new SessionOptions { ProjectRoot = Root, Provider = "openai", Model = model };
 
         var compactor = new HistoryCompactor(
             chat,
@@ -36,7 +39,7 @@ public class HistoryCompactorTests
             new ToolAccessPolicy(),
             ui,
             new TranscriptStore(fileSystem),
-            options);
+            options, models: models);
 
         return (compactor, chat, history, ui, fileSystem);
     }
@@ -48,6 +51,54 @@ public class HistoryCompactorTests
             var filler = padding == 0 ? string.Empty : new string('x', padding);
             history.Add(new ChatTurn(DateTimeOffset.UtcNow, $"question {i}{filler}", $"answer {i}{filler}"));
         }
+    }
+
+    [Fact]
+    public async Task Summary_input_follows_selected_model_instead_of_startup_window()
+    {
+        var selected = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "openai", Model = "gpt-4" });
+        var (compactor, chat, history, _, _) = Create("gpt-4.1", new ModeModelState(selected, selected));
+        Seed(history, 80, padding: 4_000);
+        chat.Enqueue("summary for selected small model");
+
+        await compactor.CompactAsync();
+
+        chat.Requests.Should().ContainSingle();
+        var request = chat.Requests[0];
+        TokenEstimator.EstimateRequest(request.SystemPrompt, request.UserMessage).Should().BeLessThan(6_000);
+        request.AutoCompact.Should().BeFalse();
+        request.AllowedTools.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Manual_compaction_keeps_recent_context_small_enough_for_selected_model()
+    {
+        var (compactor, chat, history, _, _) = Create("gpt-4");
+        Seed(history, 20, padding: 2_000);
+        chat.Enqueue("Keep parser decisions, failed tests, and remaining work.");
+
+        (await compactor.CompactAsync("Keep parser decisions and failed tests")).Should().BeTrue();
+
+        history.Turns.Sum(turn => TokenEstimator.EstimateRequest(turn.UserRequest, turn.AiResponse)).Should().BeLessThan(4_000);
+        history.Turns[^1].UserRequest.Should().StartWith("question 19");
+        chat.Requests.Single().UserMessage.Should().Contain("Keep parser decisions and failed tests");
+    }
+
+    [Theory]
+    [InlineData(2_000)]
+    [InlineData(8_000)]
+    public async Task Oversized_summary_falls_back_to_model_sized_digest(int padding)
+    {
+        var (compactor, chat, history, _, fileSystem) = Create("gpt-4");
+        Seed(history, 20, padding);
+        chat.Enqueue(new string('s', 24_000));
+
+        (await compactor.CompactAsync()).Should().BeTrue();
+
+        HistoryCompactor.Estimate(history.Turns).Should().BeLessThan(4_000);
+        history.Turns.Should().NotContain(turn => turn.AiResponse == new string('s', 24_000));
+        fileSystem.Files.Should().Contain(file => file.Key.Contains(".codai/transcripts", StringComparison.Ordinal)
+            && file.Value.Contains("question 19", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -385,7 +436,7 @@ public class HistoryCompactorTests
         await compactor.CompactAsync();
 
         tokens.SessionUsage.Should().Be(new TokenUsage(90, 10));
-        ui.ProgressLabels.Should().Contain("Compacting history...");
+        ui.ProgressLabels.Should().Contain("Compacting conversation...");
     }
 
     [Fact]
@@ -435,6 +486,49 @@ public class HistoryCompactorTests
         chat.Requests[1].UserMessage.Should().Contain(firstSummary.AiResponse);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_plan_cannot_restore_history_that_was_cleared_or_rewritten(bool rewrite)
+    {
+        var (compactor, chat, history, _, _) = Create();
+        Seed(history, 6);
+        chat.Enqueue("old conversation summary");
+        var plan = await compactor.TryPlanAsync(null, foreground: false, CancellationToken.None);
+        plan.Should().NotBeNull();
+        history.Clear();
+        if (rewrite)
+        {
+            for (var turn = 0; turn < 6; turn++)
+            {
+                history.Add(new ChatTurn(DateTimeOffset.UtcNow, $"different {turn}", "new conversation"));
+            }
+        }
+        var current = history.Turns.ToArray();
+
+        Action apply = () => compactor.Apply(plan!);
+
+        apply.Should().Throw<InvalidOperationException>().WithMessage("*history changed*");
+        history.Turns.Should().Equal(current);
+    }
+
+    [Fact]
+    public async Task A_plan_preserves_turns_appended_after_its_snapshot()
+    {
+        var (compactor, chat, history, _, _) = Create();
+        Seed(history, 6);
+        chat.Enqueue("earlier work");
+        var plan = await compactor.TryPlanAsync(null, foreground: false, CancellationToken.None);
+        plan.Should().NotBeNull();
+        var appended = new ChatTurn(DateTimeOffset.UtcNow, "latest requirement", "latest response");
+        history.Add(appended);
+
+        compactor.Apply(plan!);
+
+        history.Turns[0].AiResponse.Should().Be("earlier work");
+        history.Turns[^1].Should().Be(appended);
+    }
+
     [Fact]
     public void An_oversized_token_tail_leaves_nothing_to_replace()
     {
@@ -446,5 +540,42 @@ public class HistoryCompactorTests
             .ToArray();
 
         HistoryCompactor.FindCutIndex(turns, int.MaxValue).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("gpt-4")]
+    [InlineData("gpt-4.1")]
+    public async Task Summary_input_including_previous_checkpoint_fits_model_budget(string model)
+    {
+        var (compactor, chat, history, _, _) = Create(model);
+        history.Add(new ChatTurn(DateTimeOffset.UtcNow, HistoryCompactor.SummaryTurnLabel,
+            "ORIGINAL_CONSTRAINT " + new string('s', 500_000), ChatTurnKind.CompactionSummary));
+        Seed(history, 6, padding: 2_000);
+        chat.Enqueue("bounded checkpoint");
+
+        await compactor.TryPlanAsync(null, foreground: true, CancellationToken.None, preserveRecentTokens: 1);
+
+        var request = chat.Requests.Should().ContainSingle().Subject;
+        var inputBudget = Math.Min(HistoryCompactor.MaxSummaryInputTokens,
+            (int)(ContextWindow.For(model) * 0.75));
+        TokenEstimator.EstimateRequest(request.SystemPrompt, request.UserMessage)
+            .Should().BeLessThanOrEqualTo(inputBudget);
+        request.UserMessage.Should().Contain("ORIGINAL_CONSTRAINT").And.Contain("question 3");
+        request.AllowedTools.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Clipped_summary_transcript_keeps_trailing_diagnostics()
+    {
+        var (compactor, chat, history, _, _) = Create();
+        history.Add(new ChatTurn(DateTimeOffset.UtcNow, "investigate failure",
+            "START_DIAGNOSTIC " + new string('x', 20_000) + " END_DIAGNOSTIC"));
+        Seed(history, 2);
+        chat.Enqueue("diagnostic summary");
+
+        await compactor.TryPlanAsync(null, foreground: true, CancellationToken.None, preserveRecentTokens: 1);
+
+        chat.Requests.Should().ContainSingle().Which.UserMessage.Should()
+            .Contain("START_DIAGNOSTIC").And.Contain("END_DIAGNOSTIC");
     }
 }

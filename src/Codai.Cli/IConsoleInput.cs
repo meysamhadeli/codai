@@ -36,6 +36,11 @@ public interface IConsoleInput
 /// <summary>Reads from the process's standard input.</summary>
 public sealed class SystemConsoleInput : IConsoleInput
 {
+    private readonly Func<string?> _readClipboard;
+    private readonly Func<ConsoleKeyInfo?> _readKey;
+    private readonly TerminalPasteParser _pasteParser = new();
+    private readonly Queue<ConsoleKeyInfo> _mouseKeys = new();
+    private string? _pasteText;
     private readonly object _readLock = new();
     private readonly List<string> _history = [];
     private Task<string?>? _pendingRead;
@@ -64,12 +69,54 @@ public sealed class SystemConsoleInput : IConsoleInput
     /// <summary>Workspace used for @ file completion.</summary>
     public string? CompletionRoot { get; set; }
 
+    /// <summary>Discovered skill names offered by slash-command completion, including unchecked skills.</summary>
+    public IReadOnlyList<string> SkillNames { get; set; } = [];
+
     /// <summary>Placeholder displayed inside an empty interactive composer.</summary>
     public string? Placeholder { get; set; }
 
     public string InitialText { get; set; } = string.Empty;
     /// <summary>The shared instance.</summary>
     public static SystemConsoleInput Instance { get; } = new();
+
+    public SystemConsoleInput() : this(TerminalClipboard.ReadText)
+    {
+    }
+
+    internal SystemConsoleInput(Func<string?> readClipboard, Func<ConsoleKeyInfo?>? readKey = null)
+    {
+        _readClipboard = readClipboard;
+        _readKey = readKey ?? ReadAvailableKey;
+    }
+
+    private static ConsoleKeyInfo? ReadAvailableKey() => Console.KeyAvailable ? Console.ReadKey(intercept: true) : null;
+
+    private static (int Width, int Height) WindowSize()
+    {
+        try
+        {
+            return (Console.WindowWidth, Console.WindowHeight);
+        }
+        catch (IOException)
+        {
+            return (0, 0);
+        }
+    }
+
+    internal bool TryPaste(ConsoleKeyInfo key, ComposerBuffer editor)
+    {
+        if (key.Key != ConsoleKey.V || !key.Modifiers.HasFlag(ConsoleModifiers.Control))
+        {
+            return false;
+        }
+        var text = _pasteText ?? _readClipboard();
+        _pasteText = null;
+        if (text is not null)
+        {
+            editor.InsertPaste(text);
+        }
+        return true;
+    }
 
     public bool IsRedirected => Console.IsInputRedirected;
 
@@ -90,6 +137,9 @@ public sealed class SystemConsoleInput : IConsoleInput
     {
         _mouseTracking = false;
         _mouseParser.Flush();
+        _pasteParser.Reset();
+        _pasteText = null;
+        _mouseKeys.Clear();
         if (OperatingSystem.IsWindows())
         {
             _windowsMouse?.Restore();
@@ -135,7 +185,7 @@ public sealed class SystemConsoleInput : IConsoleInput
     public Task<string?> ReadResponseAsync(CancellationToken cancellationToken = default) =>
         IsRedirected ? ReadLineAsync(cancellationToken) : ReadInteractiveLineAsync(false, cancellationToken);
 
-    private async Task<string?> ReadInteractiveLineAsync(bool composer, CancellationToken cancellationToken)
+    internal async Task<string?> ReadInteractiveLineAsync(bool composer, CancellationToken cancellationToken)
     {
         lock (_readLock)
         {
@@ -152,6 +202,8 @@ public sealed class SystemConsoleInput : IConsoleInput
             {
                 _interactiveReads--;
                 IsReadingComposer = false;
+                _pasteParser.Reset();
+                _pasteText = null;
             }
         }
     }
@@ -171,37 +223,81 @@ public sealed class SystemConsoleInput : IConsoleInput
 
     private bool TryReadTerminalKey(out ConsoleKeyInfo key, out bool mouseHandled)
     {
+        _pasteText = null;
         mouseHandled = false;
-        if (OperatingSystem.IsWindows() && _windowsMouse is { } mouseInput)
+        var handled = false;
+        void HandleMouse(TerminalMouseEvent mouse)
         {
-            while (mouseInput.TryRead(out var mouse))
+            if (mouse.Action == TerminalMouseAction.Paste)
             {
-                mouseHandled |= MouseHandler?.Invoke(mouse) == true;
+                _mouseKeys.Enqueue(TerminalPasteParser.PasteKey);
+                handled = true;
+            }
+            else
+            {
+                handled |= MouseHandler?.Invoke(mouse) == true;
             }
         }
-        if (_mouseParser.TryReadKey(out key))
+        bool ReadBuffered(out ConsoleKeyInfo bufferedKey)
         {
-            return true;
-        }
-        while (Console.KeyAvailable)
-        {
-            var next = Console.ReadKey(intercept: true);
-            if (!_mouseTracking)
-            {
-                key = next;
-                return true;
-            }
-            if (_mouseParser.Push(next) is { } mouse)
-            {
-                mouseHandled |= MouseHandler?.Invoke(mouse) == true;
-            }
-            if (_mouseParser.TryReadKey(out key))
+            if (_mouseKeys.TryDequeue(out bufferedKey) || _mouseParser.TryReadKey(out bufferedKey))
             {
                 return true;
             }
+            while (_pasteParser.TryRead(out var next, out var paste))
+            {
+                if (paste is not null || !_mouseTracking)
+                {
+                    _pasteText = paste;
+                    bufferedKey = next;
+                    return true;
+                }
+                if (_mouseParser.Push(next) is { } mouse)
+                {
+                    HandleMouse(mouse);
+                }
+                if (_mouseKeys.TryDequeue(out bufferedKey) || _mouseParser.TryReadKey(out bufferedKey))
+                {
+                    return true;
+                }
+            }
+            bufferedKey = default;
+            return false;
         }
-        _mouseParser.FlushExpired();
-        return _mouseParser.TryReadKey(out key);
+
+        try
+        {
+            if (OperatingSystem.IsWindows() && _windowsMouse is { } mouseInput)
+            {
+                while (mouseInput.TryRead(out var mouse))
+                {
+                    HandleMouse(mouse);
+                }
+            }
+            if (ReadBuffered(out key))
+            {
+                return true;
+            }
+            while (_readKey() is { } next)
+            {
+                _pasteParser.Push(next);
+                if (ReadBuffered(out key))
+                {
+                    return true;
+                }
+            }
+            _pasteParser.FlushExpired();
+            if (ReadBuffered(out key))
+            {
+                return true;
+            }
+            _mouseParser.FlushExpired();
+            return ReadBuffered(out key);
+        }
+        finally
+        {
+            mouseHandled = handled;
+        }
     }
 
     private async Task<string?> ReadInteractiveCoreAsync(bool composer, CancellationToken cancellationToken)
@@ -219,12 +315,11 @@ public sealed class SystemConsoleInput : IConsoleInput
                 PendingInsertion = null;
             }
         }
-        var completion = new ComposerCompletion();
+        var completion = new ComposerCompletion { SkillNames = SkillNames };
         IReadOnlyList<string>? files = null;
         var previousLength = 0;
         var previousCursor = 0;
-        var previousWidth = Console.WindowWidth;
-        var previousHeight = Console.WindowHeight;
+        var previousSize = WindowSize();
 
         void Draw()
         {
@@ -264,10 +359,10 @@ public sealed class SystemConsoleInput : IConsoleInput
             if (!hasKey)
             {
                 await Task.Delay(25, cancellationToken).ConfigureAwait(false);
-                if (composer && (previousWidth != Console.WindowWidth || previousHeight != Console.WindowHeight))
+                var size = WindowSize();
+                if (composer && previousSize != size)
                 {
-                    previousWidth = Console.WindowWidth;
-                    previousHeight = Console.WindowHeight;
+                    previousSize = size;
                     Draw();
                 }
                 continue;
@@ -317,7 +412,7 @@ public sealed class SystemConsoleInput : IConsoleInput
                 }
                 return editor.Text;
             }
-            if (editor.HandleKey(key))
+            if (TryPaste(key, editor) || editor.HandleKey(key))
             {
                 if (composer)
                 {

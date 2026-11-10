@@ -7,6 +7,7 @@ using Codai.Core.Chat;
 using Codai.Core.Context;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
+using Codai.Providers;
 
 namespace Codai.Application;
 
@@ -130,6 +131,9 @@ public sealed class HistoryCompactor
     private readonly IAgentHooks _hooks;
     private readonly SessionFootprint? _footprint;
     private readonly ContextRestorer? _restorer;
+    private readonly ModeModelState? _models;
+    private readonly AgentModeState? _mode;
+    private readonly ResolvedProviderOptions _defaultModel;
 
     public bool HasHooks => !ReferenceEquals(_hooks, NullAgentHooks.Instance);
 
@@ -147,6 +151,8 @@ public sealed class HistoryCompactor
     /// have to read them again. Optional: without it a summary is only a summary.
     /// </param>
     /// <param name="restorer">Reads the files back for the restore. Optional.</param>
+    /// <param name="models">Live provider/model selections used to budget summary input.</param>
+    /// <param name="mode">Active mode whose model produces the summary.</param>
     public HistoryCompactor(
         IChatCompletionService chatCompletion,
         IChatHistory history,
@@ -157,7 +163,9 @@ public sealed class HistoryCompactor
         SessionOptions options,
         IAgentHooks? hooks = null,
         SessionFootprint? footprint = null,
-        ContextRestorer? restorer = null)
+        ContextRestorer? restorer = null,
+        ModeModelState? models = null,
+        AgentModeState? mode = null)
     {
         ArgumentNullException.ThrowIfNull(chatCompletion);
         ArgumentNullException.ThrowIfNull(history);
@@ -177,6 +185,9 @@ public sealed class HistoryCompactor
         _hooks = hooks ?? NullAgentHooks.Instance;
         _footprint = footprint;
         _restorer = restorer;
+        _models = models;
+        _mode = mode;
+        _defaultModel = new ResolvedProviderOptions { Provider = options.Provider, Model = options.Model, BaseUrl = string.Empty };
     }
 
     /// <summary>
@@ -281,9 +292,10 @@ public sealed class HistoryCompactor
             return null;
         }
 
-        var tail = ResolvePreserveTokens(
-            turns,
-            preserveRecentTokens ?? _options.CompactionPreserveRecentTokens);
+        var (_, available) = MeasureModelBudget();
+        var tailLimit = Math.Max(1, (int)(available * AutoCompactor.TailHeadroomRatio));
+        var requestedTail = preserveRecentTokens ?? _options.CompactionPreserveRecentTokens;
+        var tail = ResolvePreserveTokens(turns, requestedTail > 0 ? Math.Min(requestedTail, tailLimit) : tailLimit);
         var cut = FindCutIndex(turns, tail);
 
         if (cut <= 0)
@@ -339,7 +351,7 @@ public sealed class HistoryCompactor
             var summaryTokens = TokenEstimator.Estimate(candidate);
             var replacementTokens = summaryTokens + Estimate(kept);
 
-            if (replacementTokens >= totalTokens && restore is not null)
+            if ((replacementTokens >= totalTokens || replacementTokens > available) && restore is not null)
             {
                 // The restore is what pushed the replacement over the turns it replaces, so
                 // it is dropped rather than the summary: a summary that is not shorter is
@@ -352,7 +364,8 @@ public sealed class HistoryCompactor
             // Equal to "the summary is smaller than the turns it replaces", because the
             // kept tail is on both sides of the comparison: the tail is not being replaced,
             // so it does not have to be beaten by the summary on its own.
-            if (replacementTokens < totalTokens)
+            if (replacementTokens < totalTokens &&
+                TokenEstimator.EstimateRequest(SummaryTurnLabel, candidate) + Estimate(kept) <= available)
             {
                 if (summaryTokens > MaxSummaryTokens)
                 {
@@ -385,6 +398,7 @@ public sealed class HistoryCompactor
                     archive)
                 {
                     KeptTurns = kept.Length,
+                    SourceTurns = Array.AsReadOnly(turns),
                 };
             }
 
@@ -392,7 +406,7 @@ public sealed class HistoryCompactor
                 foreground,
                 failure: true,
                 $"The summary was about {summaryTokens:N0} tokens against the " +
-                $"{replacedTokens:N0} it would have replaced, so it was not used.");
+                $"{replacedTokens:N0} it would have replaced and a model history budget of {available:N0}, so it was not used.");
         }
         else
         {
@@ -462,6 +476,10 @@ public sealed class HistoryCompactor
     private void ApplyCore(CompactionPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        if (!CanApply(plan))
+        {
+            throw new InvalidOperationException("Cannot apply compaction because the history changed after the plan was prepared.");
+        }
 
         // Snapshotted, because <see cref="IChatHistory.Turns"/> is the live list: clearing
         // the history empties it, so a tail read back out of it afterwards would be gone —
@@ -481,6 +499,12 @@ public sealed class HistoryCompactor
             _history.Add(turns[index]);
         }
     }
+
+    internal bool CanApply(CompactionPlan plan) =>
+        plan.ConsumedTurns >= 0 && plan.ConsumedTurns <= _history.Turns.Count &&
+        (plan.SourceTurns is null ||
+            (plan.SourceTurns.Count == plan.ConsumedTurns &&
+                plan.SourceTurns.SequenceEqual(_history.Turns.Take(plan.ConsumedTurns))));
 
     /// <summary>
     /// How many of the oldest turns a compaction should replace, leaving the newest ones
@@ -558,6 +582,15 @@ public sealed class HistoryCompactor
         return -1;
     }
 
+    private (int Window, int AvailableTokens) MeasureModelBudget()
+    {
+        var model = _models?.Get(_mode?.Mode ?? _options.Mode) ?? _defaultModel;
+        var window = _options.AutoCompactWindow > 0 ? Math.Min(_options.AutoCompactWindow, model.ContextWindowTokens) : model.ContextWindowTokens;
+        var available = (int)Math.Max(1L,
+            window - (long)model.OutputReserveTokens - Math.Min(CompactionPolicy.DefaultReserveTokens, window / 4));
+        return (window, available);
+    }
+
     /// <summary>
     /// Shortens the conversation without a model, and refuses if that would not shorten it.
     /// </summary>
@@ -576,11 +609,25 @@ public sealed class HistoryCompactor
         var target = (int)Math.Round(
             replacedTokens * Math.Clamp(_options.CompactionTargetRatio, 0.05, 0.95),
             MidpointRounding.AwayFromZero);
+        var (_, available) = MeasureModelBudget();
+        target = Math.Min(target, available);
 
         var packed = ConversationDigest.Pack(turns, target, archive);
         var packedTokens = Estimate(packed);
 
-        if (packedTokens >= totalTokens)
+        if (packedTokens > available)
+        {
+            var characters = Math.Max(TruncationMarker.Length + 1, available / 2);
+            var shortened = turns.Select(turn => turn with
+            {
+                UserRequest = Truncate(turn.UserRequest, characters),
+                AiResponse = Truncate(turn.AiResponse, characters),
+            }).ToArray();
+            packed = ConversationDigest.Pack(shortened, target, archive);
+            packedTokens = Estimate(packed);
+        }
+
+        if (packedTokens >= totalTokens || packedTokens > available)
         {
             Report(
                 foreground,
@@ -598,6 +645,7 @@ public sealed class HistoryCompactor
             archive)
         {
             KeptTurns = 0,
+            SourceTurns = Array.AsReadOnly(turns),
         };
     }
 
@@ -660,15 +708,19 @@ public sealed class HistoryCompactor
 
             for (var attempt = 0; ; attempt++)
             {
+                var (window, available) = MeasureModelBudget();
+                var budget = Math.Min(MaxSummaryInputTokens, available);
                 var request = new ChatRequest(
                     EmbeddedResources.CompactHistoryPrompt,
-                    CompactionRequest(previousSummary, remaining, instructions, archive, omitted),
-                    AllowedTools: []);
+                    CompactionRequest(previousSummary, remaining, instructions, archive, omitted,
+                        budget -
+                        TokenEstimator.EstimateRequest(EmbeddedResources.CompactHistoryPrompt, string.Empty)),
+                    AllowedTools: []) { AutoCompact = false, ContextWindowTokens = window };
 
                 try
                 {
                     await foreach (var update in _chatCompletion
-                        .StreamAsync(request, ct)
+                        .StreamWithActivityAsync(request, foreground ? _ui : null, ct)
                         .WithCancellation(ct)
                         .ConfigureAwait(false))
                     {
@@ -705,7 +757,7 @@ public sealed class HistoryCompactor
         if (foreground)
         {
             await _ui
-                .RunWithProgressAsync("Compacting history...", async ct => { await ReadAsync(ct); return true; }, cancellationToken)
+                .RunWithProgressAsync("Compacting conversation...", async ct => { await ReadAsync(ct); return true; }, cancellationToken)
                 .ConfigureAwait(false);
         }
         else
@@ -768,12 +820,14 @@ public sealed class HistoryCompactor
     /// to know about: a summary that silently loses the start of the conversation reads as a
     /// conversation that started in the middle.
     /// </param>
+    /// <param name="budgetTokens">Estimated input budget after system instructions and framing.</param>
     private static string CompactionRequest(
         string? previousSummary,
         ChatTurn[] turns,
         string? instructions,
         string? archive,
-        int omittedTurns = 0)
+        int omittedTurns = 0,
+        int budgetTokens = MaxSummaryInputTokens)
     {
         var builder = new StringBuilder();
 
@@ -794,8 +848,8 @@ public sealed class HistoryCompactor
                 .Append("An earlier compaction wrote the summary below for the turns that came ")
                 .Append("before the ones further down. Continue it: fold the conversation ")
                 .Append("that follows into this summary rather than starting again, and keep ")
-                .Append("every decision and open thread it already records.\n\n")
-                .Append(previousSummary.Trim())
+                .Append("still-relevant decisions and unresolved work. Remove superseded details.\n\n")
+                .Append(Truncate(previousSummary.Trim(), Math.Min(MaxSummaryTokens, budgetTokens / 3) * 4))
                 .Append("\n\n");
         }
 
@@ -803,8 +857,13 @@ public sealed class HistoryCompactor
         // be sent. A compaction that failed because the thing it was compacting was too big
         // to send would leave the conversation over its budget for no reason.
         var packable = ConversationDigest.Pack(
-            turns,
-            Math.Min(Estimate(turns), MaxSummaryInputTokens),
+            turns.Select(turn => turn with
+            {
+                UserRequest = Truncate(turn.UserRequest, ConversationDigest.MaxTurnCharacters),
+                AiResponse = Truncate(turn.AiResponse, ConversationDigest.MaxTurnCharacters),
+            }).ToArray(),
+            Math.Max(ConversationDigest.MinimumBudgetTokens,
+                budgetTokens - TokenEstimator.Estimate(builder.ToString()) - 1_024),
             archive);
 
         builder
@@ -812,8 +871,8 @@ public sealed class HistoryCompactor
             .Append(Render([.. packable]))
             .Append("\n## How long the summary may be\n\n")
             .Append("Stay under ")
-            .Append(MaxSummaryTokens.ToString("N0", CultureInfo.InvariantCulture))
-            .Append(" tokens. Shorter is better as long as nothing is left out: this ")
+            .Append(Math.Min(MaxSummaryTokens, Math.Max(1, budgetTokens / 2)).ToString("N0", CultureInfo.InvariantCulture))
+            .Append(" tokens. Prefer a concise checkpoint of what is still relevant: this ")
             .Append("summary is carried into every following request of the session.\n");
 
         if (!string.IsNullOrWhiteSpace(archive))
@@ -831,11 +890,11 @@ public sealed class HistoryCompactor
         {
             builder
                 .Append("\n## The user asked for the summary to focus on\n\n")
-                .AppendLine(instructions.Trim())
-                .Append("\nWeight the summary towards that, without dropping anything that would then be lost.");
+                .AppendLine(Truncate(instructions.Trim(), budgetTokens / 8 * 4))
+                .Append("\nPrioritize that focus while retaining unresolved requirements and essential constraints.");
         }
 
-        return builder.ToString();
+        return Truncate(builder.ToString(), budgetTokens * 4);
     }
 
     /// <summary>
@@ -869,10 +928,13 @@ public sealed class HistoryCompactor
     }
 
     /// <summary>Cuts a turn down to <see cref="MaxTurnCharacters"/> and says that it did.</summary>
-    private static string Truncate(string text) =>
-        text.Length <= MaxTurnCharacters
+    private static string Truncate(string text, int maxCharacters = MaxTurnCharacters) =>
+        text.Length <= maxCharacters
             ? text
-            : string.Concat(text.AsSpan(0, MaxTurnCharacters), TruncationMarker);
+            : string.Concat(
+                text.AsSpan(0, (maxCharacters - TruncationMarker.Length) / 2),
+                TruncationMarker,
+                text.AsSpan(text.Length - (maxCharacters - TruncationMarker.Length + 1) / 2));
 
     /// <summary>Estimated tokens of a set of turns as they will be replaced.</summary>
     internal static int Estimate(IReadOnlyList<ChatTurn> turns)

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Codai.Configuration;
 using Codai.Core.Tokens;
 using Codai.Pricing;
+using Codai.Providers;
 using FluentAssertions;
 
 namespace Codai.Core.Tests;
@@ -76,7 +77,9 @@ public class PricingCatalogTests
     [InlineData("openai", "gpt-5.4-mini", 0.75, 4.50)]
     [InlineData("azure-openai", "gpt-5.4-mini", 0.75, 4.50)]
     [InlineData("anthropic", "claude-sonnet-4-6", 3, 15)]
+    [InlineData("anthropic", "claude-fable-5-2", 8, 40)]
     [InlineData("gemini", "gemini-3.8-flash", 0.75, 3.75)]
+    [InlineData("gemini", "gemini-4-carbon", 2, 10)]
     [InlineData("ollama", "qwen3-coder", 0, 0)]
     [InlineData("deepseek", "deepseek-flash", 0.30, 1.20)]
     [InlineData("openrouter", "openai/gpt-5.4-mini", 0.75, 4.50)]
@@ -110,6 +113,100 @@ public class PricingCatalogTests
                 _catalog.Find(provider.Name, model).Should().NotBeNull();
             }
         }
+    }
+
+    [Fact]
+    public void Every_bundled_hosted_model_has_explicit_context_limits_used_by_compaction()
+    {
+        foreach (var provider in ProviderCatalog.All.Where(provider => provider.Name != ProviderCatalog.Ollama))
+        {
+            foreach (var model in provider.SuggestedModels.Prepend(provider.DefaultModel))
+            {
+                var pricing = _catalog.Find(provider.Name, model);
+                pricing.Should().NotBeNull($"{provider.Name}/{model} needs model metadata");
+                pricing!.MaxContextTokens.Should().BePositive($"{provider.Name}/{model} needs an explicit context window");
+                pricing.MaxInputTokens.Should().BeGreaterThanOrEqualTo(0);
+                pricing.MaxOutputTokens.Should().BeGreaterThanOrEqualTo(0);
+                var resolved = ResolvedProviderOptions.From(new AiProviderOptions { Provider = provider.Name, Model = model });
+                resolved.ContextWindowTokens.Should().Be(pricing.MaxInputTokens > 0
+                    ? Math.Min(pricing.MaxInputTokens, pricing.MaxContextTokens) : pricing.MaxContextTokens);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("openai")]
+    [InlineData("azure-openai")]
+    public void Compaction_uses_input_ceiling_not_larger_combined_context(string provider)
+    {
+        var pricing = _catalog.Find(provider, "gpt-5.4-mini")!;
+        pricing.MaxContextTokens.Should().Be(400_000);
+        pricing.MaxInputTokens.Should().Be(272_000);
+        pricing.MaxOutputTokens.Should().Be(128_000);
+        var resolved = ResolvedProviderOptions.From(new AiProviderOptions { Provider = provider, Model = "gpt-5.4-mini" });
+        resolved.ContextWindowTokens.Should().Be(272_000);
+        resolved.OutputReserveTokens.Should().Be(20_000);
+    }
+
+    [Fact]
+    public void Reviewed_context_limits_have_separate_provenance_and_do_not_change_rate_review_date()
+    {
+        using var stream = typeof(EmbeddedPricingCatalog).Assembly.GetManifestResourceStream("Codai.Pricing.Data.model_pricing.json")!;
+        using var document = JsonDocument.Parse(stream);
+        var root = document.RootElement;
+        root.GetProperty("context_reviewed_at").GetString().Should().Be("2026-11-10");
+        root.GetProperty("reviewed_at").GetString().Should().Be("2026-10-30");
+        var entries = root.GetProperty("context_limits").EnumerateObject().ToArray();
+        entries.Select(entry => entry.Name).Should().OnlyHaveUniqueItems();
+        foreach (var entry in entries)
+        {
+            root.GetProperty("current_models").TryGetProperty(entry.Name, out _).Should().BeTrue();
+            var separator = entry.Name.IndexOf('/', StringComparison.Ordinal);
+            var source = root.GetProperty("context_sources").GetProperty(entry.Name[..separator]).GetString();
+            Uri.TryCreate(source, UriKind.Absolute, out var address).Should().BeTrue();
+            address!.Scheme.Should().Be("https");
+            var context = entry.Value.GetProperty("max_context_tokens").GetInt32();
+            context.Should().BePositive();
+            entry.Value.GetProperty("max_input_tokens").GetInt32().Should().BeInRange(0, context);
+            entry.Value.GetProperty("max_output_tokens").GetInt32().Should().BeInRange(0, context);
+        }
+    }
+
+    [Theory]
+    [InlineData("anthropic", "claude-sonnet-4-6", 1000000, 20000)]
+    [InlineData("gemini", "gemini-4-carbon", 1048576, 20000)]
+    [InlineData("deepseek", "deepseek-flash", 1000000, 20000)]
+    [InlineData("qwen", "qwen3.7-plus", 1000000, 20000)]
+    [InlineData("mistral", "mistral-large-4", 1000000, 4096)]
+    [InlineData("grok", "grok-4.7", 500000, 4096)]
+    [InlineData("openrouter", "openai/gpt-5.4-mini", 400000, 20000)]
+    [InlineData("openrouter", "x-ai/grok-4.7", 500000, 20000)]
+    public void Active_model_metadata_controls_runtime_window_and_bounded_output_headroom(string provider, string model, int window, int reserve)
+    {
+        var resolved = ResolvedProviderOptions.From(new AiProviderOptions { Provider = provider, Model = model });
+        resolved.ContextWindowTokens.Should().Be(window);
+        resolved.OutputReserveTokens.Should().Be(reserve);
+    }
+
+    [Fact]
+    public void Native_and_routed_output_limits_are_not_interchangeable()
+    {
+        _catalog.Find("gemini", "gemini-4-argon")!.MaxOutputTokens.Should().Be(65_536);
+        _catalog.Find("openrouter", "google/gemini-4-argon")!.MaxOutputTokens.Should().Be(943_718);
+        _catalog.Find("grok", "grok-4.7")!.MaxOutputTokens.Should().Be(0);
+        _catalog.Find("openrouter", "x-ai/grok-4.7")!.MaxOutputTokens.Should().Be(450_000);
+    }
+
+    [Fact]
+    public void Current_suggestions_keep_saved_legacy_models_usable_without_recommending_them()
+    {
+        ProviderCatalog.Get("anthropic").SuggestedModels.Should().Contain("claude-fable-5-2");
+        ProviderCatalog.Get("gemini").SuggestedModels.Should().Contain("gemini-4-carbon").And.NotContain("gemini-2.5-pro");
+        ProviderCatalog.Get("mistral").DefaultModel.Should().Be("mistral-large-4");
+        var saved = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "mistral", Model = "mistral-medium-3-5" });
+        saved.Model.Should().Be("mistral-medium-3-5");
+        _catalog.Find("gemini", "gemini-2.5-pro").Should().NotBeNull();
+        _catalog.Find("qwen", "qwen3-coder-plus").Should().NotBeNull();
     }
 
     [Fact]

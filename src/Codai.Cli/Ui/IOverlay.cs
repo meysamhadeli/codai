@@ -27,3 +27,10 @@ internal interface IOverlay
     /// <param name="minimumTop">First row the overlay may use.</param>
     void Draw(IAnsiConsole console, string theme = "graphite", int minimumTop = 1);
 }
+
+internal interface IInlineDecision : IOverlay
+{
+    bool ShowCursor => false;
+
+    int MeasureHeight(int width, int maximumHeight);
+}

@@ -11,6 +11,20 @@ public sealed class PhysicalFileSystem : IFileSystem
     public static PhysicalFileSystem Instance { get; } = new();
 
     /// <inheritdoc />
+    public string GetCanonicalPath(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var current = Path.GetPathRoot(full)!;
+        foreach (var part in full[current.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(current, part);
+            FileSystemInfo? info = Directory.Exists(next) ? new DirectoryInfo(next) : File.Exists(next) ? new FileInfo(next) : null;
+            current = info?.LinkTarget is null ? next : info.ResolveLinkTarget(true)?.FullName ?? throw new IOException("Could not resolve a discovery path link.");
+        }
+        return Path.GetFullPath(current);
+    }
+
+    /// <inheritdoc />
     public bool FileExists(string path) => File.Exists(path);
 
     /// <inheritdoc />

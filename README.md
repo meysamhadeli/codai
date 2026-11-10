@@ -29,13 +29,17 @@ For full instructions on how to use Codai, see the [docs](https://meysamhadeli.g
 | --- | --- |
 | **Plan, then act** | Read and search without changing files or running commands; switch to Agent for implementation. |
 | **Project-wide edits** | Read, search, and edit real files with your project's guidance in context. |
+| **Scoped instructions** | Combine standard instruction files, refresh each request, and review relevant nested guidance before file tools, including read-only subagents. [Project instructions](https://meysamhadeli.github.io/codai/customization/instructions). |
 | **On-demand context** | Open sessions without a full-project indexing pass; discover files through tools as needed. |
-| **Controlled execution** | Review writes and commands under your approval policy. Shell commands require shell access. |
-| **Focused terminal UI** | Scroll the transcript with input pinned; expand action steps, command output, and file diffs. |
+| **Workspace trust** | Review directory access before every CLI launch with Yes selected first; No or Escape declines. Scripted runs require `--trust-directory`; tool approvals stay separate. [Permissions](https://meysamhadeli.github.io/codai/usage/permissions). |
+| **Controlled execution** | Validate tool arguments and bound repeated calls. Interactive terminals start with auto approval; use Shift+Tab or `--auto-approve false` to review writes and commands. Headless runs require explicit approval. |
+| **Focused terminal UI** | Read numbered, syntax-colored code panes; scroll the transcript and expand action steps, command output, and file diffs. |
+| **Terminal commands** | Stay in one conversation screen; use `/session` to switch saved chats and `/settings` for configuration and runtime views. Browse numbered model, agent, and theme menus, matching multi-select Skills and MCP managers, full-screen diffs, and the settings action palette. Menus share a concise Enter/Escape footer. [Command reference](https://meysamhadeli.github.io/codai/usage/terminal#slash-commands). |
 | **Your choice of models** | Connect hosted providers or local servers, including Ollama. |
-| **Reusable workflows** | Apply project guidance, rules, skills, commands, and memory documents. |
-| **Long-running work** | Compact context and resume a previous session with `codai code --continue`. |
-| **Extensible tools** | Add MCP servers, .NET plugins, and lifecycle hooks under the same approval policy. |
+| **Configuration and state** | Keep runtime settings and discovery metadata in configuration; Codai manages per-project MCP/skill selections in private state. [Configuration](https://meysamhadeli.github.io/codai/customization/configuration). |
+| **Reusable workflows** | Match checked skill descriptions to your task in foreground and read-only subagents, loading relevant instructions on demand. Include shared repository, personal, and nested skills with invocation/path metadata. Manage availability in `/skills`; manual workflows remain in `/` completion. [Skills](https://meysamhadeli.github.io/codai/skills). |
+| **Long-running work** | Budget context for the selected model, compact growing tool output between model calls, summarize with `/compact`, and adjust windows with `/autocompact`. Resume with `codai code --continue`. [Context](https://meysamhadeli.github.io/codai/usage/context). |
+| **Extensible tools** | Read layered and VS Code-style MCP definitions; open interactive workspaces without waiting for MCP connections, then connect enabled servers on the first model request and discover relevant schemas on demand. Add .NET plugins and hooks under the same approval policy. [MCP](https://meysamhadeli.github.io/codai/mcp). |
 
 ## Supported providers
 
@@ -52,7 +56,7 @@ Connect through `codai auth`, or select a provider with `--provider` and a model
 | DeepSeek | `deepseek` | Cloud | `deepseek-flash` |
 | OpenRouter | `openrouter` | Cloud | `openai/gpt-5.4-mini` |
 | Qwen (DashScope) | `qwen` | Cloud | `qwen3.7-plus` |
-| Mistral | `mistral` | Cloud | `mistral-medium-3-5` |
+| Mistral | `mistral` | Cloud | `mistral-large-4` |
 | Grok (xAI) | `grok` | Cloud | `grok-4.7` |
 
 Hosted providers require API credentials. Local Ollama does not require an API key.
@@ -89,7 +93,7 @@ required. See [documentation development](CONTRIBUTION.md#documentation) for loc
 | [Plugins](https://meysamhadeli.github.io/codai/plugins) | Custom tools and lifecycle hooks |
 | [MCP integrations](https://meysamhadeli.github.io/codai/mcp) | External tool servers |
 | [ACP compatibility](https://meysamhadeli.github.io/codai/acp-compatibility) | Supported editor integration and current limits |
-| [Roadmap](https://meysamhadeli.github.io/codai/agent-mode-roadmap) | Planned work and implementation status |
+| [Roadmap](https://meysamhadeli.github.io/codai/agent-mode-roadmap) | Planned VS Code extension and editor workflows |
 
 ## Contributing
 

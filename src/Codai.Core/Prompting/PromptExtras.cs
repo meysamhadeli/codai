@@ -43,9 +43,9 @@ public sealed record PromptExtras
     public IReadOnlyList<ProjectMemoryDocument>? Memory { get; init; }
 
     /// <summary>
-    /// The skills the project ships. Only each skill's name and description are
-    /// rendered: the body is fetched by the <c>read_skill</c> tool when the model decides
-    /// the skill applies, which is what keeps unused skills out of the context window.
+    /// The project's skills. Agent requests advertise enabled names and descriptions
+    /// when read_skill is offered, loading bodies on demand. Other requests retain eager
+    /// bodies. Disabled and model-opted-out entries are ignored.
     /// </summary>
     public IReadOnlyList<SkillDefinition>? Skills { get; init; }
 

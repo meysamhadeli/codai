@@ -177,7 +177,7 @@ public sealed class ConfigurationInspector
                     .. _context.McpServers.Select(server => new ConfigurationMcpServerEntry(
                         server.Name,
                         server.Transport,
-                        "configuration",
+                        server.DiscoverySourcePath is null ? "configuration" : $"{server.DiscoveryScope}: {server.DiscoverySourcePath}",
                         server.Enabled,
                         !string.IsNullOrWhiteSpace(server.Command),
                         server.Args.Count,

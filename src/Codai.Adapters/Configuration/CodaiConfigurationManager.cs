@@ -139,6 +139,8 @@ public sealed class CodaiConfigurationManager
         "ai_provider_config.base_url" when value.Length == 0 || Uri.TryCreate(value, UriKind.Absolute, out var endpoint) && endpoint.Scheme is "http" or "https" && endpoint.UserInfo.Length == 0 => value,
         "ai_provider_config.temperature" when float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var temperature) && float.IsFinite(temperature) && temperature is >= 0 and <= 2 => temperature,
         "ai_provider_config.stream" or "checkpoints_enabled" when bool.TryParse(value, out var enabled) => enabled,
+        "auto_compact_window" when int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var window)
+            && (window == 0 || window >= CodaiOptions.MinimumAutoCompactWindow) => window,
         "ai_provider_config.max_tokens" or "budget.max_tokens" when int.TryParse(value, out var tokens) && tokens >= 0 => tokens,
         "checkpoint_retention" or "budget.max_tool_calls" when int.TryParse(value, out var count) && count > 0 => count,
         "budget.max_cost" when decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var cost) && cost >= 0 => cost,
@@ -154,7 +156,7 @@ public sealed class CodaiConfigurationManager
             !string.Equals(Path.GetFileNameWithoutExtension(fullPath), CodaiOptions.FileName, StringComparison.OrdinalIgnoreCase))
         {
             throw new CodaiConfigurationException(
-                "Configuration management only writes an existing codai-config.yml, codai-config.yaml or codai-config.json file.");
+                "Configuration management only writes an existing .codai.yml, .codai.yaml or .codai.json file.");
         }
 
         if (requireExisting && !_fileSystem.FileExists(fullPath))

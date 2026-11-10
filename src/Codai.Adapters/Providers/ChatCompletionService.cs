@@ -3,6 +3,7 @@ using Codai.Core.Abstractions;
 using Codai.Core.Chat;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
+using Codai.Mcp.Client;
 using Codai.Providers.Tools;
 using Microsoft.Extensions.AI;
 
@@ -28,6 +29,7 @@ public sealed class ChatCompletionService : IChatCompletionService
     private readonly ReasoningOptions? _reasoning;
     private readonly int _maxTokens;
     private readonly bool _stream;
+    private readonly ResolvedProviderOptions _providerOptions;
 
     public ChatCompletionService(
         IChatClient client,
@@ -43,6 +45,7 @@ public sealed class ChatCompletionService : IChatCompletionService
         _reasoning = ReasoningEffortMap.ToReasoningOptions(options.ReasoningEffort);
         _maxTokens = options.MaxTokens;
         _stream = options.Stream;
+        _providerOptions = options;
         _toolExecutor = toolExecutor;
 
         var tools = toolExecutor?.Tools ?? [];
@@ -51,11 +54,7 @@ public sealed class ChatCompletionService : IChatCompletionService
             ? null
             : tools;
 
-        _client = _tools is null
-            ? client
-            : new ChatClientBuilder(client)
-                .UseFunctionInvocation(configure: invocation => invocation.AllowConcurrentInvocation = false)
-                .Build();
+        _client = client;
     }
 
     public string ProviderName { get; }
@@ -83,11 +82,17 @@ public sealed class ChatCompletionService : IChatCompletionService
             MaxOutputTokens = _maxTokens > 0 ? _maxTokens : null,
             Tools = SelectTools(request.AllowedTools, result => stoppedResult = result),
         };
+        IChatClient client = request.AutoCompact ? new ContextBudgetChatClient(_client, _providerOptions, request.ContextWindowTokens) : _client;
+        if (_tools is not null)
+        {
+            client = new ChatClientBuilder(client)
+                .UseFunctionInvocation(configure: invocation => invocation.AllowConcurrentInvocation = false).Build();
+        }
 
         if (_stream)
         {
             var completionWritten = false;
-            await foreach (var update in StreamChunksAsync(messages, options, cancellationToken).ConfigureAwait(false))
+            await foreach (var update in StreamChunksAsync(client, messages, options, cancellationToken).ConfigureAwait(false))
             {
                 if (stoppedResult is { IsSuccess: false } failed)
                 {
@@ -116,7 +121,7 @@ public sealed class ChatCompletionService : IChatCompletionService
             yield break;
         }
 
-        var response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+        var response = await GetResponseAsync(client, messages, options, cancellationToken).ConfigureAwait(false);
         if (stoppedResult is { IsSuccess: false } failure)
         {
             throw new ChatProviderException(failure.Content);
@@ -139,6 +144,8 @@ public sealed class ChatCompletionService : IChatCompletionService
     /// <remarks>
     /// A request that names a subset gets only that subset, so a tool the session does
     /// not offer for this request is never advertised to the model in the first place.
+    /// MCP schemas are discovered on demand through request-local metadata search.
+    /// Discovery only exposes tools in that subset and never authorizes their execution.
     /// That matters more than politeness: a tool that is absent from the list cannot be
     /// called, so the restriction holds even for a provider that would otherwise accept a
     /// call for a function it was never given.
@@ -151,10 +158,21 @@ public sealed class ChatCompletionService : IChatCompletionService
         }
 
         var review = new ToolReviewState();
-        var selected = _tools
+        var available = _tools
             .Where(tool => allowedTools is null || allowedTools.Contains(tool.Name, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        var deferMcp = available.Any(tool => tool is McpToolAdapter) &&
+            !_tools.Any(tool => string.Equals(tool.Name, "tool_search", StringComparison.OrdinalIgnoreCase));
+        var selected = available
+            .Where(tool => !deferMcp || tool is not McpToolAdapter)
             .Select(tool => (AITool)new ToolAIFunction(tool, _toolExecutor!, onStopped, review))
             .ToList();
+        if (deferMcp)
+        {
+            var deferred = available.Where(tool => tool is McpToolAdapter)
+                .Select(tool => (AIFunction)new ToolAIFunction(tool, _toolExecutor!, onStopped, review)).ToArray();
+            selected.Add(new ToolSearchAIFunction(deferred, selected));
+        }
 
         // An empty selection means "no tools", which is different from "no restriction".
         return selected.Count == 0 ? null : selected;
@@ -162,11 +180,12 @@ public sealed class ChatCompletionService : IChatCompletionService
 
     /// <summary>Streams the response as ordered <see cref="ChatStreamUpdate"/> chunks.</summary>
     private async IAsyncEnumerable<ChatStreamUpdate> StreamChunksAsync(
+        IChatClient client,
         IEnumerable<ChatMessage> messages,
         ChatOptions options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var enumerator = GetStream(messages, options, cancellationToken)
+        var enumerator = GetStream(client, messages, options, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
 
         var usage = TokenUsage.Empty;
@@ -244,13 +263,14 @@ public sealed class ChatCompletionService : IChatCompletionService
 
     /// <summary>Sends a single non-streamed request.</summary>
     private async Task<ChatResponse> GetResponseAsync(
+        IChatClient client,
         IEnumerable<ChatMessage> messages,
         ChatOptions options,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await _client
+            return await client
                 .GetResponseAsync(messages, options, cancellationToken)
                 .ConfigureAwait(false) ?? new ChatResponse([]);
         }
@@ -270,13 +290,22 @@ public sealed class ChatCompletionService : IChatCompletionService
     }
 
     private IAsyncEnumerable<ChatResponseUpdate> GetStream(
+        IChatClient client,
         IEnumerable<ChatMessage> messages,
         ChatOptions options,
         CancellationToken cancellationToken)
     {
         try
         {
-            return _client.GetStreamingResponseAsync(messages, options, cancellationToken);
+            return client.GetStreamingResponseAsync(messages, options, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (ChatProviderException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

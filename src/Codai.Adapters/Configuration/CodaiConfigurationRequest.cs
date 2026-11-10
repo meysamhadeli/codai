@@ -3,7 +3,7 @@ namespace Codai.Configuration;
 /// <summary>
 /// Inputs required to resolve configuration.
 /// </summary>
-/// <param name="WorkingDirectory">Directory scanned for <c>codai-config.*</c>.</param>
+/// <param name="WorkingDirectory">Directory scanned for <c>.codai.*</c>.</param>
 /// <param name="ConfigFilePath">Explicit configuration file, if any.</param>
 /// <param name="CommandLineArgs">Raw process arguments (flags only are used).</param>
 public sealed record CodaiConfigurationRequest(

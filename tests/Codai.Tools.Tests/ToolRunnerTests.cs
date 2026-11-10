@@ -6,6 +6,138 @@ namespace Codai.Tools.Tests;
 
 public class ToolRunnerTests
 {
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("{\"path\":42}")]
+    [InlineData("{\"path\":\"a.txt\",\"unexpected\":true}")]
+    public async Task Invalid_arguments_are_rejected_before_approval_or_execution(string arguments)
+    {
+        var tool = new FakeTool("write_file", isReadOnly: false)
+        {
+            ParametersSchema = """
+                {"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}
+                """,
+        };
+        var approver = new StubApprover(approve: true);
+        var runner = Runner(new ToolRegistry([tool]), approver);
+
+        var result = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args(arguments));
+
+        result.IsSuccess.Should().BeFalse();
+        result.Content.Should().Contain("Invalid arguments");
+        approver.Calls.Should().Be(0);
+        tool.Invocations.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("{\"paths\":[\"a.txt\"],\"limit\":2}", true)]
+    [InlineData("{\"paths\":[],\"limit\":2}", false)]
+    [InlineData("{\"paths\":[42],\"limit\":2}", false)]
+    [InlineData("{\"paths\":[\"\"],\"limit\":2}", false)]
+    [InlineData("{\"paths\":[\"a.txt\"],\"limit\":0}", false)]
+    [InlineData("{\"paths\":[\"a.txt\"],\"limit\":2.5}", false)]
+    [InlineData("{\"paths\":[\"a.txt\"],\"limit\":4}", false)]
+    public async Task Nested_arguments_and_local_references_follow_advertised_schema(string arguments, bool valid)
+    {
+        var tool = new FakeTool("search")
+        {
+            ParametersSchema = """
+                {
+                  "type":"object",
+                  "$defs":{"path":{"type":"string","minLength":1}},
+                  "properties":{
+                    "paths":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/path"}},
+                    "limit":{"type":"integer","minimum":1,"maximum":3}
+                  },
+                  "required":["paths","limit"]
+                }
+                """,
+        };
+
+        var result = await Runner(new ToolRegistry([tool])).ExecuteAsync(tool.Name, ToolTestHost.Args(arguments));
+
+        result.IsSuccess.Should().Be(valid);
+        tool.Invocations.Should().Be(valid ? 1 : 0);
+        if (!valid)
+        {
+            result.Content.Should().Contain("Invalid arguments");
+        }
+    }
+
+    [Fact]
+    public async Task Validation_feedback_identifies_field_and_allows_corrected_call()
+    {
+        var tool = new FakeTool("search")
+        {
+            ParametersSchema = """{"type":"object","properties":{"mode":{"enum":["files","content"]}},"required":["mode"]}""",
+        };
+        var runner = Runner(new ToolRegistry([tool]));
+
+        var invalid = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args("{\"mode\":\"unknown\"}"));
+        var corrected = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args("{\"mode\":\"files\"}"));
+
+        invalid.Content.Should().Contain("/mode");
+        invalid.StopsExecution.Should().BeFalse();
+        corrected.IsSuccess.Should().BeTrue();
+        tool.Invocations.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("{\"type\":42}")]
+    [InlineData("{\"$ref\":\"https://example.invalid/schema\"}")]
+    [InlineData("{\"$ref\":\"file:///schema.json\"}")]
+    public async Task Broken_or_external_schema_stops_without_approval_or_execution(string schema)
+    {
+        var tool = new FakeTool("write_file", isReadOnly: false) { ParametersSchema = schema };
+        var approver = new StubApprover(approve: true);
+
+        var result = await Runner(new ToolRegistry([tool]), approver).ExecuteAsync(tool.Name, ToolTestHost.Args("{}"));
+
+        result.IsSuccess.Should().BeFalse();
+        result.StopsExecution.Should().BeTrue();
+        result.Content.Should().Contain("Cannot validate arguments").And.Contain("Tool was not executed");
+        approver.Calls.Should().Be(0);
+        tool.Invocations.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Tool_schema_registries_do_not_share_conflicting_identifiers()
+    {
+        var first = new FakeTool("first")
+        {
+            ParametersSchema = """{"$id":"https://example.invalid/tool","type":"object","required":["first"]}""",
+        };
+        var second = new FakeTool("second")
+        {
+            ParametersSchema = """{"$id":"https://example.invalid/tool","type":"object","required":["second"]}""",
+        };
+        var runner = Runner(new ToolRegistry([first, second]));
+
+        (await runner.ExecuteAsync(first.Name, ToolTestHost.Args("{\"first\":true}"))).IsSuccess.Should().BeTrue();
+        (await runner.ExecuteAsync(second.Name, ToolTestHost.Args("{\"second\":true}"))).IsSuccess.Should().BeTrue();
+        (await runner.ExecuteAsync(first.Name, ToolTestHost.Args("{\"second\":true}"))).IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Invalid_calls_consume_budget_and_count_toward_failure_limit()
+    {
+        var tool = new FakeTool("search") { ParametersSchema = """{"type":"object","required":["path"]}""" };
+        var governor = new ToolCallGovernor { MaxConsecutiveFailures = 2 };
+        var runner = new ToolRunner(new ToolRegistry([tool]), AlwaysApproveToolApprover.Instance,
+            NullToolObserver.Instance, ToolTestHost.NewProject(), ToolTestHost.Root, governor: governor);
+
+        var first = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args("{\"other\":1}"));
+        var second = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args("{\"other\":2}"));
+        var blocked = await runner.ExecuteAsync(tool.Name, ToolTestHost.Args("{\"path\":\"a.txt\"}"));
+
+        first.StopsExecution.Should().BeFalse();
+        second.StopsExecution.Should().BeTrue();
+        blocked.IsSuccess.Should().BeFalse();
+        governor.Calls.Should().Be(2);
+        tool.Invocations.Should().Be(0);
+    }
+
     [Fact]
     public async Task Result_observer_receives_bounded_result_and_structured_arguments()
     {

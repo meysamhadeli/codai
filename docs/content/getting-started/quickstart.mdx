@@ -38,9 +38,12 @@ cd your-project
 codai
 ```
 
-The first unconfigured run asks for a theme, a provider, and a model, then **Save** or
+First review the **Workspace access** screen. **Leave** is selected by default;
+choose **Trust and continue** only when you trust the displayed directory.
+
+The first unconfigured run then asks for a theme, a provider, and a model, then **Save** or
 **Cancel**. After saving, chat starts immediately. Settings are written to
-`~/.codai/codai-config.json` and reused across projects.
+`~/.codai/.codai.json` and reused across projects.
 
 <Callout type="warning">
   Own-provider credentials are stored as plaintext in the configuration file.
@@ -53,7 +56,8 @@ The first unconfigured run asks for a theme, a provider, and a model, then **Sav
 codai
 ```
 
-The saved theme, provider, and model are reused without prompts. Use `codai auth` to
+Directory access is requested on every launch; trust is not remembered. The saved
+theme, provider, and model are reused without setup prompts. Use `codai auth` to
 change the connection, or `:preferences theme` in a session to change the theme.
 
 </Steps>

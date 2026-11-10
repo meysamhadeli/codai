@@ -3,6 +3,8 @@ using Codai.Core.Chat;
 using Codai.Core.Context;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
+using Codai.Configuration;
+using Codai.Providers;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
 
@@ -21,9 +23,7 @@ namespace Codai.Session.Tests;
 public class AutoCompactorTests
 {
     /// <summary>
-    /// A model whose window is smaller than the default reserve, so any conversation at all
-    /// measures as over budget. Useful for testing the urgent path without having to build a
-    /// conversation that is genuinely enormous.
+    /// A small-window model whose urgent-path fixtures explicitly reserve nearly all input.
     /// </summary>
     private const string SmallWindowModel = "gpt-4";
 
@@ -58,7 +58,9 @@ public class AutoCompactorTests
         string model = SmallWindowModel,
         CompactionPolicy? policy = null,
         CompactionStrategy strategy = CompactionStrategy.Agentic,
-        bool trim = false)
+        bool trim = false,
+        int window = 0,
+        ModeModelState? models = null)
     {
         var options = new SessionOptions
         {
@@ -67,13 +69,16 @@ public class AutoCompactorTests
             Model = model,
             Mode = AgentMode.Agent,
             AutoCompact = autoCompact,
+            AutoCompactWindow = window,
             CompactionStrategy = strategy,
         };
 
         var chat = new ScriptedChatCompletionService();
         var history = new ChatHistory();
         var ui = new FakeUserInterface();
-        var active = policy ?? new CompactionPolicy();
+        var active = policy ?? (model == SmallWindowModel
+            ? new CompactionPolicy { ReserveTokens = ContextWindow.For(model) - 1 }
+            : new CompactionPolicy());
         var compactor = new HistoryCompactor(
             chat,
             history,
@@ -97,7 +102,7 @@ public class AutoCompactorTests
                 ui,
                 new AgentModeState(AgentMode.Agent),
                 new StubToolRegistry(Tool),
-                trimmer),
+                trimmer, models),
             summarizer,
             chat,
             history,
@@ -110,7 +115,7 @@ public class AutoCompactorTests
     /// everything else of a model's window.
     /// </summary>
     private static CompactionPolicy BudgetOf(int budget, string model = RoomyModel) =>
-        new() { ReserveTokens = ContextWindow.For(model) - budget };
+        new() { ReserveTokens = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "openai", Model = model }).ContextWindowTokens - budget };
 
     private static void FillHistory(ChatHistory history, int turns = 3, int padding = 0)
     {
@@ -119,6 +124,88 @@ public class AutoCompactorTests
             var filler = padding == 0 ? string.Empty : new string('y', padding);
             history.Add(new ChatTurn(DateTimeOffset.UtcNow, $"question {i}{filler}", $"answer {i}{filler}"));
         }
+    }
+
+    [Theory]
+    [InlineData(RoomyModel, 0, false)]
+    [InlineData(RoomyModel, 32_000, true)]
+    [InlineData("deepseek-flash", 2_000_000, true)]
+    public async Task Selected_window_reduces_context_but_never_exceeds_model_limit(string model, int window, bool compacted)
+    {
+        var (compactor, summarizer, _, history, _, _) = Build(model: model,
+            strategy: CompactionStrategy.Basic, window: window);
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 6, padding: HugePadding);
+        var original = history.Turns.ToArray();
+
+        await compactor.BeforeRequestAsync("continue");
+
+        history.Turns.SequenceEqual(original).Should().Be(!compacted);
+    }
+
+    [Fact]
+    public async Task Window_cap_tracks_active_model_changes()
+    {
+        var provider = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "openai", Model = RoomyModel });
+        var models = new ModeModelState(provider, provider);
+        var (compactor, summarizer, _, history, ui, _) = Build(model: RoomyModel,
+            strategy: CompactionStrategy.Basic, window: 2_000_000, models: models);
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 6, padding: HugePadding);
+        var original = history.Turns.ToArray();
+        await compactor.BeforeRequestAsync("continue");
+        history.Turns.Should().Equal(original);
+
+        models.Set(AgentMode.Agent, "openai", "gpt-4o");
+        await compactor.BeforeRequestAsync("continue");
+
+        history.Turns.Should().NotEqual(original);
+        ui.Infos.Should().Contain(message => message.Contains("gpt-4o", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Injected_prompt_context_reduces_history_budget_before_the_request()
+    {
+        var (compactor, summarizer, _, history, _, _) = Build(model: RoomyModel,
+            policy: BudgetOf(50_000), strategy: CompactionStrategy.Basic);
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 6, padding: OverBudgetPadding);
+        var original = history.Turns.ToArray();
+
+        await compactor.BeforeRequestAsync("continue");
+        history.Turns.Should().Equal(original);
+        await compactor.BeforeRequestAsync("continue", contextTokens: 40_000);
+
+        history.Turns.Should().NotEqual(original);
+    }
+
+    [Fact]
+    public async Task Small_model_keeps_short_conversation_without_premature_compaction()
+    {
+        var (compactor, summarizer, chat, history, _, _) = Build(model: SmallWindowModel, policy: new CompactionPolicy());
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 3, padding: 400);
+        var original = history.Turns.ToArray();
+
+        await compactor.BeforeRequestAsync("continue");
+        await summarizer.WhenIdleAsync();
+
+        history.Turns.Should().Equal(original);
+        chat.Requests.Should().BeEmpty();
+        summarizer.State.Should().Be(BackgroundSummarizationState.Idle);
+    }
+
+    [Fact]
+    public async Task Small_model_compacts_long_conversation_with_default_policy()
+    {
+        var (compactor, summarizer, _, history, _, _) = Build(model: SmallWindowModel, policy: new CompactionPolicy());
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 20, padding: 2_000);
+
+        await compactor.BeforeRequestAsync("continue");
+
+        HistoryCompactor.Estimate(history.Turns).Should().BeLessThan(4_000);
+        history.Turns[^1].UserRequest.Should().StartWith("question 19");
     }
 
     [Fact]
@@ -132,6 +219,63 @@ public class AutoCompactorTests
 
         history.Turns.Should().Equal(original);
         chat.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Synchronously_completed_background_plan_allows_another_attempt()
+    {
+        var (_, summarizer, _, history, _, _) = Build(strategy: CompactionStrategy.Basic);
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 6, padding: HugePadding);
+
+        summarizer.Start(preserveRecentTokens: 1);
+        await summarizer.WhenIdleAsync();
+        summarizer.TryTake(out _).Should().BeTrue();
+        summarizer.State.Should().Be(BackgroundSummarizationState.Idle);
+
+        summarizer.Start(preserveRecentTokens: 1);
+        await summarizer.WhenIdleAsync();
+        summarizer.TryTake(out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Urgent_request_discards_summary_from_replaced_conversation()
+    {
+        var (compactor, summarizer, chat, history, _, _) = Build();
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 6, padding: OverBudgetPadding);
+        chat.Enqueue("STALE_SUMMARY");
+        summarizer.Start(preserveRecentTokens: 1);
+        await summarizer.WhenIdleAsync();
+
+        history.Clear();
+        FillHistory(history, turns: 6, padding: OverBudgetPadding);
+        chat.Enqueue("CURRENT_SUMMARY");
+
+        await compactor.BeforeRequestAsync("continue current task");
+
+        history.Turns[0].AiResponse.Should().Contain("CURRENT_SUMMARY").And.NotContain("STALE_SUMMARY");
+        chat.Requests.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Waiting_for_background_plan_consumes_its_queued_result()
+    {
+        var (_, summarizer, chat, history, _, _) = Build();
+        using var lifetime = summarizer;
+        FillHistory(history, turns: 6, padding: OverBudgetPadding);
+        var responseGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        chat.ResponseGate = responseGate.Task;
+        chat.Enqueue("background summary");
+        summarizer.Start(preserveRecentTokens: 1);
+        var waiting = summarizer.WaitAsync();
+        waiting.IsCompleted.Should().BeFalse();
+
+        responseGate.SetResult();
+        (await waiting).Should().NotBeNull();
+
+        summarizer.TryTake(out _).Should().BeFalse();
+        summarizer.State.Should().Be(BackgroundSummarizationState.Idle);
     }
 
     [Fact]
@@ -194,7 +338,12 @@ public class AutoCompactorTests
             tokens += TokenEstimator.EstimateRequest(turn.UserRequest, turn.AiResponse);
         }
 
-        return policy.Measure(tokens, model, TokenEstimator.EstimateTools([Tool]));
+        var limits = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "openai", Model = model });
+        var buffer = Math.Min(CompactionPolicy.DefaultReserveTokens, limits.ContextWindowTokens / 4);
+        var reserve = policy.ReserveTokens == CompactionPolicy.DefaultReserveTokens ? buffer : policy.ReserveTokens;
+        return ContextPressure.Measure(tokens, limits.ContextWindowTokens,
+            Math.Max(reserve, buffer + limits.OutputReserveTokens),
+            TokenEstimator.EstimateTools([Tool]), policy.SafetyMargin);
     }
 
     [Fact]
@@ -286,11 +435,11 @@ public class AutoCompactorTests
         ui.Infos.Should().BeEmpty();
         summarizer.State.Should().NotBe(BackgroundSummarizationState.Idle);
 
-        // The turn boundary applies it, not the request that started it.
         await summarizer.WhenIdleAsync();
         compactor.AfterResponse();
 
-        history.Turns[0].AiResponse.Should().Be("the summary");
+        history.Turns[0].AiResponse.Should().NotBe("the summary");
+        summarizer.State.Should().Be(BackgroundSummarizationState.Completed);
         history.Turns[^1].AiResponse.Should().StartWith("answer");
     }
 
@@ -318,6 +467,38 @@ public class AutoCompactorTests
 
         history.Turns[0].AiResponse.Should().Be("the summary");
         ui.Infos.Should().NotContain(message => message.Contains("Shortening it before the request goes out", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Completed_background_summary_preserves_prompt_prefix_until_compaction_is_due(bool asynchronous)
+    {
+        var policy = BudgetOf(20_000);
+        var (compactor, summarizer, chat, history, ui, _) = Build(model: RoomyModel, policy: policy);
+        GrowUntil(history, policy, RoomyModel, ContextPressureLevel.Proactive);
+        var original = history.Turns.ToArray();
+        chat.Enqueue("ready summary");
+
+        await compactor.BeforeRequestAsync("continue");
+        await summarizer.WhenIdleAsync();
+        for (var boundary = 0; boundary < 3; boundary++)
+        {
+            if (asynchronous)
+            {
+                await compactor.AfterResponseAsync();
+            }
+            else
+            {
+                compactor.AfterResponse();
+            }
+            await compactor.BeforeRequestAsync("continue");
+        }
+
+        history.Turns.Should().Equal(original);
+        summarizer.State.Should().Be(BackgroundSummarizationState.Completed);
+        chat.Requests.Should().ContainSingle();
+        ui.Infos.Should().BeEmpty();
     }
 
     [Fact]

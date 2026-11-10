@@ -11,6 +11,20 @@ Conversation history, saved task metadata, and workspace files are different
 things. Continuing a chat does not mean restoring files, and stopping a response
 does not undo completed edits.
 
+## Follow up after an interrupted response
+
+If a model exchange fails or is cancelled, Codai retains your request and any
+streamed response text in conversation history. The retained response is marked
+as interrupted, not as a completed answer. This history is included in the next
+request and saved with the conversation.
+
+For example, after asking whether WSO2 supports correlation IDs, you can follow up
+with "Use Context7 to research it" even if the previous lookup stopped at a tool
+failure limit. The model receives the earlier question without requiring you to
+repeat it. A follow-up starts a new request with its usual tool budget; it does not
+automatically retry failed calls or change approvals. Failed and cancelled tasks
+keep their original status.
+
 ## Continue your latest conversation
 
 From the same project:
@@ -23,6 +37,9 @@ Use `--data-dir <path>` when you need an isolated state directory.
 Changing `--config-dir` selects configuration, not the project root or state directory.
 
 ## Branch or start fresh
+
+Use `/session` to browse saved conversations from the main screen. `/sessions`
+remains an accepted alias; no top navigation tabs are needed.
 
 | Command | Result |
 | --- | --- |
@@ -54,10 +71,18 @@ Inspect the task and current working tree before choosing a recovery scope.
 Codai takes a workspace snapshot before each task and after its changes.
 Snapshots exclude `.codai` state and are stored with the task.
 
+The CLI reuses a project-scoped shadow Git repository and index across new tasks,
+rather than initializing and indexing a separate repository on every request.
+Each checkpoint retains its own revision and task/conversation metadata. Existing
+per-task repositories remain supported. Capture, restore, and compare share an
+exclusive repository lease; waiting for another process is bounded and cancellable.
+
 <Callout type="warning">
-  Current checkpoints are text snapshots, not a full shadow-Git or binary backup.
-  Restore can replace project files. Commit or separately back up important work,
-  inspect the checkpoint, and review the restore scope before confirming.
+  Git-backed CLI snapshots include binary files and honor Git ignore rules.
+  Ignored local files and `.codai` state are preserved during cleanup, but ignored
+  files are not backed up. SDK hosts using the text-only fallback do not receive
+  binary backups. Restore can replace project files. Commit or separately back up
+  important work, inspect the checkpoint, and review the scope before confirming.
 </Callout>
 
 <Steps>

@@ -12,6 +12,8 @@ public sealed class TerminalMouseInputTests
     [InlineData("\u001b[<0;80;3M", TerminalMouseAction.Press)]
     [InlineData("\u001b[<32;80;3M", TerminalMouseAction.Drag)]
     [InlineData("\u001b[<0;80;3m", TerminalMouseAction.Release)]
+    [InlineData("\u001b[<2;80;3M", TerminalMouseAction.Paste)]
+    [InlineData("\u001b[<2;80;3m", TerminalMouseAction.Release)]
     public void Sgr_reports_decode_without_becoming_draft_keys(string report, TerminalMouseAction action)
     {
         var parser = new TerminalMouseParser();
@@ -102,6 +104,7 @@ public sealed class TerminalMouseInputTests
     [InlineData(1u, 0u, TerminalMouseAction.Press)]
     [InlineData(1u, 1u, TerminalMouseAction.Drag)]
     [InlineData(0u, 0u, TerminalMouseAction.Release)]
+    [InlineData(2u, 0u, TerminalMouseAction.Paste)]
     public void Windows_mouse_records_decode_wheel_and_drag(uint buttons, uint flags, TerminalMouseAction action) =>
         WindowsConsoleMouseInput.DecodeAction(buttons, flags).Should().Be(action);
 

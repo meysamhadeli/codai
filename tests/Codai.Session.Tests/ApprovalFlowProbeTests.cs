@@ -19,7 +19,13 @@ public class ApprovalFlowProbeTests
         });
         console.Profile.Width = 100;
         console.Profile.Height = 30;
-        var input = new DelayedKeyInput(TimeSpan.FromMilliseconds(200));
+        var cursorHidden = false;
+        var input = new DelayedKeyInput(TimeSpan.FromMilliseconds(200), () =>
+        {
+            var frame = writer.ToString();
+            cursorHidden = frame.LastIndexOf("\u001b[?25l", StringComparison.Ordinal) >
+                frame.LastIndexOf("\u001b[?25h", StringComparison.Ordinal);
+        });
         using var ui = new SpectreUserInterface(console, input);
         await ui.ReadInputAsync();
 
@@ -33,9 +39,10 @@ public class ApprovalFlowProbeTests
         var decision = await ui.RunTurnAsync(token => ui.ApproveAsync(request, token), deadline.Token);
 
         decision.Should().Be(ApprovalDecision.AllowOnce);
+        cursorHidden.Should().BeTrue("the native cursor must not cover an approval choice");
     }
 
-    private sealed class DelayedKeyInput(TimeSpan delay) : IConsoleInput
+    private sealed class DelayedKeyInput(TimeSpan delay, Action? beforeKey = null) : IConsoleInput
     {
         private readonly DateTime _start = DateTime.UtcNow;
         private bool _sent;
@@ -54,6 +61,7 @@ public class ApprovalFlowProbeTests
                 return false;
             }
 
+            beforeKey?.Invoke();
             _sent = true;
             key = new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false);
             return true;

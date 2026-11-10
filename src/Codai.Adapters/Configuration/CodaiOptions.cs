@@ -11,7 +11,14 @@ public sealed class CodaiOptions
     public const string ProviderSectionName = "ai_provider_config";
 
     /// <summary>Configuration file name (without extension) searched in the working directory.</summary>
-    public const string FileName = "codai-config";
+    public const string FileName = ".codai";
+
+    /// <summary>Smallest selectable explicit automatic-compaction window.</summary>
+    public const int MinimumAutoCompactWindow = 32_000;
+
+    /// <summary>Automatic-compaction window in tokens; zero uses the model window.</summary>
+    [ConfigurationKeyName("auto_compact_window")]
+    public int AutoCompactWindow { get; set; }
 
     [ConfigurationKeyName("version")]
     public string Version { get; set; } = CodaiDefaults.Version;

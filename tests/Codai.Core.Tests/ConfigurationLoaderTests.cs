@@ -8,12 +8,78 @@ namespace Codai.Core.Tests;
 public class ConfigurationLoaderTests
 {
     [Theory]
+    [InlineData(-1)]
+    [InlineData(1)]
+    [InlineData(31_999)]
+    public void Invalid_auto_compact_window_is_rejected_at_startup(int window)
+    {
+        using var temp = new TempDirectory();
+        temp.WriteFile(".codai.json", JsonSerializer.Serialize(new { auto_compact_window = window }));
+
+        var load = () => Load(temp);
+
+        load.Should().Throw<CodaiConfigurationException>().WithMessage("*auto_compact_window*");
+    }
+
+    [Theory]
+    [InlineData("http", null, "streamableHttp")]
+    [InlineData("HTTP", "stdio", "streamableHttp")]
+    [InlineData("stdio", "streamableHttp", "stdio")]
+    [InlineData(null, "http", "streamableHttp")]
+    public void Native_mcp_type_alias_matches_manifest_transport_precedence(string? type, string? transport, string expected)
+    {
+        using var temp = new TempDirectory();
+        temp.WriteFile(".codai.json", JsonSerializer.Serialize(new
+        {
+            mcp = new
+            {
+                servers = new[] { new
+            {
+                name = "microsoftdocs/mcp", type, transport, url = "https://learn.microsoft.com/api/mcp",
+                gallery = "https://api.mcp.github.com", version = "1.0.0",
+            } }
+            },
+        }));
+
+        var server = Load(temp).Mcp.Servers.Should().ContainSingle().Subject;
+        server.Transport.Should().Be(expected);
+        server.Gallery.Should().Be("https://api.mcp.github.com");
+        server.Version.Should().Be("1.0.0");
+    }
+
+    [Fact]
+    public async Task Json_settings_and_discovery_metadata_share_one_preserved_document()
+    {
+        using var temp = new TempDirectory();
+        var path = temp.Combine(".codai.json");
+        var text = """
+            {
+              "ai_provider_config": { "provider": "ollama", "model": "local-model" },
+              "additionalDirectories": ["../shared"],
+              "mcpServers": { "docs": { "type": "http", "url": "https://example.test/mcp" } }
+            }
+            """;
+        temp.WriteFile(".codai.json", text);
+        var options = Load(temp);
+        options.LoadedFrom.Should().Be(path);
+        options.AiProviderConfig.Provider.Should().Be("ollama");
+        options.AiProviderConfig.Model.Should().Be("local-model");
+
+        var fileSystem = new InMemoryFileSystem().AddFile(path, text);
+        await new CodaiConfigurationManager(fileSystem).SetValueAsync(path, "theme", "forest", temp.Path);
+        using var saved = JsonDocument.Parse(fileSystem.Files[InMemoryFileSystem.Normalize(path)]);
+        saved.RootElement.GetProperty("additionalDirectories")[0].GetString().Should().Be("../shared");
+        saved.RootElement.GetProperty("mcpServers").GetProperty("docs").GetProperty("url").GetString().Should().Be("https://example.test/mcp");
+        saved.RootElement.GetProperty("theme").GetString().Should().Be("forest");
+    }
+
+    [Theory]
     [InlineData(".json")]
     [InlineData(".yaml")]
     public async Task Connection_settings_are_validated_together_before_existing_file_changes(string extension)
     {
         using var temp = new TempDirectory();
-        var path = Path.Combine(temp.Path, "codai-config" + extension);
+        var path = Path.Combine(temp.Path, ".codai" + extension);
         var fileSystem = new InMemoryFileSystem().AddFile(path, "{\"custom_note\":\"keep\"}");
         var manager = new CodaiConfigurationManager(fileSystem);
         var values = new Dictionary<string, string>
@@ -39,7 +105,7 @@ public class ConfigurationLoaderTests
     public async Task Settings_editor_preserves_document_fields_and_writes_typed_values(string extension)
     {
         using var temp = new TempDirectory();
-        var name = "codai-config" + extension;
+        var name = ".codai" + extension;
         var path = Path.Combine(temp.Path, name);
         var fileSystem = new InMemoryFileSystem().AddFile(path, "{\"custom_note\":\"keep\"}");
         var manager = new CodaiConfigurationManager(fileSystem);
@@ -47,10 +113,12 @@ public class ConfigurationLoaderTests
         await manager.SetValueAsync(path, "ai_provider_config.max_tokens", "512", temp.Path);
         await manager.SetValueAsync(path, "ai_provider_config.stream", "false", temp.Path);
         await manager.SetValueAsync(path, "theme", "forest", temp.Path);
+        await manager.SetValueAsync(path, "auto_compact_window", "800000", temp.Path);
         var saved = fileSystem.Files[InMemoryFileSystem.Normalize(path)];
         saved.Should().Contain("keep");
         temp.WriteFile(name, saved);
         var options = Load(temp);
+        options.AutoCompactWindow.Should().Be(800_000);
         options.AiProviderConfig.Temperature.Should().Be(1.25f);
         options.AiProviderConfig.MaxTokens.Should().Be(512);
         options.AiProviderConfig.Stream.Should().BeFalse();
@@ -69,7 +137,7 @@ public class ConfigurationLoaderTests
     public async Task Settings_editor_rejects_invalid_values_without_touching_file(string key, string value)
     {
         using var temp = new TempDirectory();
-        var path = Path.Combine(temp.Path, "codai-config.json");
+        var path = Path.Combine(temp.Path, ".codai.json");
         var fileSystem = new InMemoryFileSystem().AddFile(path, "{}");
         var manager = new CodaiConfigurationManager(fileSystem);
         Func<Task> save = () => manager.SetValueAsync(path, key, value, temp.Path);
@@ -134,7 +202,7 @@ public class ConfigurationLoaderTests
         using var temp = new TempDirectory();
 
         Load(temp).CheckpointRetention.Should().Be(10);
-        temp.WriteFile("codai-config.yml", "checkpoint_retention: 4");
+        temp.WriteFile(".codai.yml", "checkpoint_retention: 4");
 
         Load(temp).CheckpointRetention.Should().Be(4);
     }
@@ -162,7 +230,7 @@ public class ConfigurationLoaderTests
     public void Loads_mode_provider_and_model_overrides()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.yml", "plan_provider: ollama\nplan_model: qwen\nagent_provider: deepseek\nagent_model: deepseek-chat");
+        temp.WriteFile(".codai.yml", "plan_provider: ollama\nplan_model: qwen\nagent_provider: deepseek\nagent_model: deepseek-chat");
 
         var options = Load(temp);
 
@@ -173,8 +241,8 @@ public class ConfigurationLoaderTests
     }
 
     [Theory]
-    [InlineData("codai-config.yml", "budget:\n  max_consecutive_tool_failures: 5")]
-    [InlineData("codai-config.json", "{\"budget\":{\"max_consecutive_tool_failures\":5}}")]
+    [InlineData(".codai.yml", "budget:\n  max_consecutive_tool_failures: 5")]
+    [InlineData(".codai.json", "{\"budget\":{\"max_consecutive_tool_failures\":5}}")]
     public void Loads_tool_failure_limit_from_configuration(string name, string contents)
     {
         using var temp = new TempDirectory();
@@ -187,7 +255,7 @@ public class ConfigurationLoaderTests
     public void Retry_flag_overrides_file_and_environment()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.yml", "budget:\n  max_consecutive_tool_failures: 5");
+        temp.WriteFile(".codai.yml", "budget:\n  max_consecutive_tool_failures: 5");
         var environment = new FakeEnvironmentReader(new Dictionary<string, string?>
         {
             ["BUDGET__MAX_CONSECUTIVE_TOOL_FAILURES"] = "4",
@@ -215,7 +283,7 @@ public class ConfigurationLoaderTests
     public void Loads_yaml_configuration()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.yml", YamlConfig);
+        temp.WriteFile(".codai.yml", YamlConfig);
 
         var options = Load(temp);
 
@@ -226,14 +294,14 @@ public class ConfigurationLoaderTests
         options.AiProviderConfig.Temperature.Should().Be(0.2f);
         options.AiProviderConfig.ReasoningEffort.Should().Be(ReasoningEffortLevel.Low);
         options.Theme.Should().Be("dracula");
-        options.LoadedFrom.Should().EndWith("codai-config.yml");
+        options.LoadedFrom.Should().EndWith(".codai.yml");
     }
 
     [Fact]
     public void Loads_json_configuration()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.json", JsonConfig);
+        temp.WriteFile(".codai.json", JsonConfig);
 
         var options = Load(temp);
 
@@ -247,7 +315,7 @@ public class ConfigurationLoaderTests
     public void Loads_external_tool_enablement_and_disabled_plugins()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.json", """
+        temp.WriteFile(".codai.json", """
             {
               "disabled_plugins": ["plugins/disabled.dll"],
               "mcp": {"servers": [{"name": "offline", "command": "server", "enabled": false}]}
@@ -264,7 +332,7 @@ public class ConfigurationLoaderTests
     public async Task Configuration_manager_persists_external_toggles_and_removes_only_entries()
     {
         using var temp = new TempDirectory();
-        var configPath = Path.Combine(temp.Path, "codai-config.json");
+        var configPath = Path.Combine(temp.Path, ".codai.json");
         var pluginPath = Path.Combine(temp.Path, "plugins", "sample.dll");
         var fileSystem = new InMemoryFileSystem()
             .AddFile(configPath, """
@@ -319,7 +387,7 @@ public class ConfigurationLoaderTests
     public async Task Configuration_manager_rejects_non_dll_plugin_paths_without_writing()
     {
         using var temp = new TempDirectory();
-        var configPath = Path.Combine(temp.Path, "codai-config.json");
+        var configPath = Path.Combine(temp.Path, ".codai.json");
         var fileSystem = new InMemoryFileSystem().AddFile(configPath, "{\"plugins\":[\"plugin.dll\"]}");
         var manager = new CodaiConfigurationManager(fileSystem);
 
@@ -334,22 +402,22 @@ public class ConfigurationLoaderTests
     }
 
     [Fact]
-    public void Prefers_yml_over_json_when_both_present()
+    public void Prefers_json_over_yaml_when_both_present()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.yml", YamlConfig);
-        temp.WriteFile("codai-config.json", JsonConfig);
+        temp.WriteFile(".codai.yml", YamlConfig);
+        temp.WriteFile(".codai.json", JsonConfig);
 
         var options = Load(temp);
 
-        options.AiProviderConfig.Provider.Should().Be("azure-openai");
+        options.AiProviderConfig.Provider.Should().Be("mistral");
     }
 
     [Fact]
     public void Environment_overrides_file()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.yml", YamlConfig);
+        temp.WriteFile(".codai.yml", YamlConfig);
 
         var env = new FakeEnvironmentReader(new Dictionary<string, string?>
         {
@@ -383,7 +451,7 @@ public class ConfigurationLoaderTests
     public void Command_line_overrides_environment_and_file()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.yml", YamlConfig);
+        temp.WriteFile(".codai.yml", YamlConfig);
 
         var env = new FakeEnvironmentReader(new Dictionary<string, string?>
         {
@@ -448,9 +516,9 @@ public class ConfigurationLoaderTests
     public void Throws_for_unsupported_configuration_file_type()
     {
         using var temp = new TempDirectory();
-        temp.WriteFile("codai-config.txt", "irrelevant");
+        temp.WriteFile(".codai.txt", "irrelevant");
 
-        var act = () => Load(temp, file: temp.Combine("codai-config.txt"));
+        var act = () => Load(temp, file: temp.Combine(".codai.txt"));
 
         act.Should().Throw<CodaiConfigurationException>()
             .WithMessage("*Unsupported configuration file type*");

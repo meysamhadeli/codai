@@ -73,6 +73,21 @@ test("preserves published Agent mode section anchors", () => {
   }
 });
 
+test("keeps the published roadmap focused on planned VS Code extension delivery", () => {
+  const source = fs.readFileSync(new URL("./content/agent-mode-roadmap.mdx", import.meta.url), "utf8");
+  assert.match(source, /^title: "VS Code Extension Roadmap"$/m);
+  assert.match(source, /^# VS Code extension roadmap$/m);
+  assert.match(source, /planned extension work only/);
+  for (const heading of [
+    "Phase 1: Extension Foundation", "Phase 2: Contextual Coding And Review",
+    "Phase 3: Integrated Agent Tools", "Phase 4: Skills And Workspace Customization",
+    "Phase 5: Long-Running Tasks And Recovery", "Phase 6: Distribution And Release Quality",
+  ]) {
+    assert.ok(source.includes(`## ${heading}`), `${heading} must be covered`);
+  }
+  assert.doesNotMatch(source, /^## (Current foundations|Phase 1: Core Reliability|Phase 2: Workflow And Integration|Explicit Non-Goals)$/m);
+});
+
 test("documents every named built-in tool", () => {
   const directory = new URL("../src/Codai.Adapters/Tools/Tools/", import.meta.url);
   const reference = fs.readFileSync(new URL("./content/usage/tools.mdx", import.meta.url), "utf8");

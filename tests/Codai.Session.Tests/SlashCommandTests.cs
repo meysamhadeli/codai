@@ -1,4 +1,5 @@
 using Codai.Core.Agents;
+using Codai.Core.Chat;
 using Codai.Core.Tokens;
 using Codai.Session.Tests.Fakes;
 using FluentAssertions;
@@ -8,11 +9,255 @@ namespace Codai.Session.Tests;
 public class SlashCommandTests
 {
     [Theory]
+    [InlineData("/init Focus on tests", "AGENTS.md", AgentMode.Agent)]
+    public async Task Prompt_commands_run_through_normal_request_pipeline(string input, string expected, AgentMode mode)
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("Done.");
+        harness.QueueInputs(input, "/exit");
+
+        await harness.Build().RunAsync();
+
+        var request = harness.Chat.Requests.Should().ContainSingle().Subject;
+        request.UserMessage.Should().Contain(expected);
+        request.AllowedTools.Should().BeEquivalentTo(mode == AgentMode.Plan ? ["read_file"] : new[] { "read_file", "write_file" });
+        harness.Mode.Mode.Should().Be(AgentMode.Agent);
+    }
+
+    [Theory]
+    [InlineData("/debug")]
+    [InlineData("/editor")]
+    [InlineData("/review")]
+    [InlineData("/status")]
+    [InlineData("/variants")]
+    [InlineData("/connect")]
+    public async Task Removed_commands_do_not_call_model_edit_files_or_open_dialogs(string command)
+    {
+        var harness = new SessionHarness();
+        var path = Path.Combine(harness.Root, "Program.cs");
+        harness.FileSystem.AddFile(path, "original");
+        harness.Chat.Enqueue("File: Program.cs\n```csharp\n-original\n+changed\n```\n");
+        harness.Ui.EnqueueConfirmation(true);
+        harness.QueueInputs(command, "/exit");
+
+        await harness.Build().RunAsync();
+
+        (await harness.FileSystem.ReadAllTextAsync(path)).Should().Be("original");
+        harness.Ui.Prompts.Should().BeEmpty();
+        harness.Ui.Dialogs.Should().BeEmpty();
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Errors.Should().ContainSingle().Which.Should().Contain("Unknown command");
+        harness.Mode.Mode.Should().Be(AgentMode.Agent);
+    }
+
+    [Theory]
+    [InlineData("/agents", "plan")]
+    [InlineData("/models", "model:chosen-model")]
+    public async Task Selection_commands_open_local_pickers(string command, string selection)
+    {
+        var harness = new SessionHarness(model: "chosen-model");
+        harness.Ui.EnqueueChoice(selection);
+        harness.QueueInputs(command, "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Dialogs.Should().ContainSingle();
+        harness.Ui.Successes.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("/agents")]
+    [InlineData("/models")]
+    public async Task Cancelled_selection_does_not_change_session_or_send_requests(string command)
+    {
+        var harness = new SessionHarness();
+        harness.Ui.EnqueueChoice(null);
+        harness.Ui.EnqueueValue(null);
+        harness.QueueInputs(command, "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Successes.Should().BeEmpty();
+        harness.Ui.Insertions.Should().BeEmpty();
+        harness.Mode.Mode.Should().Be(AgentMode.Agent);
+    }
+
+    [Theory]
+    [InlineData("agent", AgentMode.Agent)]
+    [InlineData("plan", AgentMode.Plan)]
+    public async Task Agents_picker_offers_agent_and_plan_and_applies_selected_mode(string selection, AgentMode expected)
+    {
+        var harness = new SessionHarness();
+        harness.Mode.Mode = AgentMode.Plan;
+        harness.Ui.EnqueueSelection(items =>
+        {
+            items.Select(item => item.Label).Should().Equal("agent", "plan");
+            items.Select(item => item.Value).Should().Equal("agent", "plan");
+            items.Should().ContainSingle(item => item.IsCurrent).Which.Value.Should().Be("plan");
+            return selection;
+        });
+        harness.QueueInputs("/agents", "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Mode.Mode.Should().Be(expected);
+        harness.Chat.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task New_archives_current_history_and_clears_conversation()
+    {
+        var harness = new SessionHarness();
+        harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
+        harness.Chat.Enqueue("answer");
+        harness.Ui.EnqueueChoice("confirm");
+        harness.QueueInputs("question", "/new", "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.History.Turns.Should().BeEmpty();
+        var tasks = await harness.TaskStore.ListAsync(harness.Root);
+        var source = tasks.Single(task => task.Request == "question");
+        (await harness.SessionStore.LoadAsync(harness.Root, source.Id)).Should().ContainSingle();
+        harness.Tokens.SessionUsage.TotalTokens.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("/session")]
+    [InlineData("/sessions")]
+    public async Task Sessions_restores_selected_conversation_without_a_model_call(string command)
+    {
+        var harness = new SessionHarness();
+        harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
+        var source = (AgentTask.Create("Earlier session") with { Mode = AgentMode.Plan }).Complete();
+        await harness.TaskStore.SaveAsync(harness.Root, source);
+        await harness.SessionStore.SaveAsync(harness.Root, source.Id, [new ChatTurn(DateTimeOffset.UtcNow, "saved", "answer")]);
+        harness.Ui.EnqueueChoice(source.Id);
+        harness.QueueInputs(command, "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.History.Turns.Should().ContainSingle().Which.UserRequest.Should().Be("saved");
+        harness.Mode.Mode.Should().Be(AgentMode.Plan);
+        harness.Chat.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Retired_slash_command_is_not_forwarded_to_model()
+    {
+        var harness = new SessionHarness();
+        harness.QueueInputs("/task list", "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Errors.Should().ContainSingle().Which.Should().Contain("Unknown command");
+    }
+
+    [Fact]
+    public void Slash_menu_matches_the_supported_command_set()
+    {
+        string[] names = ["agents", "auth", "autocompact", "compact", "diff", "exit", "help", "init", "mcps", "models", "new", "session", "settings", "skills", "themes"];
+        var advertised = SlashCommandParser.HelpText.Split('\n')
+            .Select(line => line.Split(' ', 2)[0].TrimStart('/')).ToArray();
+
+        advertised.Should().BeEquivalentTo(names);
+        foreach (var name in names)
+        {
+            SlashCommandParser.Parse("/" + name).Should().NotBe(SlashCommand.None, name);
+        }
+    }
+
+    [Theory]
+    [InlineData("mode")]
+    [InlineData("model")]
+    [InlineData("preferences")]
+    [InlineData("task")]
+    [InlineData("team")]
+    [InlineData("repair")]
+    [InlineData("act")]
+    [InlineData("deep-plan")]
+    [InlineData("config")]
+    [InlineData("clear")]
+    [InlineData("token")]
+    [InlineData("new-rule")]
+    [InlineData("report-bug")]
+    [InlineData("connect")]
+    [InlineData("debug")]
+    [InlineData("editor")]
+    [InlineData("review")]
+    [InlineData("status")]
+    [InlineData("variants")]
+    public void Retired_slash_names_are_not_built_in_commands(string name) =>
+        SlashCommandParser.Parse("/" + name).Should().Be(SlashCommand.None);
+
+    [Fact]
+    public async Task Settings_opens_local_configuration_without_a_model_request()
+    {
+        var harness = new SessionHarness();
+        harness.Settings = new SessionSettingsWorkflow(harness.Ui, harness.Inspector,
+            new Codai.Application.Inspection.ConfigurationInspectionContext
+            {
+                ProjectRoot = harness.Root,
+                ConfigurationDirectory = harness.Root,
+                Provider = harness.Options.Provider,
+                Model = harness.Options.Model,
+            }, harness.FileSystem);
+        harness.Ui.EnqueueSelection(items =>
+        {
+            items.Single(item => item.Value == "ai_provider_config.model").RightLabel.Should().Be(harness.Options.Model);
+            items.Single(item => item.Value == "ai_provider_config.api_key").RightLabel.Should().Be("Hidden");
+            return null;
+        });
+        harness.QueueInputs("/settings", "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Dialogs.Should().ContainSingle().Which.Should().Contain("Edit configuration");
+    }
+
+    [Theory]
+    [InlineData("status", "Mode")]
+    [InlineData("usage", "Token budget")]
+    [InlineData("stats", "Available tools")]
+    public async Task Settings_tabs_show_real_inspection_data_and_return_to_configuration(string section, string label)
+    {
+        var harness = new SessionHarness();
+        var workflow = new SessionSettingsWorkflow(harness.Ui, harness.Inspector,
+            new Codai.Application.Inspection.ConfigurationInspectionContext
+            {
+                ProjectRoot = harness.Root,
+                ConfigurationDirectory = harness.Root,
+                Provider = harness.Options.Provider,
+                Model = harness.Options.Model,
+            }, harness.FileSystem);
+        harness.Ui.EnqueueSelection(items =>
+        {
+            items.Should().Contain(item => item.Label == label && !string.IsNullOrEmpty(item.RightLabel));
+            return "@settings:config";
+        });
+        harness.Ui.EnqueueSelection(items =>
+        {
+            items.Should().Contain(item => item.Value == "ai_provider_config.model");
+            return null;
+        });
+
+        await workflow.RunAsync(section);
+
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Dialogs.Should().HaveCount(2);
+    }
+
+    [Theory]
     [InlineData("/help", SlashCommand.Help)]
-    [InlineData("/preferences theme", SlashCommand.Settings)]
-    [InlineData("/session history", SlashCommand.Session)]
-    [InlineData(" /mode plan ", SlashCommand.Mode)]
-    public void Forward_slash_commands_share_existing_handlers(string input, SlashCommand expected)
+    [InlineData("/auth", SlashCommand.Connect)]
+    [InlineData("/themes", SlashCommand.Themes)]
+    [InlineData("/sessions", SlashCommand.Sessions)]
+    [InlineData(" /agents plan ", SlashCommand.Agents)]
+    public void Forward_slash_commands_use_OpenCode_handlers(string input, SlashCommand expected)
     {
         SlashCommandParser.Parse(input).Should().Be(expected);
     }
@@ -21,10 +266,11 @@ public class SlashCommandTests
     public async Task Forward_slash_commands_execute_locally_without_model_requests()
     {
         var harness = new SessionHarness();
-        harness.QueueInputs("/mode plan", "/config session", "/exit");
+        harness.QueueInputs("/agents plan", "/exit");
         (await harness.Build().RunAsync()).Should().Be(0);
         harness.Chat.Requests.Should().BeEmpty();
-        harness.Ui.Lines.Should().Contain(line => line.Contains("mode: plan", StringComparison.Ordinal));
+        harness.Mode.Mode.Should().Be(AgentMode.Plan);
+        harness.Ui.Errors.Should().BeEmpty();
     }
 
     [Fact]
@@ -288,7 +534,7 @@ public class SlashCommandTests
 
     [Theory]
     [InlineData(":mode ask")]
-    [InlineData("/mode ASK")]
+    [InlineData("/agents ASK")]
     [InlineData(":model ask provider model")]
     public async Task Removed_ask_selection_is_rejected_without_changing_mode(string command)
     {
@@ -334,9 +580,9 @@ public class SlashCommandTests
         var harness = new SessionHarness();
         harness.Chat.Enqueue("answer");
         harness.FileSystem.AddFile(
-            System.IO.Path.Combine(harness.Root, ".codai", "commands", "review.md"),
+            System.IO.Path.Combine(harness.Root, ".codai", "commands", "inspect.md"),
             "---\ndescription: Reviews a change\n---\nReview the working tree: $ARGUMENTS");
-        harness.QueueInputs(":review src/a.cs", ":exit");
+        harness.QueueInputs("/inspect src/a.cs", ":exit");
 
         await harness.Build().RunAsync();
 
@@ -352,7 +598,7 @@ public class SlashCommandTests
         harness.Chat.Enqueue("second answer");
         harness.Chat.Enqueue("third answer");
         harness.Chat.Enqueue("the summary");
-        harness.QueueInputs("first question", "second question", "third question", ":compact", ":exit");
+        harness.QueueInputs("first question", "second question", "third question", "/compact", "/exit");
 
         await harness.Build().RunAsync();
 
@@ -361,6 +607,9 @@ public class SlashCommandTests
         harness.History.Turns[0].UserRequest.Should().Be(HistoryCompactor.SummaryTurnLabel);
         harness.History.Turns[0].AiResponse.Should().Be("the summary");
         harness.History.Turns[2].AiResponse.Should().Be("third answer");
+        harness.Ui.ModelRequests.Should().HaveCount(4).And.OnlyHaveUniqueItems();
+        harness.Ui.CompletedModelRequests.Should().Equal(harness.Ui.ModelRequests);
+        harness.Ui.ModelUpdates.Should().Contain(update => update.Update.IsCompleted);
     }
 
     [Fact]
@@ -371,13 +620,101 @@ public class SlashCommandTests
         harness.Chat.Enqueue("second answer");
         harness.Chat.Enqueue("third answer");
         harness.Chat.Enqueue("the summary");
-        harness.QueueInputs("first question", "second question", "third question", ":compact keep the file paths", ":exit");
+        harness.QueueInputs("first question", "second question", "third question", "/compact keep the file paths", "/exit");
 
         await harness.Build().RunAsync();
 
         harness.Chat.Requests[^1].UserMessage
             .Should()
             .Contain("keep the file paths");
+    }
+
+    [Theory]
+    [InlineData("auto", 0)]
+    [InlineData("800k", 800_000)]
+    [InlineData("1m", 1_000_000)]
+    [InlineData("64K", 64_000)]
+    [InlineData("32768", 32_768)]
+    public async Task Auto_compact_command_changes_live_window_without_model_call(string value, int expected)
+    {
+        var harness = new SessionHarness();
+        harness.QueueInputs("/autocompact " + value, "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Options.AutoCompactWindow.Should().Be(expected);
+        harness.Chat.Requests.Should().BeEmpty();
+        harness.Ui.Errors.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("12k")]
+    [InlineData("off")]
+    [InlineData("99999999999999999999999999999m")]
+    public async Task Invalid_auto_compact_window_does_not_change_live_setting(string value)
+    {
+        var harness = new SessionHarness();
+        harness.Options.AutoCompactWindow = 64_000;
+        harness.QueueInputs("/autocompact " + value, "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Options.AutoCompactWindow.Should().Be(64_000);
+        harness.Ui.Errors.Should().ContainSingle();
+        harness.Chat.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Auto_compact_picker_can_cancel_or_apply_a_saved_window()
+    {
+        var harness = new SessionHarness();
+        harness.Settings = new SessionSettingsWorkflow(harness.Ui, harness.Inspector,
+            new()
+            {
+                ProjectRoot = harness.Root,
+                ConfigurationDirectory = harness.Root,
+                Provider = harness.Options.Provider,
+                Model = harness.Options.Model
+            }, harness.FileSystem);
+        harness.Ui.EnqueueChoice(null);
+        harness.Ui.EnqueueChoice("800000");
+        harness.QueueInputs("/autocompact", "/autocompact", "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Options.AutoCompactWindow.Should().Be(800_000);
+        harness.Ui.Dialogs.Should().HaveCount(2);
+        harness.Ui.Menus.Should().OnlyContain(menu => menu.HorizontalSelection);
+        (await harness.FileSystem.ReadAllTextAsync(Path.Combine(harness.Root, ".codai.json")))
+            .Should().Contain("800000");
+        harness.Chat.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Failed_auto_compact_save_preserves_configuration_and_live_window()
+    {
+        var harness = new SessionHarness();
+        var directory = Path.Combine(harness.Root, "settings");
+        var path = Path.Combine(directory, ".codai.json");
+        harness.FileSystem.AddFile(path, "{invalid");
+        harness.Options.AutoCompactWindow = 64_000;
+        harness.Settings = new SessionSettingsWorkflow(harness.Ui, harness.Inspector,
+            new()
+            {
+                ProjectRoot = harness.Root,
+                ConfigurationDirectory = directory,
+                Provider = harness.Options.Provider,
+                Model = harness.Options.Model
+            }, harness.FileSystem);
+        harness.QueueInputs("/autocompact 800k", "/exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Options.AutoCompactWindow.Should().Be(64_000);
+        (await harness.FileSystem.ReadAllTextAsync(path)).Should().Be("{invalid");
+        harness.Ui.Errors.Should().ContainSingle().Which.Should().Contain("Could not save auto-compact window");
+        harness.Chat.Requests.Should().BeEmpty();
     }
 
     [Fact]
@@ -493,13 +830,10 @@ public class SlashCommandTests
     }
 
     [Fact]
-    public async Task Compact_is_reported_in_the_help_text()
+    public void Retired_commands_are_not_reported_in_the_help_text()
     {
-        SlashCommandParser.HelpText.Should().Contain("/compact");
-        SlashCommandParser.HelpText.Should().Contain("/mode");
-        SlashCommandParser.HelpText.Should().Contain("/team start");
-        SlashCommandParser.HelpText.Should().Contain("/team add");
-        SlashCommandParser.HelpText.Should().Contain("/team complete");
+        SlashCommandParser.HelpText.Should().NotContain("/mode ")
+            .And.NotContain("/team").And.NotContain("/preferences");
     }
 
     [Fact]

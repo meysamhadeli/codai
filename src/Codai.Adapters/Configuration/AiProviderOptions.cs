@@ -3,8 +3,7 @@ using Microsoft.Extensions.Configuration;
 namespace Codai.Configuration;
 
 /// <summary>
-/// Provider/model settings. Key names match the original <c>codai-config.yml</c>
-/// so existing configuration files keep working.
+/// Provider/model settings stored in <c>.codai.json</c> or its YAML equivalents.
 /// </summary>
 public sealed class AiProviderOptions
 {

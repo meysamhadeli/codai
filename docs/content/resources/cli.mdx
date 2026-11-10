@@ -32,6 +32,10 @@ codai config model --json
 Pipe task text to Codai, or use `--` before literal prompt text beginning with a dash.
 Piped input and positional prompt text are combined into one task.
 
+Agent launches ask for workspace access before loading project content. **Leave**
+is selected by default; trust lasts for that run only. Redirected and JSON runs
+require `--trust-directory`. See [workspace trust](/usage/permissions#authorize-workspace-access).
+
 ## Project and configuration
 
 | Option | Purpose |
@@ -69,14 +73,15 @@ Provider support for sampling and reasoning options varies.
 | `--no-shell` | Remove command, build, and test tools |
 | `--no-sub-agents` | Disable delegation |
 | `--disable-tool <name>` | Hide and block a tool; repeatable |
-| `--auto-approve <bool>` | Explicitly approve writes/commands; default false |
+| `--auto-approve <bool>` | Approve writes/commands automatically; default true in interactive terminal sessions, false for headless runs. Explicit false starts manual review. |
+| `--trust-directory` | Explicitly authorize workspace access for this invocation; required for redirected or JSON agent runs. Does not approve tools. |
 | `--no-hooks` | Disable lifecycle hooks |
 | `--hooks-dir <path>` | Add a hooks configuration directory |
 | `-t, --timeout <seconds>` | Bound the whole run, including input and tools; 0 disables |
 | `--retries <n>` | Limit consecutive tool failures; default 3 |
 
 <Callout type="warning">
-  One-shot/piped runs do not read approval input. Writes and commands are denied
+  Piped and JSON runs require `--trust-directory`. One-shot/piped runs do not read tool approval input. Writes and commands are denied
   unless `--auto-approve true` is supplied. This flag does not bypass mode restrictions.
 </Callout>
 
@@ -108,7 +113,7 @@ It changes configuration entries only, not plugin binaries or active connections
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Request completed |
+| `0` | Request completed, or workspace access declined without starting an agent |
 | `1` | Error |
 | `124` | Run timed out |
 | `130` | Cancelled |
@@ -120,15 +125,17 @@ For automation, inspect the reported outcome and verification results as well.
 
 | Task | Commands |
 | --- | --- |
-| Change mode or model | `:mode`, `:model`, `:act`, `:deep-plan` |
-| Inspect/edit settings | `:config`, `:preferences` |
-| Manage context | `:compact`, `:new-task`, `:clear-history` |
-| Work with saved state | `:session`, `:task history`, `:task checkpoints`, `:task restore` |
-| Investigate in parallel | `:task start`, `:task list`, `:team start`, `:team list` |
-| Inspect usage | `:token`, `:clear-token` |
-| Diagnose | `:repair`, `:report-bug` |
-| Exit or get help | `:exit`, `:help` |
+| Change agent or model | `/agents [agent\|plan]`, `/models` |
+| Authenticate or customize | `/auth`, `/settings [config\|status\|usage\|stats]`, `/themes`, `/mcps`, `/skills` |
+| Inspect changes | `/diff` |
+| Prepare repository guidance | `/init [focus]` |
+| Work with saved state | `/new`, `/session` (`/sessions` alias accepted) |
+| Exit or get help | `/exit`, `/help` |
 
-Both `:` and `/` prefixes work.
-See [Terminal](/usage/terminal), [Sessions](/usage/sessions), and
+`/debug`, `/editor`, `/review`, `/status`, and `/variants` were removed. `/auth`
+replaced `/connect` without retaining an alias. Legacy colon commands remain callable for
+existing workflows, including advanced context/task/checkpoint operations, but
+are no longer part of slash completion or the command palette. `/move` and
+`/update` are not implemented. See [Terminal](/usage/terminal#slash-commands) for
+command behavior and compatibility limits, [Sessions](/usage/sessions), and
 [Context](/usage/context) for complete workflows rather than isolated command names.

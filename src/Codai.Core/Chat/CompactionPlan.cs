@@ -61,6 +61,13 @@ public sealed record CompactionPlan(
     public int KeptTurns { get; init; }
 
     /// <summary>
+    /// Immutable snapshot of the consumed history, when captured by the planner. Applying
+    /// the plan requires this prefix to remain unchanged; later appended turns are allowed.
+    /// Null preserves compatibility with externally constructed plans.
+    /// </summary>
+    public IReadOnlyList<ChatTurn>? SourceTurns { get; init; }
+
+    /// <summary>
     /// Original turns whose place <see cref="Replacement"/> takes. A summary stands in for the
     /// turns it folded plus the turn that holds the summary itself.
     /// </summary>

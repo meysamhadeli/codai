@@ -47,6 +47,17 @@ public class ProviderCatalogTests
 
 public class ResolvedProviderOptionsTests
 {
+    [Fact]
+    public void Context_limits_use_catalog_input_metadata_and_keep_explicit_output_reserve()
+    {
+        var resolved = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "openai", Model = "gpt-4.1", MaxTokens = 64_000 });
+        resolved.ContextWindowTokens.Should().BeGreaterThan(Codai.Core.Context.ContextWindow.For("gpt-4.1"));
+        resolved.OutputReserveTokens.Should().Be(64_000);
+        var unknown = ResolvedProviderOptions.From(new AiProviderOptions { Provider = "openai", Model = "unknown-model" });
+        unknown.ContextWindowTokens.Should().Be(Codai.Core.Context.ContextWindow.DefaultTokens);
+        unknown.OutputReserveTokens.Should().Be(4_096);
+    }
+
     private static Configuration.AiProviderOptions Options(
         string provider,
         string? baseUrl = null,

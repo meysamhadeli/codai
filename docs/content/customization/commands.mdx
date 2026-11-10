@@ -48,7 +48,12 @@ Type `/` in the composer, or inspect the catalog:
 codai config commands
 ```
 
-Settings, **Skills and workflows**, inserts a selected command without sending it.
+`/skills` manages enabled skills with plain checkmarks. Enter toggles a skill;
+Escape closes and saves. Invoke custom commands
+or workflows directly by their slash names.
+All discovered skill names appear in `/` completion. Checked skill instructions
+apply to every request where relevant, even without an explicit slash invocation;
+unchecked skills remain suggested and can be invoked explicitly without changing checks.
 Review the draft before pressing Enter.
 
 ## Keep commands focused
@@ -65,6 +70,8 @@ Review the draft before pressing Enter.
 
 ## Built-in commands
 
-Custom workflows sit alongside built-in commands such as `:mode`, `:model`,
-`:preferences`, and `:session`. Use `:help` for the installed command catalog,
-or see the [CLI reference](/resources/cli).
+Custom workflows sit alongside built-in commands such as `/agents`, `/models`,
+`/auth`, `/settings`, `/compact`, `/autocompact`, and `/session` (also `/sessions`). Built-in slash names are reserved and take precedence;
+rename a colliding workflow or use its colon form. The skills picker omits
+reserved names. Use `/help` for the installed catalog or see the
+[CLI reference](/resources/cli).

@@ -17,6 +17,82 @@ namespace Codai.Session.Tests;
 
 public class ToolIntegrationTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Scoped_instructions_are_reviewed_before_write_approval_and_fail_closed_when_oversized(bool oversized, bool patch)
+    {
+        var root = Directory.CreateTempSubdirectory("codai-scoped-instruction-tools-");
+        try
+        {
+            var source = root.CreateSubdirectory("src");
+            var file = Path.Combine(source.FullName, "Main.cs");
+            await File.WriteAllTextAsync(file, "original");
+            foreach (var name in new[] { "AGENTS.md", "CLAUDE.md", "instructions.md" })
+            {
+                await File.WriteAllTextAsync(Path.Combine(source.FullName, name), oversized ? new string('x', 32768) : "SCOPED_WRITE_GUIDANCE");
+            }
+            var ui = new FakeUserInterface();
+            var services = new ServiceCollection();
+            services.AddSingleton<IUserInterface>(ui);
+            services.AddCodaiApplication(OptionsFor(), root.FullName, mode: AgentMode.Agent);
+            await using var provider = services.BuildServiceProvider();
+            var guidance = provider.GetRequiredService<RequestRuleGuidance>();
+            guidance.BeginRequest([], [], await provider.GetRequiredService<IProjectInstructionsProvider>().LoadAsync(root.FullName));
+            var executor = provider.GetRequiredService<IToolExecutor>();
+            var arguments = patch ? ToolTestArgs.Parse(JsonSerializer.Serialize(new
+            {
+                patch = "*** Begin Patch\n*** Update File: src/Main.cs\n@@\n-original\n+changed\n*** End Patch",
+            })) : ToolTestArgs.Parse("{\"path\":\"src/Main.cs\",\"content\":\"changed\"}");
+            var toolName = patch ? "apply_patch" : "write_file";
+
+            var result = await executor.ExecuteAsync(toolName, arguments);
+
+            ui.Prompts.Should().BeEmpty();
+            File.ReadAllText(file).Should().Be("original");
+            result.RequiresModelReview.Should().Be(!oversized);
+            if (oversized)
+            {
+                result.IsSuccess.Should().BeFalse();
+                result.StopsExecution.Should().BeTrue();
+            }
+            else
+            {
+                result.Content.Should().Contain("SCOPED_WRITE_GUIDANCE");
+                guidance.RenderActivated().Should().Contain("SCOPED_WRITE_GUIDANCE").And.Contain("scope: src");
+                var denied = await executor.ExecuteAsync(toolName, arguments);
+                denied.IsSuccess.Should().BeFalse();
+                denied.RequiresModelReview.Should().BeFalse();
+                ui.Prompts.Should().ContainSingle();
+                File.ReadAllText(file).Should().Be("original");
+                foreach (var name in new[] { "AGENTS.md", "CLAUDE.md", "instructions.md" })
+                {
+                    await File.WriteAllTextAsync(Path.Combine(source.FullName, name), "UPDATED_WRITE_GUIDANCE");
+                }
+                var changed = await executor.ExecuteAsync("read_file", ToolTestArgs.Parse("{\"path\":\"src/Main.cs\"}"));
+                changed.RequiresModelReview.Should().BeTrue();
+                changed.Content.Should().Contain("UPDATED_WRITE_GUIDANCE").And.NotContain("SCOPED_WRITE_GUIDANCE");
+                guidance.RenderActivated().Should().Contain("UPDATED_WRITE_GUIDANCE").And.NotContain("SCOPED_WRITE_GUIDANCE");
+                foreach (var name in new[] { "AGENTS.md", "CLAUDE.md", "instructions.md" })
+                {
+                    File.Delete(Path.Combine(source.FullName, name));
+                }
+                var removed = await executor.ExecuteAsync("read_file", ToolTestArgs.Parse("{\"path\":\"src/Main.cs\"}"));
+                removed.RequiresModelReview.Should().BeTrue();
+                removed.Content.Should().Contain("no longer present");
+                guidance.RenderActivated().Should().Contain("no longer apply").And.NotContain("UPDATED_WRITE_GUIDANCE");
+            }
+            guidance.EndRequest();
+            guidance.RenderActivated().Should().BeNull();
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public async Task Guidance_budget_failure_returns_terminal_result_without_approval()
     {
@@ -774,7 +850,7 @@ public class ToolIntegrationTests
                 args.AddRange(["--timeout", "2"]);
             }
 
-            (await app.RunAsync([.. args], cancellation.Token)).Should().Be(timeout ? 124 : 130);
+            (await app.RunTrustedAsync([.. args], cancellation.Token)).Should().Be(timeout ? 124 : 130);
 
             File.Exists(Path.Combine(root.FullName, "cancelled-marker.txt")).Should().BeFalse();
             client.Calls.Should().Be(1);
@@ -825,7 +901,7 @@ public class ToolIntegrationTests
                 return executionProvider.GetRequiredService<ICodaiSession>();
             });
 
-            (await app.RunAsync(["--json", "--provider", "ollama", "--no-hooks", "--no-sub-agents",
+            (await app.RunTrustedAsync(["--json", "--provider", "ollama", "--no-hooks", "--no-sub-agents",
                 "--auto-approve", approval ? "true" : "false", "Run command"]))
                 .Should().Be(0);
 
@@ -905,7 +981,7 @@ public class ToolIntegrationTests
                 return executionProvider.GetRequiredService<ICodaiSession>();
             });
 
-            var exitCode = await app.RunAsync(["--execute-plan", "--mode", "plan", "--json", "--provider", "ollama",
+            var exitCode = await app.RunTrustedAsync(["--execute-plan", "--mode", "plan", "--json", "--provider", "ollama",
                 "--auto-approve", approval ? "true" : "false", "--no-hooks", "--no-sub-agents", "Run required checks."]);
 
             exitCode.Should().Be(approval ? 0 : 1);
@@ -959,7 +1035,7 @@ public class ToolIntegrationTests
                 return executionProvider.GetRequiredService<ICodaiSession>();
             });
 
-            var exitCode = await app.RunAsync(["--json", "--provider", "ollama", "--mode", AgentModeParser.ToName(mode),
+            var exitCode = await app.RunTrustedAsync(["--json", "--provider", "ollama", "--mode", AgentModeParser.ToName(mode),
                 "--no-hooks", "--no-sub-agents", "Read a.txt and b.txt in one call."]);
 
             exitCode.Should().Be(0);

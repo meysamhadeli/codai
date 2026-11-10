@@ -6,6 +6,7 @@ using Codai.Core.Projects;
 using Codai.Core.Prompting;
 using Codai.Core.Tokens;
 using Codai.Core.Tools;
+using Codai.Tools;
 
 namespace Codai.Application;
 
@@ -37,6 +38,9 @@ public sealed class ChatExchangeService
     private readonly ICostCalculator _costCalculator;
     private readonly AgentBudget _budget;
     private readonly RequestRuleGuidance? _ruleGuidance;
+    private readonly ISkillCatalog? _skillCatalog;
+    private readonly IToolRegistry? _toolRegistry;
+    private readonly IProjectInstructionsProvider? _instructionsProvider;
 
     /// <summary>Creates the service.</summary>
     public ChatExchangeService(
@@ -55,7 +59,10 @@ public sealed class ChatExchangeService
         IAgentProgressSink? progress = null,
         ICostCalculator? costCalculator = null,
         AgentBudget? budget = null,
-        RequestRuleGuidance? ruleGuidance = null)
+        RequestRuleGuidance? ruleGuidance = null,
+        ISkillCatalog? skillCatalog = null,
+        IToolRegistry? toolRegistry = null,
+        IProjectInstructionsProvider? instructionsProvider = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(promptBuilder);
@@ -86,16 +93,19 @@ public sealed class ChatExchangeService
         _costCalculator = costCalculator ?? NullCostCalculator.Instance;
         _budget = budget ?? new AgentBudget();
         _ruleGuidance = ruleGuidance;
+        _skillCatalog = skillCatalog;
+        _toolRegistry = toolRegistry;
+        _instructionsProvider = instructionsProvider;
     }
 
     /// <summary>
-    /// Sends one user request and returns the final response text. Exactly one history
-    /// entry is added per request, whatever happens in between.
+    /// Sends one user request and returns the final response text. Each attempted model
+    /// exchange records one history entry, including partial output when interrupted.
     /// </summary>
     /// <param name="context">The project summary the prompt is built from.</param>
     /// <param name="userInput">The request as the user typed it, mentions included.</param>
     /// <param name="guidance">
-    /// The project's instructions and skills, loaded once for the session.
+    /// The project's cached guidance and skills. Instructions are refreshed for this request when a provider is registered.
     /// </param>
     /// <param name="cancellationToken">Cancels the request.</param>
     public async Task<string> SendAsync(
@@ -113,39 +123,48 @@ public sealed class ChatExchangeService
         // away, not to ration the session.
         _governor.BeginRequest();
 
-        // Before the prompt is built, because the history this may replace is the history
-        // the prompt would otherwise contain. Nothing is waited for unless the conversation
-        // has run out of room; below that, this only applies what the background finished
-        // and starts the next summary.
-        await _autoCompactor
-            .BeforeRequestAsync(userInput, cancellationToken)
-            .ConfigureAwait(false);
-
         // Resolved before the prompt is built: the files a request pulled in decide which
         // conditional project rules apply, and the same rendered context is attached.
         var mentions = await ResolveMentionsAsync(userInput, cancellationToken)
             .ConfigureAwait(false);
-        _ruleGuidance?.BeginRequest(guidance.Rules, mentions.Files);
+        var instructions = _instructionsProvider is null ? guidance.Instructions :
+            await _instructionsProvider.LoadForFilesAsync(_options.ProjectRoot, mentions.Files, cancellationToken).ConfigureAwait(false);
+        _ruleGuidance?.BeginRequest(guidance.Rules, mentions.Files, instructions);
+        var skills = _skillCatalog is null ? guidance.Skills :
+            await _skillCatalog.LoadForFilesAsync(_options.ProjectRoot, mentions.Files, cancellationToken).ConfigureAwait(false);
 
         var extras = new PromptExtras
         {
             // Read per request: the user may have changed it with :mode since the last one.
             Mode = _mode.Mode,
-            Instructions = guidance.Instructions?.Content,
+            Instructions = instructions?.Content,
             Memory = guidance.Memory,
-            Skills = guidance.Skills,
+            Skills = skills.Where(skill => skill.IsEnabled && !skill.DisableModelInvocation &&
+                (skill.Paths.Count == 0 || mentions.Files.Any(file => skill.Paths.Any(pattern => GlobMatcher.IsMatchPathOrFileName(file, pattern))))).ToArray(),
             ProjectRules = RuleSelector.Render(guidance.Rules, mentions.Files),
             AttachedContext = mentions.Context,
         };
 
         string response;
+        var streamedResponse = new StringBuilder();
         try
         {
-            response = await CompleteAsync(context, userInput, extras, cancellationToken)
+            if (_toolRegistry is IAsyncToolRegistry deferredTools)
+            {
+                await deferredTools.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            response = await CompleteAsync(context, userInput, extras, streamedResponse, cancellationToken)
                 .ConfigureAwait(false);
 
-            response = await TryAddRequestedContextAsync(context, userInput, extras, response, cancellationToken)
+            response = await TryAddRequestedContextAsync(context, userInput, extras, response, streamedResponse, cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch
+        {
+            streamedResponse.AppendLine().AppendLine()
+                .Append("[Assistant response interrupted before completion. This is not a completed answer.]");
+            _history.Add(new ChatTurn(DateTimeOffset.UtcNow, userInput, streamedResponse.ToString()));
+            throw;
         }
         finally
         {
@@ -198,6 +217,7 @@ public sealed class ChatExchangeService
         string userInput,
         PromptExtras extras,
         string response,
+        StringBuilder streamedResponse,
         CancellationToken cancellationToken)
     {
         if (!_options.EnableRequestedContext || !RequestedContextParser.TryParse(response, out var paths))
@@ -231,7 +251,7 @@ public sealed class ChatExchangeService
 
         _ui.WriteSuccess("✔️ Context accepted!");
 
-        return await CompleteAsync(context, userInput, extras with { RequestedContext = requestedContext }, cancellationToken)
+        return await CompleteAsync(context, userInput, extras with { RequestedContext = requestedContext }, streamedResponse, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -248,14 +268,26 @@ public sealed class ChatExchangeService
         ProjectContext context,
         string userInput,
         PromptExtras extras,
+        StringBuilder streamedResponse,
         CancellationToken cancellationToken)
     {
         var recovered = false;
+        if (streamedResponse.Length > 0)
+        {
+            streamedResponse.AppendLine().AppendLine();
+        }
 
         while (true)
         {
-            var request = _promptBuilder.Build(context, _history.Turns, userInput,
-                extras with { ProjectRules = _ruleGuidance?.RenderActivated() ?? extras.ProjectRules });
+            var requestExtras = extras with { ProjectRules = _ruleGuidance?.RenderActivated() ?? extras.ProjectRules };
+            var pending = _promptBuilder.Build(context, [], userInput, requestExtras);
+            await _autoCompactor.BeforeRequestAsync(pending.UserMessage,
+                Codai.Core.Context.TokenEstimator.Estimate(pending.SystemPrompt), cancellationToken).ConfigureAwait(false);
+            var request = _promptBuilder.Build(context, _history.Turns, userInput, requestExtras) with
+            {
+                AutoCompact = _options.AutoCompact,
+                ContextWindowTokens = _options.AutoCompactWindow,
+            };
 
             // The request carries the tools the mode allows. Publishing them here is what
             // turns that list into a restriction the executor can enforce, rather than a
@@ -271,7 +303,7 @@ public sealed class ChatExchangeService
             try
             {
                 await foreach (var update in _chatCompletion
-                    .StreamAsync(request, cancellationToken)
+                    .StreamWithActivityAsync(request, _ui, cancellationToken)
                     .WithCancellation(cancellationToken)
                     .ConfigureAwait(false))
                 {
@@ -284,6 +316,7 @@ public sealed class ChatExchangeService
                     {
                         reasoning = false;
                         response.Append(update.ContentDelta);
+                        streamedResponse.Append(update.ContentDelta);
                         _ui.WriteMarkdown(update.ContentDelta);
                         Publish(AgentProgressEventKind.ModelDelta, "model", update.ContentDelta);
                     }

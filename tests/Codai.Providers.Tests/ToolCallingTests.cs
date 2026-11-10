@@ -2,6 +2,7 @@ using Codai.Configuration;
 using Codai.Core.Chat;
 using Codai.Core.IO;
 using Codai.Core.Tools;
+using Codai.Mcp.Client;
 using Codai.Providers.Tests.Fakes;
 using FluentAssertions;
 using Microsoft.Extensions.AI;
@@ -14,6 +15,302 @@ namespace Codai.Providers.Tests;
 /// </summary>
 public class ToolCallingTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Tool_rounds_compact_old_payloads_without_losing_call_ids_or_latest_evidence(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("first", "read_file", new Dictionary<string, object?> { ["pattern"] = "first.cs" }),
+            ToolCallingChatClient.CallsTool("second", "read_file", new Dictionary<string, object?> { ["pattern"] = "second.cs" }),
+            ToolCallingChatClient.Says("Answer from latest evidence."));
+        var output = "BEGIN " + new string('x', 260_000) + " END";
+        var executor = new RecordingToolExecutor(new StubTool("read_file")) { Outcome = ToolResult.Success(output) };
+
+        await DrainAsync(new ChatCompletionService(client, Options(stream), executor));
+
+        var results = client.SeenMessages[2].SelectMany(message => message.Contents).OfType<FunctionResultContent>().ToArray();
+        results.Select(result => result.CallId).Should().Equal("first", "second");
+        results[0].Result.Should().BeOfType<string>().Which.Should().Contain("Earlier tool output omitted");
+        results[1].Result.Should().Be(output);
+        client.SeenMessages[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+            .Single().Result.Should().Be(output);
+        executor.Calls.Should().HaveCount(2);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public async Task Latest_tool_payload_respects_lower_window_cap_and_explicit_compaction_disable(bool stream, bool compact)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("read", "read_file", new Dictionary<string, object?> { ["pattern"] = "large.cs" }),
+            ToolCallingChatClient.Says("Evidence-qualified answer."));
+        var output = "BEGIN " + new string('x', 260_000) + " END";
+        var executor = new RecordingToolExecutor(new StubTool("read_file")) { Outcome = ToolResult.Success(output) };
+        var service = new ChatCompletionService(client, Options(stream), executor);
+        await foreach (var update in service.StreamAsync(new ChatRequest("system", "user") { AutoCompact = compact, ContextWindowTokens = 32_000 }))
+        {
+        }
+
+        var result = client.SeenMessages[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+            .Single().Result.Should().BeOfType<string>().Subject;
+        result.Should().StartWith("BEGIN").And.EndWith("END");
+        if (compact)
+        {
+            result.Length.Should().BeLessThan(32_000);
+            result.Should().Contain("Tool output compacted");
+        }
+        else
+        {
+            result.Should().Be(output);
+        }
+    }
+
+    [Fact]
+    public async Task A_multi_result_batch_stops_compacting_once_it_fits()
+    {
+        var client = new ToolCallingChatClient(ToolCallingChatClient.Says("Answer"));
+        var provider = Options();
+        var budgeted = new ContextBudgetChatClient(client, provider, 0);
+        var output = new string('x', 260_000);
+        ChatMessage[] messages = [new(ChatRole.System, "system"), new(ChatRole.User, "user"),
+            new(ChatRole.Assistant, [new FunctionCallContent("first", "read_file"), new FunctionCallContent("second", "read_file")]),
+            new(ChatRole.Tool, [new FunctionResultContent("first", output), new FunctionResultContent("second", output)])];
+
+        await budgeted.GetResponseAsync(messages);
+
+        var results = client.SeenMessages[0].SelectMany(message => message.Contents).OfType<FunctionResultContent>().ToArray();
+        results[0].Result.Should().BeOfType<string>().Which.Should().Contain("Tool output compacted");
+        results[1].Result.Should().Be(output);
+    }
+
+    [Theory]
+    [InlineData("read_skill", "Skill instructions: ")]
+    [InlineData("read_file", "Tool was not executed. Review newly applicable rules. ")]
+    public async Task Tool_compaction_preserves_skill_instructions_and_required_rule_review(string name, string prefix)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("guidance", name, new Dictionary<string, object?> { ["pattern"] = "guidance" }),
+            ToolCallingChatClient.CallsTool("evidence", "grep", new Dictionary<string, object?> { ["pattern"] = "implementation" }),
+            ToolCallingChatClient.Says("Answer respecting loaded guidance."));
+        var instructions = prefix + new string('x', 260_000);
+        var executor = new RecordingToolExecutor(new StubTool(name), new StubTool("grep"));
+        executor.Outcomes.Enqueue(ToolResult.Success(instructions));
+        executor.Outcomes.Enqueue(ToolResult.Success(new string('y', 260_000)));
+
+        await DrainAsync(new ChatCompletionService(client, Options(), executor));
+
+        var results = client.SeenMessages[2].SelectMany(message => message.Contents).OfType<FunctionResultContent>().ToArray();
+        results[0].Result.Should().Be(instructions);
+        results[1].Result.Should().BeOfType<string>().Which.Should().Contain("Tool output compacted");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Documentation_research_discovers_tools_resolves_identifier_and_queries_docs_without_unchecked_search(bool stream)
+    {
+        const string libraryId = "/fixture/product";
+        var calls = new List<string>();
+        var resolver = new McpToolAdapter(new McpToolDefinition("mcp_resolve", "Resolve product library for documentation",
+            "{\"type\":\"object\",\"properties\":{\"libraryName\":{\"type\":\"string\"}},\"required\":[\"libraryName\"],\"additionalProperties\":false}",
+            true, false, (arguments, _, _) =>
+            {
+                arguments.GetProperty("libraryName").GetString().Should().Be("fixture-product");
+                calls.Add("resolve");
+                return Task.FromResult(libraryId);
+            }));
+        var docs = new McpToolAdapter(new McpToolDefinition("mcp_docs", "Query product library documentation",
+            "{\"type\":\"object\",\"properties\":{\"libraryId\":{\"type\":\"string\"},\"query\":{\"type\":\"string\"}},\"required\":[\"libraryId\",\"query\"],\"additionalProperties\":false}",
+            true, false, (arguments, _, _) =>
+            {
+                arguments.GetProperty("libraryId").GetString().Should().Be(libraryId);
+                arguments.GetProperty("query").GetString().Should().Be("correlation header");
+                calls.Add("docs");
+                return Task.FromResult("Verified fixture documentation. Source: https://docs.example.com/product/correlation");
+            }));
+        var runner = new ToolRunner(new ToolRegistry([resolver, docs, McpTool("mcp_unchecked_search", "UNCHECKED_SEARCH_DESCRIPTION")]),
+            DenyAllToolApprover.Instance, NullToolObserver.Instance, new PhysicalFileSystem(), Path.GetTempPath());
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("discover", "tool_search", new Dictionary<string, object?> { ["query"] = "product documentation" }),
+            ToolCallingChatClient.CallsTool("resolve", "mcp_resolve", new Dictionary<string, object?> { ["libraryName"] = "fixture-product" }),
+            ToolCallingChatClient.CallsTool("docs", "mcp_docs", new Dictionary<string, object?> { ["libraryId"] = libraryId, ["query"] = "correlation header" }),
+            ToolCallingChatClient.Says("Evidence-qualified report."));
+        var service = new ChatCompletionService(client, Options(stream), runner);
+
+        await foreach (var update in service.StreamAsync(new ChatRequest("Research available product documentation.", "Explain correlation headers", ["mcp_resolve", "mcp_docs"])))
+        {
+        }
+
+        calls.Should().Equal("resolve", "docs");
+        client.SeenToolNames[0].Should().Equal("tool_search");
+        client.SeenToolNames.Should().OnlyContain(names => !names.Contains("mcp_unchecked_search"));
+        client.SeenMessages[3].SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+            .Single(result => result.CallId == "docs").Result.Should().BeOfType<string>()
+            .Which.Should().Contain("https://docs.example.com/product/correlation");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mcp_search_loads_relevant_schemas_then_executes_through_existing_executor(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("discover", "tool_search", new Dictionary<string, object?> { ["query"] = "React documentation" }),
+            ToolCallingChatClient.CallsTool("lookup", "mcp_docs", new Dictionary<string, object?> { ["pattern"] = "React" }),
+            ToolCallingChatClient.Says("Documentation found."));
+        var executor = new RecordingToolExecutor(new StubTool("grep"), McpTool("mcp_docs", "React documentation"),
+            McpTool("mcp_database", "Query customer records"));
+
+        await DrainAsync(new ChatCompletionService(client, Options(stream), executor));
+
+        client.SeenToolNames[0].Should().Equal("grep", "tool_search");
+        client.SeenToolNames[1].Should().Equal("grep", "tool_search", "mcp_docs");
+        executor.Calls.Should().ContainSingle().Which.Name.Should().Be("mcp_docs");
+        var discovery = client.SeenMessages[1].SelectMany(message => message.Contents)
+            .OfType<FunctionResultContent>().Single().Result.Should().BeOfType<string>().Subject;
+        discovery.Should().Contain("inputSchema").And.Contain("pattern").And.NotContain("mcp_database");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mcp_search_cannot_discover_tools_excluded_from_the_request(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("discover", "tool_search", new Dictionary<string, object?> { ["query"] = "mcp_secret" }),
+            ToolCallingChatClient.Says("Unavailable."));
+        var executor = new RecordingToolExecutor(McpTool("mcp_docs", "Documentation"), McpTool("mcp_secret", "PRIVATE_DESCRIPTION"));
+        var service = new ChatCompletionService(client, Options(stream), executor);
+
+        await foreach (var update in service.StreamAsync(new ChatRequest("system", "user", ["mcp_docs"])))
+        {
+        }
+
+        client.SeenToolNames.Should().OnlyContain(names => names.Length == 1 && names[0] == "tool_search");
+        client.LastOptions!.Tools!.Single().Description.Should().NotContain("mcp_secret").And.NotContain("PRIVATE_DESCRIPTION");
+        client.SeenMessages[1].SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+            .Single().Result.Should().BeOfType<string>().Which.Should().Contain("No matching available MCP tools");
+        executor.Calls.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Mcp_discovery_deduplicates_schemas_and_resets_between_requests(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("first", "tool_search", new Dictionary<string, object?> { ["query"] = "mcp_docs" }),
+            ToolCallingChatClient.CallsTool("again", "tool_search", new Dictionary<string, object?> { ["query"] = "mcp_docs" }),
+            ToolCallingChatClient.Says("done"), ToolCallingChatClient.Says("next request"));
+        var executor = new RecordingToolExecutor(McpTool("mcp_docs", "Documentation"));
+        var service = new ChatCompletionService(client, Options(stream), executor);
+
+        await DrainAsync(service);
+        await DrainAsync(service);
+
+        client.SeenToolNames[2].Should().Equal("tool_search", "mcp_docs");
+        client.SeenToolNames[3].Should().Equal("tool_search");
+        executor.Calls.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Mcp_discovery_rejects_empty_queries_without_loading_or_running_tools(string query)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("invalid", "tool_search", new Dictionary<string, object?> { ["query"] = query }),
+            ToolCallingChatClient.Says("done"));
+        var executor = new RecordingToolExecutor(McpTool("mcp_docs", "Documentation"));
+
+        await DrainAsync(new ChatCompletionService(client, Options(), executor));
+
+        client.SeenToolNames[1].Should().Equal("tool_search");
+        executor.Calls.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Discovering_an_mcp_schema_does_not_grant_tool_approval(bool stream)
+    {
+        var invocations = 0;
+        var tool = new McpToolAdapter(new McpToolDefinition("mcp_action", "External action",
+            new StubTool("mcp_action").ParametersSchema, false, true, (_, _, _) =>
+            {
+                invocations++;
+                return Task.FromResult("must not run");
+            }));
+        var runner = new ToolRunner(new ToolRegistry([tool]), DenyAllToolApprover.Instance,
+            NullToolObserver.Instance, new PhysicalFileSystem(), Path.GetTempPath());
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("discover", "tool_search", new Dictionary<string, object?> { ["query"] = "mcp_action" }),
+            ToolCallingChatClient.CallsTool("action", "mcp_action", new Dictionary<string, object?> { ["pattern"] = "change" }),
+            ToolCallingChatClient.Says("Permission declined."));
+
+        await DrainAsync(new ChatCompletionService(client, Options(stream), runner));
+
+        invocations.Should().Be(0);
+        client.SeenMessages[2].SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+            .Single(result => result.CallId == "action").Result.Should().BeOfType<string>()
+            .Which.Should().Contain("The user declined");
+    }
+
+    [Fact]
+    public async Task Empty_allowlist_does_not_offer_mcp_discovery()
+    {
+        var client = new ToolCallingChatClient(ToolCallingChatClient.Says("Summary"));
+        var service = new ChatCompletionService(client, Options(), new RecordingToolExecutor(McpTool("mcp_docs", "Documentation")));
+
+        await foreach (var update in service.StreamAsync(new ChatRequest("system", "summary", [])))
+        {
+        }
+
+        client.SeenToolNames.Should().ContainSingle().Which.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Existing_tool_search_name_preserves_registered_tools_without_collision()
+    {
+        var client = new ToolCallingChatClient(ToolCallingChatClient.Says("done"));
+        var executor = new RecordingToolExecutor(new StubTool("tool_search"), McpTool("mcp_docs", "Documentation"));
+
+        await DrainAsync(new ChatCompletionService(client, Options(), executor));
+
+        client.SeenToolNames[0].Should().Equal("tool_search", "mcp_docs");
+        client.LastOptions!.Tools![0].Description.Should().Be("Stub tool_search.");
+    }
+
+    [Fact]
+    public async Task Mcp_discovery_bounds_results_queries_and_repeated_searches()
+    {
+        var deferred = Enumerable.Range(0, 8).Select(index => (AIFunction)new Codai.Providers.Tools.ToolAIFunction(
+            McpTool($"mcp_docs_{index}", "Documentation"), new RecordingToolExecutor())).ToArray();
+        var selected = new List<AITool>();
+        var search = new Codai.Providers.Tools.ToolSearchAIFunction(deferred, selected);
+
+        var oversized = await search.InvokeAsync(new AIFunctionArguments { ["query"] = new string('x', 513) });
+        oversized.Should().BeOfType<string>().Which.Should().Contain("1 to 512 characters");
+        selected.Should().BeEmpty();
+        await search.InvokeAsync(new AIFunctionArguments { ["query"] = "documentation" });
+        selected.Should().HaveCount(5);
+        for (var iteration = 0; iteration < 10; iteration++)
+        {
+            await search.InvokeAsync(new AIFunctionArguments { ["query"] = "documentation" });
+        }
+        var limited = await search.InvokeAsync(new AIFunctionArguments { ["query"] = "documentation" });
+        limited.Should().BeOfType<string>().Which.Should().Contain("discovery limit reached");
+        selected.Should().HaveCount(5);
+    }
+
+    private static McpToolAdapter McpTool(string name, string description) => new(new McpToolDefinition(
+        name, description, new StubTool(name).ParametersSchema, true, false,
+        (_, _, _) => Task.FromResult("Documentation")));
+
     private static ResolvedProviderOptions Options(bool stream = true) =>
         ResolvedProviderOptions.From(new AiProviderOptions
         {
@@ -146,6 +443,53 @@ public class ToolCallingTests
             .Single();
 
         result.Result.Should().Be("File 'nope' does not exist.");
+        client.CallCount.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Real_runner_returns_validation_feedback_and_executes_corrected_call(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("invalid", "grep", new Dictionary<string, object?> { ["pattern"] = 42 }),
+            ToolCallingChatClient.CallsTool("corrected", "grep", new Dictionary<string, object?> { ["pattern"] = "TODO" }),
+            ToolCallingChatClient.Says("Found TODO."));
+        var tool = new StubTool("grep", schema: StubTool.RichSchema);
+        var runner = new ToolRunner(new ToolRegistry([tool]), DenyAllToolApprover.Instance,
+            NullToolObserver.Instance, new PhysicalFileSystem(), Path.GetTempPath());
+
+        var updates = await DrainAsync(new ChatCompletionService(client, Options(stream), runner));
+
+        tool.Invocations.Should().Be(1);
+        client.CallCount.Should().Be(3);
+        var feedback = client.SeenMessages[1].SelectMany(message => message.Contents)
+            .OfType<FunctionResultContent>().Single();
+        feedback.CallId.Should().Be("invalid");
+        feedback.Result.Should().BeOfType<string>().Which.Should().Contain("Invalid arguments").And.Contain("/pattern");
+        updates.Select(update => update.ContentDelta).Should().Contain("Found TODO.");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Repeated_invalid_calls_stop_before_any_tool_runs(bool stream)
+    {
+        var client = new ToolCallingChatClient(
+            ToolCallingChatClient.CallsTool("invalid-1", "grep", new Dictionary<string, object?> { ["pattern"] = 1 }),
+            ToolCallingChatClient.CallsTool("invalid-2", "grep", new Dictionary<string, object?> { ["pattern"] = 2 }),
+            ToolCallingChatClient.Says("must not continue"));
+        var tool = new StubTool("grep");
+        var runner = new ToolRunner(new ToolRegistry([tool]), DenyAllToolApprover.Instance,
+            NullToolObserver.Instance, new PhysicalFileSystem(), Path.GetTempPath(),
+            governor: new ToolCallGovernor { MaxConsecutiveFailures = 2 });
+        var service = new ChatCompletionService(client, Options(stream), runner);
+
+        Func<Task> act = async () => await DrainAsync(service);
+
+        await act.Should().ThrowAsync<Codai.Core.Abstractions.ChatProviderException>()
+            .WithMessage("*Invalid arguments*2 consecutive failures*");
+        tool.Invocations.Should().Be(0);
         client.CallCount.Should().Be(2);
     }
 

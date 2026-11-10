@@ -5,13 +5,11 @@ using Codai.Core.IO;
 namespace Codai.Application;
 
 /// <summary>
-/// Loads everything the project contributes to the prompt: the instructions file and the
-/// list of skills.
+/// Loads the initial instruction snapshot, skills, rules, and project memory.
 /// </summary>
 /// <remarks>
-/// Both are read from <c>.codai</c> and from the instruction files the assistant knows
-/// about. What was found is returned to the caller and never written to the session,
-/// so starting a session stays quiet.
+/// Guidance is loaded lazily before the first model request. Instruction discovery is
+/// refreshed separately for each request and relevant file tool; other catalogs may be cached.
 /// </remarks>
 public sealed class ProjectGuidanceLoader
 {
@@ -41,6 +39,15 @@ public sealed class ProjectGuidanceLoader
         _memoryCatalog = memoryCatalog ?? new ProjectMemoryCatalog(PhysicalFileSystem.Instance);
     }
 
+    /// <summary>Loads enabled skills without reading unrelated project guidance.</summary>
+    public Task<IReadOnlyList<SkillDefinition>> LoadSkillsAsync(CancellationToken cancellationToken = default) =>
+        _skillCatalog.LoadAsync(_options.ProjectRoot, cancellationToken);
+
+    /// <summary>Loads all discovered skills for manual commands, independently of automatic guidance.</summary>
+    public async Task<IReadOnlyList<SkillDefinition>> LoadCommandSkillsAsync(CancellationToken cancellationToken = default) =>
+        (await _skillCatalog.LoadAllAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false))
+            .Where(skill => skill.UserInvocable).ToArray();
+
     /// <summary>Loads the project's guidance.</summary>
     public async Task<ProjectGuidance> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -48,8 +55,7 @@ public sealed class ProjectGuidanceLoader
             .LoadAsync(_options.ProjectRoot, cancellationToken)
             .ConfigureAwait(false);
 
-        var skills = await _skillCatalog
-            .LoadAsync(_options.ProjectRoot, cancellationToken)
+        var skills = await LoadSkillsAsync(cancellationToken)
             .ConfigureAwait(false);
 
         var rules = await _ruleCatalog

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Codai.Core.IO;
 using FluentAssertions;
 
@@ -5,6 +6,54 @@ namespace Codai.Core.Tests;
 
 public sealed class PhysicalFileSystemTests
 {
+    [Fact]
+    public async Task Canonical_paths_resolve_parent_links_and_preserve_missing_leaf_paths()
+    {
+        var root = Directory.CreateTempSubdirectory("codai-canonical-");
+        try
+        {
+            var target = Directory.CreateDirectory(Path.Combine(root.FullName, "target", "nested"));
+            var alias = Path.Combine(root.FullName, "alias");
+            if (OperatingSystem.IsWindows())
+            {
+                var start = new ProcessStartInfo("cmd.exe")
+                {
+                    WorkingDirectory = root.FullName,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+                foreach (var argument in new[] { "/c", "mklink", "/J", "alias", Path.Combine(root.FullName, "target") })
+                {
+                    start.ArgumentList.Add(argument);
+                }
+                using var process = Process.Start(start)!;
+                await process.WaitForExitAsync();
+                process.ExitCode.Should().Be(0);
+            }
+            else
+            {
+                Directory.CreateSymbolicLink(alias, Path.Combine(root.FullName, "target"));
+            }
+
+            PhysicalFileSystem.Instance.GetCanonicalPath(Path.Combine(alias, "nested", "missing.txt"))
+                .Should().Be(Path.Combine(target.FullName, "missing.txt"));
+            await File.WriteAllTextAsync(Path.Combine(target.FullName, "existing.txt"), "Content.");
+            PhysicalFileSystem.Instance.GetCanonicalPath(Path.Combine(alias, "nested", "existing.txt"))
+                .Should().Be(Path.Combine(target.FullName, "existing.txt"));
+        }
+        finally
+        {
+            var alias = Path.Combine(root.FullName, "alias");
+            if (Directory.Exists(alias))
+            {
+                Directory.Delete(alias);
+            }
+            root.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public async Task Atomic_write_replaces_existing_text_and_cleans_temporary_files()
     {

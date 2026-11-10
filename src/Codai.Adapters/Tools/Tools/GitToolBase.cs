@@ -18,7 +18,7 @@ public abstract class GitToolBase : ToolBase
         _runner = runner;
     }
 
-    public sealed override string ParametersSchema =>
+    public override string ParametersSchema =>
         """
         {
           "type": "object",
@@ -32,9 +32,13 @@ public abstract class GitToolBase : ToolBase
         ToolContext context,
         CancellationToken cancellationToken = default)
     {
+        if (!TryGetCommandLine(arguments, out var commandLine, out var error))
+        {
+            return ToolResult.Failure(error);
+        }
         var result = await _runner
             .RunAsync(
-                CommandLine,
+                commandLine,
                 context.ProjectRoot,
                 TimeSpan.FromSeconds(DefaultTimeoutSeconds),
                 cancellationToken)
@@ -52,6 +56,14 @@ public abstract class GitToolBase : ToolBase
     }
 
     protected abstract string CommandLine { get; }
+
+    /// <summary>Validates tool arguments before constructing a read-only Git command.</summary>
+    protected virtual bool TryGetCommandLine(JsonElement arguments, out string commandLine, out string failureReason)
+    {
+        commandLine = CommandLine;
+        failureReason = string.Empty;
+        return true;
+    }
 
     private static string Render(ProcessResult result)
     {

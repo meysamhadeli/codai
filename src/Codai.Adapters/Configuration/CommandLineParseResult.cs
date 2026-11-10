@@ -44,6 +44,12 @@ public sealed record CommandLineParseResult(
 
     public bool AutoApprove { get; init; }
 
+    /// <summary>Gets whether directory access was explicitly authorized for this invocation.</summary>
+    public bool TrustDirectory { get; init; }
+
+    /// <summary>Gets whether the caller explicitly selected an approval policy.</summary>
+    public bool AutoApproveSpecified { get; init; }
+
     public TimeSpan RunTimeout { get; init; }
 
     public string? SystemPrompt { get; init; }

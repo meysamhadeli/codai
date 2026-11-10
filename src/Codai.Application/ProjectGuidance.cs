@@ -11,12 +11,12 @@ namespace Codai.Application;
 /// The project instructions, or <c>null</c> when the project has none.
 /// </param>
 /// <param name="Skills">
-/// The project's skills; empty when it has none. Only names and descriptions reach the
-/// prompt — a skill body is fetched by the <c>read_skill</c> tool on demand.
+/// The project's enabled skills; empty when none are enabled. Names, descriptions,
+/// and instruction bodies reach every request. Resources are fetched on demand.
 /// </param>
 /// <remarks>
-/// Both are loaded once, before the first model request, because both are stable for its
-/// lifetime and both belong in the system prompt of every request. Grouping them keeps
+/// Both are loaded before the first model request and refreshed after skills are managed,
+/// because both belong in the system prompt of every request. Grouping them keeps
 /// that single loading step in one place instead of threading two values through the
 /// session loop.
 /// </remarks>

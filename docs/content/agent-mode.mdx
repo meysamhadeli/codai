@@ -15,6 +15,16 @@ Codai works inside your project, using tools to find files, read code, make edit
 and verify results. Choose how much it may do with two modes: **Plan** for
 investigation and **Agent** for implementation.
 
+Both modes are instructed to answer the actual request. Greetings and simple
+questions get brief, natural replies rather than repository overviews, capability
+lists, or automatic plans. Implementation requests still use the selected mode's
+workflow and permissions; explicit requests for detail remain supported.
+
+Project guidance and summaries are reference material, not new tasks. Default
+instructions require evidence for factual claims and tell the model to inspect
+needed files rather than assume that abbreviated signatures are broken code.
+File-context requests are reserved for necessary contents unavailable through tools.
+
 ## Modes
 
 | Capability | Plan | Agent |
@@ -33,6 +43,12 @@ codai --mode plan
 
 In a session, press **Tab** when no completion is visible, or use `:mode plan`
 and `:mode agent`. A mode change does not save a new startup default.
+
+Each agent-session request reaffirms the current mode after historical and supplied
+context. Old Plan instructions in a conversation summary do not keep Agent mode
+read-only, and old Agent instructions do not grant Plan permission to edit.
+Project constraints and approval requirements still apply. Asking Plan to implement
+does not switch modes or permit writing a plan file.
 
 <Callout type="info">
   Mode restrictions apply to tool discovery, execution, and file changes embedded in

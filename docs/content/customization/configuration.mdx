@@ -24,15 +24,60 @@ Inspection omits credential values and does not load plugin assemblies or start 
 
 ## File discovery
 
+`.codai.json` stores full runtime settings and optional discovery metadata together.
+Discovery also reads `.codai.json` files in the shared home and bounded project
+ancestors, but only the selected runtime configuration supplies provider and session
+settings. A single project file can declare both:
+
+```json filename=".codai.json"
+{
+  "theme": "graphite",
+  "ai_provider_config": {
+    "provider": "ollama",
+    "model": "qwen3-coder"
+  },
+  "additionalDirectories": ["../shared-repository"],
+  "skillDirectories": ["./custom-skills"],
+  "mcpConfigFiles": ["./tools/mcp.json"]
+}
+```
+
+Paths are relative to the declaring file; absolute paths and `~/` with an explicit
+home scope are supported. Each list accepts at most 32 distinct paths. Metadata is
+limited to 64 KiB, accepts JSON comments/trailing commas, and must be an object.
+Invalid metadata is rejected rather than partially loading integrations.
+Ancestor walks stop at the nearest `.git` directory or worktree `.git` file, before
+inherited home or filesystem root, and after at most 128 levels. Explicit home roots
+remain valid. Symbolic links are resolved for discovery identity and deduplication.
+This does not merge ancestor provider credentials or grant server execution consent.
+See [skills](/skills) and [MCP](/mcp#manifest-discovery) for precedence and activation.
+
 Codai searches the selected directory in this order:
 
-1. `codai-config.yml`
-2. `codai-config.yaml`
-3. `codai-config.json`
+1. `.codai.json` (preferred)
+2. `.codai.yml`
+3. `.codai.yaml`
 
 An existing project configuration takes precedence over user-wide
-`~/.codai/codai-config.json`; the files are not merged.
-First-run onboarding creates user-wide defaults when no project configuration exists.
+`~/.codai/.codai.json`; the files are not merged.
+MCP discovery is separate: user-wide MCP entries remain visible with project runtime
+settings selected and require their own startup approval. See [MCP](/mcp#manifest-discovery).
+Native MCP entries accept VS Code's `type` key as an alias for `transport`, with
+`type` taking precedence when both are present. `type: "http"` uses streamable HTTP.
+User settings can also contain a VS Code-style named `servers` object; imported
+entries still require checklist selection before connection. `gallery` and `version`
+are informational metadata, not automatic installation instructions.
+After workspace trust, interactive `codai` or `codai code` creates an empty
+`~/.codai/.codai.json` before starting a session when no user configuration exists,
+even if valid project settings are present. Existing JSON or YAML user settings are
+left unchanged; project settings and credentials are not copied into the new file.
+Without a usable saved connection, first-run setup still prompts for appearance and
+connection settings. Cancelling appearance keeps the empty file; cancelling
+connection setup preserves any saved appearance. Neither starts chat.
+`--config-dir` / `CODAI_CONFIG_DIR` redirects this configuration directory.
+Configuration basenames from earlier releases are no longer discovered or written.
+Rename existing settings to `.codai.json` (or the matching YAML equivalent).
+Unknown discovery fields are preserved when the settings editor saves changes.
 
 | Option | Selects |
 | --- | --- |
@@ -42,6 +87,50 @@ First-run onboarding creates user-wide defaults when no project configuration ex
 | `--data-dir <path>` | Isolated conversation, task, and transcript state |
 
 Selecting a configuration directory does not move your project.
+
+## Selection storage
+
+Codai manages MCP and skill selections separately from runtime configuration in
+`~/.codai/state/customization.json`. Use `/mcps` and `/skills` to update checks;
+neither manager adds selection fields to `.codai.json`. The state directory follows
+`--config-dir` / `CODAI_CONFIG_DIR`, not `--data-dir`, and is independent of the
+selected project runtime settings.
+
+| Section | Stored state |
+| --- | --- |
+| `mcp` | Per-project server selections, each with `enabled` and a definition `fingerprint` |
+| `skills` | Per-project `enabled` and `disabled` skill-name arrays |
+| `skillDefaults` | Global default skill exclusions |
+
+Project keys are SHA-256 hashes of canonical, platform-normalized workspace paths.
+The managers generate these keys; selections from one project do not enable servers
+or override skill checks in another. MCP state remains private and definition-bound:
+project files cannot grant imported-server startup consent. MCP credentials are not
+copied into selection entries.
+
+MCP and skill updates share a serialized, atomic merge path for the same filesystem
+and canonical state file. Existing `customization.mcp`, `customization.skills`, and
+`customization.skillDefaults` sections in user-wide `.codai.json` migrate when
+catalogs load, including during offline configuration inspection. Private state is
+saved before those sections are removed; provider settings, MCP definitions, and
+unrelated fields remain in runtime configuration. An empty `customization` wrapper
+is removed, but unrelated customization fields are preserved. Credentials are not
+copied into the state file.
+
+Existing private choices win conflicts. MCP records retain their fingerprint and
+enabled flag together, while project skill choices and global defaults remain whole.
+Valid private legacy `mcp-approvals.json`, global `skills.json`, and project
+`.codai/skills.json` also migrate and are deleted only after successful state saves.
+Malformed state is not overwritten or deleted. Selection files and JSON migration
+sources redirected from their canonical user-directory paths are rejected; moving
+selection state does not grant workspace-controlled MCP consent.
+
+The state file retains a 64 KiB limit. Failed, cancelled, or oversized state saves
+leave source settings intact; failed source cleanup can be retried after state was
+saved. YAML-only runtime settings can remain YAML: selection saves do not create
+a competing `.codai.json`. SDK hosts without global storage retain project-only
+skill selection files. `UserCustomizationSettings.GetFilePath` exposes the managed
+state path to SDK hosts.
 
 ## Override order
 
@@ -70,6 +159,7 @@ ai_provider_config:
   stream: true
 checkpoints_enabled: true
 checkpoint_retention: 10
+auto_compact_window: 0
 disabled_tools:
   - fetch_web
 ```
@@ -81,7 +171,13 @@ disabled_tools:
 
 ## Edit interactively
 
-Open settings with Ctrl+P or F1, or enter:
+`auto_compact_window` is a token count: `0` uses the active model window, and
+explicit values must be at least `32000`. `/autocompact` saves and applies this
+setting immediately; `/autocompact 800k` saves `800000`. The model cap and reserved
+headroom still apply. See [Context](/usage/context#choose-the-automatic-window).
+
+Use `/settings` for the configuration editor. Ctrl+P or F1 opens the separate
+settings action palette. Legacy section commands remain available:
 
 ```text
 :preferences
@@ -91,9 +187,21 @@ Open settings with Ctrl+P or F1, or enter:
 :preferences plugins
 ```
 
+Settings has no visible tab strip. Tab or Left / Right still switches
+views; `/settings status`, `/settings usage`, and `/settings stats` open
+them directly. Usage reports configured budget limits, not account quotas or
+measured spending; Status and Stats report runtime policy and tool availability.
+
 Choose a field, enter its value, then select **Save** or **Cancel**.
+The editor uses the same numbered inline rows as other selection submenus,
+aligns labels and known live values, updates displayed values
+after a save during this workflow, and always hides credentials. **Edit...** means
+the inspection context does not expose a value, not that no saved value exists.
+The minimal borderless search band matches Settings. Known configuration values have a
+tick; hidden or unknown values are not marked as configured. Theme and enabled
+integration choices also show ticks, independently of the highlighted row.
 Edits validate values, preserve unrelated YAML/JSON fields, and use atomic writes.
-If no file exists, the editor creates `codai-config.json` in the configuration directory.
+If no file exists, the editor creates `.codai.json` in the configuration directory.
 
 | Setting | Save behavior |
 | --- | --- |

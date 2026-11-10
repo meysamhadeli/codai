@@ -10,6 +10,90 @@ namespace Codai.Core.Tests;
 public sealed class WorkspaceCheckpointStoreTests
 {
     [Fact]
+    public async Task Git_store_waiting_for_repository_lease_can_be_cancelled_before_running_git()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "codai-checkpoint-lease-" + Guid.NewGuid().ToString("N"));
+        var repositoryRoot = Path.Combine(Path.GetTempPath(), "Codai", "checkpoints",
+            Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(root)))));
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(repositoryRoot);
+        try
+        {
+            using var lease = new FileStream(Path.Combine(repositoryRoot, "repository.lock"),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var processes = new RecordingGitRunner();
+            var store = new GitWorkspaceCheckpointStore(PhysicalFileSystem.Instance, processes);
+            using var cancellation = new CancellationTokenSource();
+            var capture = store.CaptureAsync(root, "task-1", "Before task", cancellation.Token);
+            var startedBeforeLeaseReleased = processes.Commands.Count;
+            cancellation.Cancel();
+
+            var wait = async () => await capture;
+            await wait.Should().ThrowAsync<OperationCanceledException>();
+            startedBeforeLeaseReleased.Should().Be(0);
+            processes.Commands.Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(repositoryRoot, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Git_store_reuses_project_index_across_tasks_and_restores_each_revision(bool legacyRepository)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "codai-shared-checkpoint-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var processes = new RecordingGitRunner();
+            var store = new GitWorkspaceCheckpointStore(PhysicalFileSystem.Instance, processes);
+            if (legacyRepository)
+            {
+                var legacy = Path.Combine(Path.GetTempPath(), "Codai", "checkpoints",
+                    Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                        System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(root)))), "task-1", "git");
+                var initialized = await processes.RunAsync($"git init --bare \"{legacy}\"", root, TimeSpan.FromSeconds(30));
+                initialized.Succeeded.Should().BeTrue();
+            }
+            var file = Path.Combine(root, "source.txt");
+            await File.WriteAllTextAsync(file, "first task state");
+            var first = await store.CaptureAsync(root, "task-1", "Before first task");
+            await File.WriteAllTextAsync(file, "second task state");
+            var second = await store.CaptureAsync(root, "task-2", "Before second task");
+
+            processes.Commands.Count(command => command.StartsWith("git init --bare", StringComparison.Ordinal))
+                .Should().Be(legacyRepository ? 2 : 1);
+            await store.RestoreAsync(root, "task-1", first.Id);
+            (await File.ReadAllTextAsync(file)).Should().Be("first task state");
+            await store.RestoreAsync(root, "task-2", second.Id);
+            (await File.ReadAllTextAsync(file)).Should().Be("second task state");
+            (await store.ListAsync(root, "task-1")).Should().ContainSingle(item => item.Id == first.Id);
+            (await store.ListAsync(root, "task-2")).Should().ContainSingle(item => item.Id == second.Id);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class RecordingGitRunner : IProcessRunner
+    {
+        private readonly ProcessRunner _inner = new();
+        public List<string> Commands { get; } = [];
+
+        public Task<ProcessResult> RunAsync(string commandLine, string workingDirectory, TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            Commands.Add(commandLine);
+            return _inner.RunAsync(commandLine, workingDirectory, timeout, cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Git_command_failure_keeps_diagnostics_bounded_and_preserves_leading_error()
     {
         var root = Path.Combine(Path.GetTempPath(), "codai-checkpoint-diagnostic-" + Guid.NewGuid().ToString("N"));
@@ -48,7 +132,8 @@ public sealed class WorkspaceCheckpointStoreTests
             Directory.CreateDirectory(Path.Combine(root, ".codai"));
             if (ignoredState)
             {
-                await File.WriteAllTextAsync(Path.Combine(root, ".gitignore"), ".codai/\n");
+                await File.WriteAllTextAsync(Path.Combine(root, ".gitignore"), ".codai/\n.env\n");
+                await File.WriteAllTextAsync(Path.Combine(root, ".env"), "local setting before");
             }
             await File.WriteAllTextAsync(Path.Combine(root, "tracked.txt"), "before");
             await File.WriteAllBytesAsync(Path.Combine(root, "binary.dat"), [0, 1, 2, 255]);
@@ -60,6 +145,10 @@ public sealed class WorkspaceCheckpointStoreTests
             File.Delete(Path.Combine(root, "binary.dat"));
             await File.WriteAllTextAsync(Path.Combine(root, "created.txt"), "remove");
             await File.WriteAllTextAsync(Path.Combine(root, ".codai", "state.txt"), "changed state");
+            if (ignoredState)
+            {
+                await File.WriteAllTextAsync(Path.Combine(root, ".env"), "local setting after");
+            }
 
             await store.RestoreAsync(root, "task-1", checkpoint.Id);
 
@@ -67,6 +156,10 @@ public sealed class WorkspaceCheckpointStoreTests
             (await File.ReadAllBytesAsync(Path.Combine(root, "binary.dat"))).Should().Equal(0, 1, 2, 255);
             File.Exists(Path.Combine(root, "created.txt")).Should().BeFalse();
             (await File.ReadAllTextAsync(Path.Combine(root, ".codai", "state.txt"))).Should().Be("changed state");
+            if (ignoredState)
+            {
+                (await File.ReadAllTextAsync(Path.Combine(root, ".env"))).Should().Be("local setting after");
+            }
         }
         finally
         {

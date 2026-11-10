@@ -18,4 +18,11 @@ namespace Codai.Core.Chat;
 public sealed record ChatRequest(
     string SystemPrompt,
     string UserMessage,
-    IReadOnlyCollection<string>? AllowedTools = null);
+    IReadOnlyCollection<string>? AllowedTools = null)
+{
+    /// <summary>Enables request-local tool-output compaction between model calls.</summary>
+    public bool AutoCompact { get; init; } = true;
+
+    /// <summary>Optional lower context-window cap; zero uses the model's limit.</summary>
+    public int ContextWindowTokens { get; init; }
+}

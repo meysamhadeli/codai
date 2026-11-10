@@ -66,6 +66,8 @@ public static class CommandLineParser
         string? workingDirectory = null;
         var literalArguments = false;
         var autoApprove = false;
+        var autoApproveSpecified = false;
+        var trustDirectory = false;
         var runTimeout = TimeSpan.Zero;
         string? systemPrompt = null;
         var jsonOutput = false;
@@ -107,6 +109,15 @@ public static class CommandLineParser
 
             switch (name)
             {
+                case "trust-directory":
+                    if (hasInlineValue)
+                    {
+                        errors.Add("Option '--trust-directory' does not accept a value.");
+                    }
+
+                    trustDirectory = true;
+                    continue;
+
                 case "disable-tool":
                     var disabledTool = hasInlineValue ? inlineValue : TakeValue(args, ref i);
                     if (string.IsNullOrWhiteSpace(disabledTool))
@@ -209,6 +220,7 @@ public static class CommandLineParser
                     continue;
 
                 case "auto-approve":
+                    autoApproveSpecified = true;
                     var approvalValue = hasInlineValue ? inlineValue : TakeValue(args, ref i);
                     if (!bool.TryParse(approvalValue, out autoApprove))
                     {
@@ -350,6 +362,8 @@ public static class CommandLineParser
             Prompt = promptParts.Count == 0 ? null : string.Join(" ", promptParts),
             WorkingDirectory = workingDirectory,
             AutoApprove = autoApprove,
+            AutoApproveSpecified = autoApproveSpecified,
+            TrustDirectory = trustDirectory,
             RunTimeout = runTimeout,
             SystemPrompt = systemPrompt,
             JsonOutput = jsonOutput,

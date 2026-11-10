@@ -1,6 +1,6 @@
 ---
 title: "Permissions"
-description: "Control file writes, shell commands, automatic approval, and unattended runs."
+description: "Authorize workspace access, control tool approvals, and run unattended tasks deliberately."
 ---
 
 import { Callout, Cards } from "nextra/components";
@@ -11,20 +11,72 @@ Codai separates **what is available** from **what you approve**.
 Plan removes write and shell capabilities. Agent can expose them, but execution
 still follows tool access policy and approval.
 
+## Authorize workspace access
+
+Each CLI agent launch shows **Workspace access** before applying project configuration,
+instructions, plugins, MCP integrations, hooks, or saved session content. The screen
+shows the absolute project directory, including the resolved `--cwd` when supplied.
+
+**Yes** is selected first, followed by **No**. Press Enter only for a directory
+whose contents you trust. Select No or press Escape to leave without opening the
+workspace. Plain interactive terminals show `[Y/n]`: Enter, `y`, `yes`, or `trust`
+allows access; `n`, `no`, unknown input, or EOF declines it. Leaving returns exit
+code `0`; interruption returns `130`.
+
+The screen uses the same theme as chat: `--theme` overrides `THEME`, which overrides
+the saved theme in the selected JSON or YAML configuration. Project files, explicit
+`--config` / `--config-dir` selections, and the normal user-config fallback follow
+the same file precedence as chat. Before consent, only the top-level theme value is
+used from a bounded read of that configuration; provider settings are not bound and
+integrations and project instructions are not loaded. Missing, unreadable, malformed,
+or larger-than-64-KiB files fall back to Graphite for this screen.
+
+Trust lasts for this process run only, including resumed conversations and `/new`
+within that run. It is not saved in project or user settings and does not trust
+parent, child, or sibling directories in future launches. A new invocation asks again.
+
+Directory trust is not a filesystem sandbox or a tool approval. Existing modes,
+disabled tools, and action-approval settings still apply; interactive sessions retain
+their default automatic tool approval unless you select manual review.
+
+Redirected input/output and JSON tasks cannot answer this screen. After reviewing
+the directory, explicitly authorize that invocation:
+
+```bash
+codai --trust-directory --mode plan "Explain the request pipeline"
+echo "Summarize this project" | codai --trust-directory --json --mode plan
+```
+
+Missing authorization returns exit code `1`. `--auto-approve true` does not grant
+directory trust, and `--trust-directory` does not grant tool approval. The trust
+switch has no value and cannot be configured through project files or environment
+variables.
+
+Help, version, explicit `auth` and `config` commands do not start an agent and do not
+show this screen. ACP/MCP protocol hosts and SDK integrations remain responsible
+for their own workspace authorization; this screen is a CLI startup safeguard.
+
 ## Review an action
 
-Before a tool changes files or runs a command, the terminal shows the action and
-its command, path, or patch. Long previews retain the first ten lines and report
-the number of hidden lines.
+In **Manual approval**, the terminal shows an action before a tool changes files
+or runs a command, including its command, path, or patch. Approval and confirmation
+boxes stay below the conversation in the same CLI view, with theme-colored text
+instead of filled selection bars or a settings modal. Binary confirmations use
+**Yes** first and **No** second, with Yes selected. Questions use the same frame, including an
+**Answer** field for custom replies. The composer draft is preserved on return.
+Long previews show up to
+ten lines at a time; PageUp / PageDown scroll the remaining preview.
 
 | Choice | Effect |
 | --- | --- |
-| Run once | Approve this tool call only |
-| Remember for this tool | Approve this tool for the rest of the session |
-| Refuse and give guidance | Deny the call and explain what should happen instead |
+| 1. Yes | Approve this tool call only; selected by default |
+| 2. No | Deny the call |
+| 3. Yes, and don't ask again | Approve this tool for the rest of the session |
 
-Use arrows or Tab, then Enter. `Y` / `1`, `A` / `2`, and `N` / `3` choose directly.
-Escape refuses. The decision remains in the transcript.
+Use arrows or Tab, then Enter. `Y` / `1`, `N` / `2`, and `A` / `3` choose directly.
+The footer shows **Enter to confirm · Esc to cancel**. Escape refuses. Plain
+interactive confirmations also default to Yes on Enter, but EOF and unattended
+input never approve. The decision remains in the transcript.
 
 Remembered approval is per tool and per process. Remembering `write_file` does not
 approve `run_command`, and restarting forgets the choice.
@@ -51,8 +103,11 @@ These controls are independent. Changing a model or loading a skill never overri
 
 ## Automatic approval
 
-**Shift+Tab** toggles automatic approval for the current session.
-`--auto-approve true` explicitly enables it for a run. Configured `auto_approve`
+Interactive terminal sessions start with **Auto approval** selected. File writes
+and shell commands can run without individual confirmation prompts. Start with
+`--auto-approve false` for manual review, or use **Shift+Tab** to toggle the current
+session. One-shot, piped, JSON, and custom-host defaults remain unchanged;
+`--auto-approve true` explicitly enables automatic approval for those runs. Configured `auto_approve`
 lists can bypass prompts for exact tool names.
 
 <Callout type="warning">
@@ -67,8 +122,8 @@ One-shot and piped tasks cannot stop for approval input. Writes and commands are
 denied unless `--auto-approve true` is explicitly supplied.
 
 ```bash
-codai --mode plan "Explain the authentication flow"
-codai --json --mode plan "List likely causes of the failing parser"
+codai --trust-directory --mode plan "Explain the authentication flow"
+codai --trust-directory --json --mode plan "List likely causes of the failing parser"
 ```
 
 Read-only inspection is a better starting point for automation than broad approval.

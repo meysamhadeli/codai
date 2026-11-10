@@ -8,6 +8,34 @@ namespace Codai.Core.Tests;
 /// </summary>
 public class FrontMatterTests
 {
+    [Theory]
+    [InlineData(">", "Concise answers with full accuracy.\n")]
+    [InlineData(">-", "Concise answers with full accuracy.")]
+    [InlineData("|", "Concise answers\nwith full accuracy.\n")]
+    [InlineData("|-", "Concise answers\nwith full accuracy.")]
+    public void Reads_multiline_yaml_scalars_without_exposing_block_markers(string marker, string expected)
+    {
+        var (fields, body) = FrontMatter.Parse($"---\nname: caveman\ndescription: {marker}\n  Concise answers\n  with full accuracy.\nargument-hint: <path>\n---\nKeep technical substance.");
+
+        fields["description"].Should().Be(expected);
+        fields["name"].Should().Be("caveman");
+        fields["argument-hint"].Should().Be("<path>");
+        fields.Should().HaveCount(3);
+        body.Should().Be("Keep technical substance.");
+    }
+
+    [Fact]
+    public void Multiline_colons_and_nested_metadata_do_not_become_top_level_fields()
+    {
+        var (fields, body) = FrontMatter.Parse(
+            "---\ndescription: >-\n  Use: retain technical accuracy.\n  Fold this line.\nallowed-tools:\n  - read_file\n  - glob\nmetadata:\n  label: ignored\n---\nBody.");
+
+        fields["description"].Should().Be("Use: retain technical accuracy. Fold this line.");
+        fields["allowed-tools"].Should().Be("read_file, glob");
+        fields.Should().HaveCount(2).And.NotContainKey("Use").And.NotContainKey("label");
+        body.Should().Be("Body.");
+    }
+
     [Fact]
     public void Reads_the_keys_before_the_second_delimiter()
     {

@@ -15,6 +15,13 @@ public sealed class ComposerBuffer(IReadOnlyList<string> history)
         Cursor += value.Length;
     }
 
+    internal void InsertPaste(string value)
+    {
+        var normalized = value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n')
+            .Replace("\t", "    ", StringComparison.Ordinal);
+        Insert(new string(normalized.Where(character => character == '\n' || !char.IsControl(character)).ToArray()));
+    }
+
     public void Replace(int start, int length, string value)
     {
         Text = Text.Remove(start, length).Insert(start, value);

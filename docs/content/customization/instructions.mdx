@@ -1,6 +1,6 @@
 ---
 title: "Project instructions"
-description: "Give Codai repository conventions, file-scoped rules, and durable project knowledge without overloading every request."
+description: "Apply standard repository and nested instructions to every request and subagent, with bounded file-scoped guidance and project memory."
 ---
 
 import { Callout } from "nextra/components";
@@ -13,16 +13,30 @@ workflows, and memory for durable project facts.
 
 ## Repository instructions
 
-Codai uses the first nonempty readable instruction file from the project root:
+Codai combines every nonempty readable instruction file in each applicable
+directory, in this stable order:
 
 1. `AGENTS.md`
 2. `CLAUDE.md`
-3. `CODAI.md`
-4. `.codai/instructions.md`
-5. `.github/copilot-instructions.md`
+3. `instructions.md`
+4. `.claude/CLAUDE.md`
+5. `.codai/instructions.md`
+6. `.github/copilot-instructions.md`
 
-Files are not concatenated. Keep the chosen file focused; content beyond 32 KB
-is truncated.
+Broad instructions are loaded from the nearest Git repository boundary down to
+the selected workspace. Ancestors above that repository are excluded. Without
+Git metadata in the bounded ancestor search, only the selected workspace supplies
+broad instructions. File tools remain bounded to the selected workspace even
+when repository ancestors supply guidance.
+
+Nested instructions are discovered only along directories containing explicitly
+mentioned files or file-tool targets, not by recursively scanning the repository.
+Sources and directory scopes are labeled when guidance is combined. More-specific
+directory guidance takes precedence over conflicting broader workspace guidance
+only inside that subtree. Instructions in unrelated sibling directories are not loaded.
+
+`CODAI.md` is no longer discovered. Rename it to a supported filename; Codai does
+not migrate its contents automatically.
 
 ````markdown filename="AGENTS.md"
 # Working in this repository
@@ -35,6 +49,55 @@ is truncated.
 
 Document commands that actually work in your repository. Guidance is most useful
 when it states constraints and verification, not a long history of the project.
+
+## Request and file scopes
+
+Instructions are refreshed for each model request. An explicit `@src/Api/Handler.cs`
+mention includes instructions from the workspace through `src/Api`, while a new
+request without that reference does not retain the subtree's instructions in its
+system prompt. Instruction edits and deletions are reflected on the next request.
+
+During a request, `read_file`, `write_file`, `edit_file`, and `apply_patch` discover
+instructions for their targets before execution. Newly applicable, changed, or
+removed instruction sources pause the call so the model can review guidance and
+reconsider the operation. No file is changed and no write approval is consumed by
+that review. A subsequent call still passes ordinary permissions and approval gates.
+Reviewed instruction changes and removals are retained when a provider conversation
+must be rebuilt.
+
+Foreground, background, and team subagents use the same instruction provider with
+independent request-local review state. They remain read-only. An instruction file
+is guidance, not a definition that automatically creates a subagent.
+
+SDK hosts can implement `IProjectInstructionsProvider.LoadForFilesAsync` for scoped
+discovery. The default method delegates to `LoadAsync` for compatibility with
+existing providers. `ProjectInstructions.Documents` exposes individual source
+documents and their `ScopePath`; `SubAgentRunner` accepts the same instruction
+provider and rule catalog as the host.
+Hosts building delegated prompts can reuse `PromptBuilder.CapabilitySelectionGuidance`
+and `PromptBuilder.RenderSkills` with already-approved skill metadata to keep
+selection consistent without sharing conversation history.
+
+This follows scoped-discovery conventions, not every vendor-specific feature.
+`CLAUDE.local.md`, managed system-policy locations, and instruction `@import`
+chains are not discovered.
+
+## Discovery limits
+
+| Limit | Behavior |
+| --- | --- |
+| One instruction document | Content beyond 32,768 characters is truncated with a notice |
+| Raw instruction file | More than 1 MiB is rejected |
+| Applicable documents | At most 64 |
+| Applicable directories | At most 128 |
+| Combined instruction context | At most 131,072 characters, including source headers |
+| Tracked file targets during a request | At most 128 |
+| One pre-tool instruction review | At most 60,000 characters, including rule guidance |
+
+Empty or unreadable documents are skipped. Canonical paths prevent linked targets
+from escaping the workspace or instruction sources from escaping the repository.
+Exceeding discovery or review limits stops the operation rather than executing
+without guidance. Keep files focused and narrow large requests.
 
 ## Conditional rules
 
@@ -91,7 +154,8 @@ Inspect configuration paths when global content is not being found.
 
 | Need | Use |
 | --- | --- |
-| Repository-wide conventions | An instruction file |
+| Repository-wide conventions | A standard instruction file |
+| Subtree conventions | A nested `AGENTS.md`, `CLAUDE.md`, or `instructions.md` |
 | Conventions for matching paths | Conditional rules |
 | A reusable multi-step workflow | [Skills](/skills) |
 | A short prompt invoked by name | [Custom commands](/customization/commands) |
