@@ -17,6 +17,7 @@ public sealed partial class ChatTranscript
     private string[] _lines = [];
     private string[] _paintedRows = [];
     private int _paintedWidth;
+    private int _paintedTop;
     private IAnsiConsole? _paintedConsole;
     private readonly Dictionary<int, Entry> _stepHeaders = [];
     private readonly Dictionary<int, Entry> _stepControls = [];
@@ -366,7 +367,9 @@ public sealed partial class ChatTranscript
         return _lines;
     }
 
-    public void Draw(IAnsiConsole console, int rows)
+    public void Draw(IAnsiConsole console, int rows) => Draw(console, rows, 1);
+
+    internal void Draw(IAnsiConsole console, int rows, int top)
     {
         if (rows <= 0)
         {
@@ -393,10 +396,11 @@ public sealed partial class ChatTranscript
                 _visibleSteps[line - first + 1 + offset] = entry;
             }
         }
-        if (_paintedWidth != console.Profile.Width || _paintedRows.Length != rows || !ReferenceEquals(_paintedConsole, console))
+        if (_paintedWidth != console.Profile.Width || _paintedRows.Length != rows || _paintedTop != top || !ReferenceEquals(_paintedConsole, console))
         {
             _paintedRows = new string[rows];
             _paintedWidth = console.Profile.Width;
+            _paintedTop = top;
             _paintedConsole = console;
         }
         var thumbHeight = Math.Clamp((int)((long)rows * rows / Math.Max(1, lines.Count)), 1, rows);
@@ -411,13 +415,13 @@ public sealed partial class ChatTranscript
             if (lines.Count > rows)
             {
                 var color = row >= thumb && row < thumb + thumbHeight ? 247 : 237;
-                content += $"\u001b[{row + 1};{edge}H\u001b[38;5;{color}m{rail}\u001b[0m\u001b[{row + 1};{edge}H";
+                content += $"\u001b[{row + top};{edge}H\u001b[38;5;{color}m{rail}\u001b[0m\u001b[{row + top};{edge}H";
             }
             if (string.Equals(_paintedRows[row], content, StringComparison.Ordinal))
             {
                 continue;
             }
-            changes.Append($"\u001b[{row + 1};1H\u001b[2K").Append(content);
+            changes.Append($"\u001b[{row + top};1H\u001b[2K").Append(content);
             _paintedRows[row] = content;
         }
         if (changes.Length > 0)
@@ -479,8 +483,10 @@ public sealed partial class ChatTranscript
                 duration = metrics.Elapsed;
             }
             var status = entry.Status == "done" || running || entry.Activity is not null ? string.Empty : $" ({entry.Status})";
-            var marker = Unicode ? "\u25cf" : "*";
-            if (running)
+            var marker = entry.Tool is { } tool
+                ? TerminalIcons.For(TerminalIcons.Tool(tool), Unicode)
+                : Unicode ? "\u25cf" : "*";
+            if (running && entry.Tool is null)
             {
                 marker = (Unicode ? _unicodeDots : _asciiDots).GetFrame((int)(animationFrame % int.MaxValue));
             }
@@ -504,7 +510,7 @@ public sealed partial class ChatTranscript
             }
             List<IRenderable> content =
             [
-                new Markup(header),
+                new Markup(TerminalIcons.White(header)),
             ];
             if (separateHint)
             {
@@ -596,7 +602,7 @@ public sealed partial class ChatTranscript
                 }
             }
         }
-        return new Text(entry.Text, Style.Parse(entry.Style));
+        return TerminalIcons.Render(entry.Text, entry.Style);
     }
 
     [GeneratedRegex(@"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", RegexOptions.CultureInvariant)]

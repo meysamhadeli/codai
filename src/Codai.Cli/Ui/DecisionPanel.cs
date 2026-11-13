@@ -162,7 +162,7 @@ internal sealed class DecisionPanel(string title, string body, IReadOnlyList<Ses
                     var line = row - 1 < lines.Count ? lines[row - 1] : (string.Empty, "default");
                     var text = ComposerLayout.Clip(TranscriptMarkdown.Clean(line.Item1), inner);
                     console.Write(new Text(unicode ? "\u2502 " : "| ", Style.Parse("grey23")));
-                    console.Write(new Text(text + new string(' ', Math.Max(0, inner - text.GetCellWidth())), Style.Parse(line.Item2)));
+                    console.Write(TerminalIcons.Render(text + new string(' ', Math.Max(0, inner - text.GetCellWidth())), line.Item2));
                     console.Write(new Text(unicode ? " \u2502" : " |", Style.Parse("grey23")));
                 }
             }

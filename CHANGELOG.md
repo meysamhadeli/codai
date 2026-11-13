@@ -6,7 +6,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Removed the roadmap page from documentation, navigation, and overview links.
+
 ### Fixed
+
+- Updated README and documentation to match implemented commands, CLI flags,
+  configuration and budgets, workspace trust, approval defaults, model pickers,
+  plugin/MCP activation, and terminal behavior. Added native hook and hosting
+  guides, JSON output and local MCP server references, and source-backed coverage
+  checks to catch documentation drift.
+
+- Prevented the terminal cursor from flashing over session tabs during hover and
+  click switching. Batched tab redraws with the cursor hidden, avoided clearing the
+  fixed-width strip on hover, and kept session-switch clears inside the redraw frame.
+
+### Changed
+
+- Used white text for selected and hovered terminal session tabs. Kept a shaded
+  background only on the active tab, with text-only hover feedback and no animation.
+  Preserved stable tab widths, click targets, and inactive-tab styling.
+
+- Automatically selected skills and MCP servers from publisher-approved plugin
+  installs, preserving unrelated selections and private definition-bound consent.
+  Verified Context7 documentation calls for WSO2 in the same live terminal session
+  after installation, without manual MCP selection or a restart.
+- Changed Installed plugin entries to open an Uninstall or Cancel action page before removal.
+
+### Added
+
+- Added Nerd Font action icons to tool transcripts, command menus, plugin
+  listings, approvals, and notices. Kept readable labels, cell-aware clipping,
+  ASCII fallbacks, and standard Unicode markers through `CODAI_ICONS=unicode`.
+  Kept Nerd Font glyphs white independently of theme, selection, and status colors.
+
+- Added `/update` and an Update command-menu action to check stable releases on
+  nuget.org, report an up-to-date version, and offer Update or Skip. Updated the
+  running global or custom-path .NET tool installation only after explicit consent,
+  with cancellation, failure reporting, and a restart notice. Kept source, local-tool,
+  and standalone installations check-only with manual-update guidance.
+
+- Added browser-style terminal session tabs with clickable titles, new and close
+  controls, overflow navigation, and keyboard shortcuts. Preserved independent
+  histories, modes, tool transcripts, scroll positions, and drafts. Saved closed
+  conversations and opened an empty tab when the last tab was closed.
+
+- Installed public GitHub, local, and HTTPS ZIP Claude/Copilot plugin bundles with
+  nested manifests, staged replacement, and bounded link-safe extraction. Loaded
+  namespaced skills and commands, imported MCP definitions behind private approval,
+  and adapted supported synchronous command hooks to existing execution policies.
+  Verified real Context7 and Copilot Microsoft Docs contributions through the Codai
+  terminal with a real model and live remote MCP calls.
+
+- Added GitHub's `copilot-plugins` and community `awesome-copilot` catalogs to
+  default plugin discovery. Accepted GitHub `owner/repo` shorthand, repository
+  URLs, and local repositories for persistent custom marketplace registration.
+  Verified `obra/superpowers-marketplace` as an additional live catalog without
+  implying runtime compatibility with its Claude/Copilot components.
+
+- Added Claude-style marketplace metadata discovery and bounded plugin bundle
+  installation for Codai hosts. Marketplace browsing does not load assemblies;
+  HTTPS sources, local bundles, ZIP traversal, and `plugin.json` manifests are
+  validated before an installed plugin reaches the existing loader.
+
+- Added the `/plugins` terminal workflow with Discover, Installed, Marketplaces,
+  searchable plugin selection, marketplace-source persistence,
+  and restart-aware bundle removal.
+
+- Replaced nested plugin pickers with a persistent tabbed browser, shaded search,
+  marketplace filters, two-line results, keyboard navigation, and live default
+  discovery from Anthropic's official public catalog. Displayed real catalog counts
+  and explicit compatibility limits for client-specific contributions.
+
+### Changed
+
+- Put Install first and Cancel second in plugin installation confirmation, and
+  shortened the action label to Install while retaining the publisher warning.
+
+- Matched plugin search and result styling to the MCP picker, with shaded fields,
+  accented checkmarks and labels, selected-row backgrounds, and right-aligned sources.
+  Made Enter start installation with publisher consent, removed Space-to-toggle,
+  and replaced the Errors tab with ordinary error notices.
+
+### Fixed
+
+- Strengthened matching-skill guidance to require `read_skill` before direct tool
+  use or answering, including when the model already knew the topic. Verified a
+  natural ASP.NET Core JWT question loaded the installed Microsoft Docs skill
+  before live Microsoft Learn search and fetch calls.
+
+- Suppressed duplicate plugin MCP connections when an enabled directly configured
+  or imported server already provided the endpoint. Matched normalized remote URLs
+  or exact stdio commands and arguments, preserved the winning configuration and
+  separate private approvals, and retained other plugin contributions.
+
+- Required explicit publisher consent even with automatic tool approval enabled.
+  Reported malformed bundles without crashing the plugin browser. Normalized known
+  Context7 client hints to its public MCP endpoint without borrowing client identities.
+
+- Preserved custom-marketplace registration across browser reopen by reading and
+  writing through the same filesystem abstraction. Resolved local bundle paths
+  relative to their marketplace repository and retained failed-add diagnostics.
+  Kept active marketplace counts complete when the filter row became crowded.
 
 - Reduced the gap between thinking/loading activity or result text and the input
   border by one row, preserving a clear separator and stable cursor alignment.

@@ -36,10 +36,16 @@ public class TerminalThemeTests
             ui.WriteInfo("Request stopped. Session remains open.");
             ui.WriteError("Provider request failed.");
 
+            var infoMarker = TerminalIcons.Prefix(TerminalIcon.Info, console.Profile.Capabilities.Unicode);
+            var errorMarker = TerminalIcons.Prefix(TerminalIcon.Error, console.Profile.Capabilities.Unicode);
             writer.ToString().Should().MatchRegex(System.Text.RegularExpressions.Regex.Escape(AccentCode("white"))
-                + " *Request stopped\\. Session remains open\\.");
+                + " *" + System.Text.RegularExpressions.Regex.Escape(infoMarker) + "Request stopped\\. Session remains open\\.");
             writer.ToString().Should().MatchRegex(System.Text.RegularExpressions.Regex.Escape(AccentCode("red"))
-                + " *! Provider request failed\\.");
+                + " *" + (errorMarker.Length > 0 ? string.Empty : "! ") + "Provider request failed\\.");
+            if (errorMarker.Length > 0)
+            {
+                writer.ToString().Should().Contain(AccentCode("white") + errorMarker.TrimEnd());
+            }
         }
     }
 
@@ -283,14 +289,14 @@ public class TerminalThemeTests
     }
 
     [Fact]
-    public void Successful_tool_markers_use_theme_accent_and_disclosures_stay_white()
+    public void Nerd_tool_markers_and_disclosures_stay_white()
     {
         var transcript = new ChatTranscript { Accent = "purple" };
         transcript.StartTool("grep", "pattern");
         transcript.CompleteTool("grep", true, "finished");
         transcript.ToolResult("grep", "one\ntwo\nthree\nfour");
         var rendered = string.Join('\n', transcript.GetLines(80));
-        rendered.Should().Contain(AccentCode("purple")).And.NotContain("38;2;78;186;111")
+        rendered.Should().Contain(AccentCode(TerminalIcons.NerdFontEnabled ? "white" : "purple")).And.NotContain("38;2;78;186;111")
             .And.Contain("\u001b[38;5;15m    \u25b8 1 more lines");
     }
 

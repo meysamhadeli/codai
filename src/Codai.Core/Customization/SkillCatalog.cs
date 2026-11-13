@@ -101,6 +101,16 @@ public sealed class SkillCatalog : ISkillCatalog
         {
             project.AddRange(await LoadDirectoryAsync(rootDirectory, directory, false, cancellationToken).ConfigureAwait(false));
         }
+        foreach (var plugin in await InstalledPluginCatalog.LoadAsync(rootDirectory, _fileSystem, cancellationToken).ConfigureAwait(false))
+        {
+            foreach (var directory in plugin.Skills)
+            {
+                var contributed = _fileSystem.FileExists(Path.Combine(directory, "SKILL.md"))
+                    ? new[] { await TryReadAsync(rootDirectory, directory, Path.GetFileName(directory), false, cancellationToken).ConfigureAwait(false) }.OfType<SkillDefinition>()
+                    : await LoadDirectoryAsync(rootDirectory, directory, false, cancellationToken).ConfigureAwait(false);
+                project.AddRange(contributed.Select(skill => skill with { Name = plugin.Name + ":" + skill.Name }));
+            }
+        }
 
         var disabled = await LoadDisabledNamesAsync(
             Path.Combine(rootDirectory, CodaiPaths.Folder), cancellationToken).ConfigureAwait(false);
@@ -266,7 +276,7 @@ public sealed class SkillCatalog : ISkillCatalog
                     continue;
                 }
                 name = name.Trim().ToLowerInvariant();
-                if (!CustomizationNames.IsValid(name))
+                if (!CustomizationNames.IsInvocationName(name))
                 {
                     continue;
                 }
@@ -322,7 +332,7 @@ public sealed class SkillCatalog : ISkillCatalog
                 }
 
                 var name = value.GetString()!.Trim().ToLowerInvariant();
-                if (CustomizationNames.IsValid(name))
+                if (CustomizationNames.IsInvocationName(name))
                 {
                     disabled.Add(name);
                 }
@@ -479,7 +489,7 @@ public sealed class SkillCatalog : ISkillCatalog
         // as an unusable name would be a confusing answer to a name that does exist.
         var requested = name?.Trim().ToLowerInvariant() ?? string.Empty;
 
-        if (!CustomizationNames.IsValid(requested))
+        if (!CustomizationNames.IsInvocationName(requested))
         {
             return null;
         }

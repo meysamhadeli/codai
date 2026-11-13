@@ -11,6 +11,37 @@ namespace Codai.Session.Tests;
 public sealed class TranscriptStepTests
 {
     [Theory]
+    [InlineData("red")]
+    [InlineData("bold deepskyblue1 on grey19")]
+    public void Nerd_icons_override_only_the_foreground_color(string style)
+    {
+        var glyph = TerminalIcons.For(TerminalIcon.Edit, unicode: true, nerdFont: true);
+        TerminalIcons.White($"[{style}]{glyph} Update[/]")
+            .Should().Be($"[{style}][white]{glyph}[/] Update[/]");
+        TerminalIcons.White("[red]* failed[/]").Should().Be("[red]* failed[/]");
+    }
+
+    [Theory]
+    [InlineData("read_file", "\uf0f6")]
+    [InlineData("write_file", "\uf0c7")]
+    [InlineData("edit_file", "\uf044")]
+    [InlineData("apply_patch", "\uf044")]
+    [InlineData("grep", "\uf002")]
+    [InlineData("run_command", "\uf120")]
+    [InlineData("fetch_web", "\uf0ac")]
+    [InlineData("read_skill", "\uf0e7")]
+    [InlineData("mcp_docs_search", "\uf1e6")]
+    [InlineData("delegate_agent", "\uf007")]
+    public void Action_icons_are_distinct_single_cell_glyphs_with_safe_fallbacks(string tool, string glyph)
+    {
+        var icon = TerminalIcons.Tool(tool);
+        TerminalIcons.For(icon, unicode: true, nerdFont: true).Should().Be(glyph);
+        glyph.GetCellWidth().Should().Be(1);
+        TerminalIcons.For(icon, unicode: true, nerdFont: false).Should().Be("\u25cf");
+        TerminalIcons.For(icon, unicode: false, nerdFont: true).Should().Be("*");
+    }
+
+    [Theory]
     [InlineData(24, true)]
     [InlineData(80, true)]
     [InlineData(24, false)]

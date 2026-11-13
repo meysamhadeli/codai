@@ -125,11 +125,11 @@ public sealed class MouseScrollTests
         using var ui = new SpectreUserInterface(console, new Input());
         ui.HandleMouse(new(30, 8, TerminalMouseAction.ScrollUp)).Should().BeFalse();
         await ui.ReadInputAsync();
-        writer.ToString().Should().Contain("\u001b[?1002h\u001b[?1006h");
+        writer.ToString().Should().Contain("\u001b[?1003h\u001b[?1006h");
         writer.GetStringBuilder().Clear();
 
         ui.RestoreTerminal();
-        writer.ToString().Should().Contain("\u001b[?1002l\u001b[?1006l\u001b[?1049l");
+        writer.ToString().Should().Contain("\u001b[?1003l\u001b[?1006l\u001b[?1049l");
         ui.HandleMouse(new(30, 8, TerminalMouseAction.ScrollUp)).Should().BeFalse();
     }
 

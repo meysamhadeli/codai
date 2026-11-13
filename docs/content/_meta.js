@@ -14,5 +14,4 @@ export default {
   "acp-compatibility": "ACP compatibility",
   reference: { type: "separator", title: "Reference" },
   resources: { title: "Reference", display: "children" },
-  "agent-mode-roadmap": "Roadmap",
 };

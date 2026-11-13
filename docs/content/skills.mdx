@@ -8,9 +8,11 @@ import { Callout, Steps } from "nextra/components";
 # Skills
 
 A skill gives Codai a repeatable workflow. Agent requests advertise checked skills by
-name and description. The model matches these descriptions to the task and calls
-`read_skill` to load relevant instructions before following them. Unchecked skills
-contribute no automatic guidance. Reference resources load only when needed.
+name and description. Guidance requires the model to call `read_skill` for a matching
+skill before other tools or answering, even when it already knows the topic or can
+call the tools directly. Matching remains model-selected rather than deterministic
+dispatch. Unchecked skills contribute no automatic guidance. Reference resources
+load only when needed.
 
 Use skills for multi-step reviews, release checks, migrations, or other work that
 benefits from a consistent method. For a short prompt template, use a

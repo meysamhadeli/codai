@@ -153,7 +153,7 @@ internal sealed class ApprovalPanel : IInlineDecision
         }
         var lines = new List<(string Text, string Style)>
         {
-            (ComposerLayout.Clip(Title, inner), "bold " + surface),
+            (ComposerLayout.Clip(TerminalIcons.Prefix(TerminalIcons.Tool(_request.ToolName), unicode) + Title, inner), "bold " + surface),
             (new string(unicode ? '\u2500' : '-', inner), "grey23"),
         };
         var preview = TranscriptMarkdown.Clean(_request.PreviewOrDefault).TrimEnd('\n');

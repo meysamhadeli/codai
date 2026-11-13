@@ -14,7 +14,7 @@ without stacked Markdown padding. Thinking/loading activity and completed replie
 use the same compact gap before the input border, without an extra blank composer
 row. Model, mode, usage, and approval state remain
 visible while you read an answer or browse earlier steps.
-There is one main conversation screen, without persistent top navigation tabs.
+Interactive ANSI terminals show open conversations in a persistent top tab strip.
 Submitted questions use compact dark strips with the same `❯` marker as editable
 input, in a slightly darker shade of the active theme accent (`>` on ASCII terminals),
 without padding rows or timestamps. A single-line question occupies one terminal
@@ -53,8 +53,8 @@ navigation; long question text can also be paged without changing the selection.
 Transcript messages remain separated from the input surface by a blank row, even
 when history fills the viewport on terminals at least twelve rows high; shorter
 terminals keep compact spacing. There is no separate loading row above the input.
-The compact live activity row, and actions opened explicitly, show a nine-dot, 3×3 filling/emptying grid on
-Unicode terminals, with a two-cell ASCII fallback, and an inline
+Model activity rows show a nine-dot, 3×3 filling/emptying grid on Unicode terminals,
+with a two-cell ASCII fallback, and an inline
 `(elapsed · esc interrupt)` hint. Narrow rows shorten this to `(elapsed · esc)`;
 ASCII terminals use a hyphen separator. Escape still interrupts the current turn.
 Informational notices, including stopped-request feedback, are white in every
@@ -65,6 +65,65 @@ Activity labels use the active theme's solid accent and trailing ellipsis, such 
 When a caller reports planning, analyzing, searching, reviewing, or compacting,
 those labels use the same presentation; Codai does not invent or rotate phases.
 Activity headers omit action totals while running and after completion.
+
+## Icons and fonts
+
+Interactive terminals use Nerd Font icons by default for file reads, writes,
+edits, searches, shell commands, web requests, skills, MCP tools, and agents.
+Command menus, plugin entries, approval titles, and notices also use
+recognizable icons. Nerd Font icons stay white while labels, selection backgrounds,
+and error messages keep their existing colors. Labels, approval choices, errors, and navigation remain readable
+without interpreting an icon. Tool actions keep their icon while running; model
+activity retains its progress spinner.
+
+Select a [Nerd Font](https://www.nerdfonts.com/font-downloads), such as JetBrainsMono
+Nerd Font or CaskaydiaCove Nerd Font, in your terminal's font settings. Codai cannot
+reliably detect the installed font. Missing icons usually appear as empty squares.
+Set `CODAI_ICONS=unicode` before launching Codai to use standard Unicode markers
+without requiring a Nerd Font; the default is `nerd`. ASCII-only terminals retain
+plain markers. Redirected and JSON output do not gain decorative icons.
+
+## Session tabs
+
+The first terminal row shows open conversations. The active tab has a highlighted
+title and an `x` close action; `+` opens an empty conversation without replacing the
+current one. Click a title to switch. Titles come from the first request, stay
+stable, and clip to terminal-cell width. Overflow arrows keep the active tab visible
+when more tabs are open than fit on one row.
+
+The active tab uses white text on a shaded background, even when the pointer leaves.
+Hovering an inactive tab turns only its text white, without adding a background.
+New, close, and overflow controls also use white text under the pointer. Moving away
+restores inactive tabs' normal styling. Hovering never switches sessions or changes
+tab widths, and there is no animation.
+Tab-only redraws hide the terminal cursor and overwrite the existing strip without
+blanking it. Clicking another tab preserves the strip while the conversation
+redraws, then restores the cursor to that tab's composer.
+Motion feedback requires a terminal host that forwards mouse movement.
+
+| Control | Action |
+| --- | --- |
+| `+` or Ctrl+T | Open an empty tab |
+| Tab title | Switch to that conversation |
+| Ctrl+PageUp / Ctrl+PageDown | Previous / next tab, wrapping at either end |
+| Active tab's `x` or Ctrl+F4 | Save and close that tab |
+| `/session open`, `next`, `previous`, `close` | Perform the same actions through commands |
+
+Each tab keeps separate model history, Agent/Plan mode, terminal transcript,
+expanded tool previews, scroll position, and draft text/cursor. Closing the final
+tab creates an empty one rather than exiting. Closed conversations remain in
+saved history; closing does not delete files or undo work. `/new` retains its
+confirmation and opens a new tab; choosing a saved conversation in `/session`
+opens an independent branch in another tab.
+
+Switching is available between requests. Finish or interrupt a running request
+before changing tabs; tabs do not run foreground requests concurrently. Tabs share
+the workspace, provider/model settings, tool approvals, and usage accounting.
+The open-tab list lasts for the current process; saved conversations can be
+reopened after restarting. Headless output has no tab strip. Terminals narrower
+than 12 columns or shorter than 12 rows hide the strip; commands still work.
+If the terminal host intercepts a shortcut or does not forward mouse events, use
+the commands instead.
 
 ## Write a request
 
@@ -109,12 +168,14 @@ separate, curated settings palette described under [Menus](#menus).
 | `/help` | Show the installed slash-command catalog |
 | `/init [focus]` | Ask the model to inspect the repository and improve AGENTS.md |
 | `/mcps` | Select MCP servers with Enter; Escape saves/closes, new imports require review; restart to apply |
+| `/plugins` | Browse Discover, Installed, and Marketplaces; review publisher trust before installing supported plugin bundles |
 | `/models [model-id]` | Select a suggested or custom model on the current provider for this mode |
-| `/new` | Confirm, archive current history, and start an empty conversation |
-| `/session` | Browse recent saved conversations and continue one in an independent branch |
+| `/new` | Confirm, archive current history, and open an empty conversation tab |
+| `/session [open\|next\|previous\|close]` | Browse saved conversations without arguments, or create, switch, and close open tabs |
 | `/settings [config\|status\|usage\|stats]` | Open settings views without header tabs; configuration edits require Save / Cancel and restart |
 | `/skills` | Enable or disable multiple discovered skills |
 | `/themes` | Save and apply a terminal theme |
+| `/update` | Check the latest stable release and offer installation, or report that the running version is up to date |
 
 `/init` makes a normal model request and spends tokens. Initialization retains
 the current mode and normal write approval. Model suggestions are not
@@ -131,9 +192,35 @@ Custom workflows and skills remain available under their own names.
 `/auth` replaced `/connect`; `/connect` is not retained as an alias.
 
 This is command-level compatibility, not a complete OpenCode TUI port. `/move`
-and `/update` are not implemented. Start another Codai process in the target
-directory to change projects; update with `dotnet tool update --global codai`.
+is not implemented. Start another Codai process in the target directory to change projects.
 Session pin/delete/rename is not implemented.
+
+## Updates
+
+Run `/update`, or choose **Update** in the Ctrl+P / F1 command menu. Codai shows
+**Checking for updates...** while querying nuget.org for the latest stable `Codai`
+package. Prereleases are excluded. If the running version is equal to or newer
+than that release, Codai reports **Codai &lt;version&gt; is already up to date.**
+
+When a newer release exists, choose **Update** to install it or **Skip** to keep
+the current version. Escape dismisses the choice or interrupts the active check
+or installation. Tool auto-approval never accepts the update choice for you.
+Checks and updates are local commands: they do not call the model or spend tokens.
+
+Automatic installation requires the .NET 10 SDK and a global or `--tool-path`
+.NET tool installation. Codai targets the running tool's own installation directory,
+pins the checked version, and uses only nuget.org rather than workspace package
+sources. Checks time out after 15 seconds; installation times out after three minutes.
+Network, SDK, permission, and installation errors are reported without claiming success.
+After interruption, run `/update` again to check the installation before retrying.
+
+After a successful update, restart Codai to run the new version; the current process
+and conversation remain open.
+Source builds, local manifest tools, and standalone builds can check for updates,
+but must be updated through their original installation method. Codai never updates
+an unrelated global tool on their behalf. Other hosts can supply
+`IApplicationUpdater` when constructing `SessionCommandHandler`; hosts without an
+updater report that application updates are unavailable.
 
 ## Diff browser
 
@@ -376,7 +463,8 @@ Tab / Shift+Tab or Left / Right switches settings views. Config supports
 Enter / Space to edit, `/` to focus search, and Escape to close. Status shows
 runtime policy; Usage shows configured budget limits, not provider account usage;
 Stats shows available and unavailable tool counts. These three views are read-only.
-The main conversation has no persistent navigation tabs.
+These settings views have no persistent navigation tabs. The conversation's
+independent session strip remains described under [Session tabs](#session-tabs).
 
 `/settings` opens configuration fields;
 known live values and edits saved during this workflow are shown, unavailable
@@ -414,8 +502,8 @@ the selection does not move the tick. Unknown values and masked credentials do
 not imply a configured state. Theme ticks change only after a successful save;
 integration ticks describe saved availability, not live connection health.
 
-Yes/no confirmations use a focused modal with **No** selected by default. Arrows
-choose and Enter submits; Escape declines. Questions from `ask_question` present
+Yes/no confirmations use the inline decision box, with **Yes** first and selected
+by default. Arrows choose and Enter submits; Escape declines. Questions from `ask_question` present
 the supplied choices plus **Write another answer**, or a text editor when no
 choices were supplied. Draft input is preserved while the dialog owns keyboard
 input; cancelling a question does not invent an answer or grant write permission.
@@ -452,9 +540,10 @@ choices, and small approval dialogs keep all three decisions visible.
 | Session | Skills | Manage enabled skills with checkmarks and Enter toggles |
 | Session | View diff | Browse working-tree and staged changes |
 | Customization | Switch theme | Choose a terminal theme; apply only after Save |
-| Customization | Plugins | Manage configured plugin availability or remove entries; restart to apply |
+| Customization | Plugins | Browse marketplaces, install trusted bundles, and uninstall installed bundles |
 | Customization | MCPs | Toggle saved MCP availability; restart to apply |
 | Customization | Auth | Authenticate and save a provider connection for next startup |
+| System | Update | Check stable releases and offer an explicitly approved update |
 | System | Help | Show the slash-command reference |
 | System | Docs | Open published documentation in the default browser and print its URL |
 | System | Exit | Leave Codai |

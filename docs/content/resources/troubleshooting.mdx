@@ -90,10 +90,43 @@ See [Sessions and recovery](/usage/sessions) before restoring anything.
 
 ## MCP or plugin changes are not active
 
-Configuration changes apply on restart; inspection does not reload live tools.
+Before the first model request, interactive sessions re-read MCP definitions and
+selections. After connections initialize, changes require a restart; inspection
+does not reload live tools. Newly installed plugin skills and commands can be
+used immediately, while native .NET code and initialized MCP connections need restart.
 Check the configured name/path, enabled state, transport, and timeout.
 See [MCP](/mcp) or [Plugins](/plugins). Never mark an unknown remote tool read-only
 just to make it available in Plan.
+
+## Icons appear as squares
+
+Select a Nerd Font in your terminal, or set `CODAI_ICONS=unicode` before launching
+Codai. Codai cannot reliably detect the selected font. Nerd Font action icons are
+white; error message text stays red. See [icons and fonts](/usage/terminal#icons-and-fonts).
+
+## Tabs or mouse feedback look wrong
+
+Tab hover changes text only; it has no animation. Current builds hide the cursor
+while painting and preserve the tab strip during switches. If an installed older
+build flashes a block over a tab, check `codai --version`, run `/update` where
+supported, and restart. Mouse motion and click forwarding depend on the terminal;
+use `/session next`, `/session previous`, or the keyboard shortcuts when intercepted.
+
+## Update cannot install
+
+`/update` checks stable nuget.org releases. Automatic installation needs the .NET
+10 SDK and the running tool's global or custom `--tool-path` installation. Source,
+local-manifest, and standalone builds are check-only; update them through their
+original method. Update consent is explicit even with Auto approval. Network,
+SDK, timeout, or permission failures do not imply success. Restart after a
+successful installation. See [update requirements](/usage/terminal#updates).
+
+## A lifecycle hook blocks work
+
+Inspect `codai config hooks` and the reported manifest/command. Matching command
+hooks need Agent mode, shell access, and approval; malformed manifests or output
+fail closed. Use `--no-hooks` only after deciding those hooks should not run, not
+as an unexplained policy bypass. See [lifecycle hooks](/customization/hooks).
 
 ## Report a reproducible issue
 

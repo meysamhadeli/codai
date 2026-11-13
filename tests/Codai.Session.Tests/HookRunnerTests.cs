@@ -17,6 +17,25 @@ public sealed class HookRunnerTests : IDisposable
     private readonly RecordingProcesses _processes = new();
 
     [Fact]
+    public async Task Installed_command_hook_receives_external_payload_and_can_deny_tool()
+    {
+        var plugin = Path.Combine(_directory.FullName, ".codai", "plugins", "policy");
+        Directory.CreateDirectory(plugin);
+        await File.WriteAllTextAsync(Path.Combine(plugin, "codai-plugin.json"), "{\"name\":\"policy\",\"hooks\":[\"codai-hooks.json\"]}");
+        await File.WriteAllTextAsync(Path.Combine(plugin, "codai-hooks.json"), JsonSerializer.Serialize(new
+        {
+            hooks = new[] { new { name = "policy/pre", @event = "PreToolUse", command = "policy-command", inputFormat = "external", externalEvent = "PreToolUse", workingDirectory = plugin, matcher = "write_file" } },
+        }));
+        _processes.Result = new(0, "{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\"}}", "", false);
+        var decision = await Runner().InvokeAsync(new(AgentHookEvent.PreToolUse, _directory.FullName) { ToolName = "write_file" });
+        decision.Allowed.Should().BeFalse();
+        _processes.Calls.Should().ContainSingle();
+        using var payload = JsonDocument.Parse(_processes.Calls.Single().Input);
+        payload.RootElement.GetProperty("hook_event_name").GetString().Should().Be("PreToolUse");
+        payload.RootElement.GetProperty("tool_name").GetString().Should().Be("write_file");
+    }
+
+    [Fact]
     public async Task Approved_hook_receives_json_stdin_without_command_interpolation()
     {
         await ManifestAsync();

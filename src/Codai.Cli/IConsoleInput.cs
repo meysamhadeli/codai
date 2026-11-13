@@ -45,7 +45,8 @@ public sealed class SystemConsoleInput : IConsoleInput
     private readonly List<string> _history = [];
     private Task<string?>? _pendingRead;
     private int _interactiveReads;
-    private string? _suspendedDraft;
+    private (string Text, int Cursor)? _suspendedDraft;
+    internal (string Text, int Cursor)? SuspendedDraft { get => _suspendedDraft; set => _suspendedDraft = value; }
     private WindowsConsoleMouseInput? _windowsMouse;
     private readonly TerminalMouseParser _mouseParser = new();
     private bool _mouseTracking;
@@ -305,7 +306,7 @@ public sealed class SystemConsoleInput : IConsoleInput
         var editor = new ComposerBuffer(composer ? _history : []);
         if (composer)
         {
-            editor.Insert(_suspendedDraft ?? InitialText);
+            editor.Restore(_suspendedDraft?.Text ?? InitialText, _suspendedDraft?.Cursor ?? InitialText.Length);
             _suspendedDraft = null;
             InitialText = string.Empty;
             if (PendingInsertion is { } insertion)
@@ -348,7 +349,7 @@ public sealed class SystemConsoleInput : IConsoleInput
             cancellationToken.ThrowIfCancellationRequested();
             if (composer && PaletteCommandHandler?.Invoke() is { } command)
             {
-                _suspendedDraft = editor.Text;
+                _suspendedDraft = (editor.Text, editor.Cursor);
                 return command;
             }
             var hasKey = TryReadTerminalKey(out var key, out var mouseHandled);

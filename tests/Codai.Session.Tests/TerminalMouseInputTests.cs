@@ -11,6 +11,8 @@ public sealed class TerminalMouseInputTests
     [InlineData("\u001b[<80;80;3M", TerminalMouseAction.ScrollUp)]
     [InlineData("\u001b[<0;80;3M", TerminalMouseAction.Press)]
     [InlineData("\u001b[<32;80;3M", TerminalMouseAction.Drag)]
+    [InlineData("\u001b[<35;80;3M", TerminalMouseAction.Move)]
+    [InlineData("\u001b[<51;80;3M", TerminalMouseAction.Move)]
     [InlineData("\u001b[<0;80;3m", TerminalMouseAction.Release)]
     [InlineData("\u001b[<2;80;3M", TerminalMouseAction.Paste)]
     [InlineData("\u001b[<2;80;3m", TerminalMouseAction.Release)]
@@ -103,6 +105,7 @@ public sealed class TerminalMouseInputTests
     [InlineData(0xFF880000u, 4u, TerminalMouseAction.ScrollDown)]
     [InlineData(1u, 0u, TerminalMouseAction.Press)]
     [InlineData(1u, 1u, TerminalMouseAction.Drag)]
+    [InlineData(0u, 1u, TerminalMouseAction.Move)]
     [InlineData(0u, 0u, TerminalMouseAction.Release)]
     [InlineData(2u, 0u, TerminalMouseAction.Paste)]
     public void Windows_mouse_records_decode_wheel_and_drag(uint buttons, uint flags, TerminalMouseAction action) =>

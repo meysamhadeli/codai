@@ -29,13 +29,18 @@ public sealed class McpManifestCatalog
         _environment = environment ?? ProcessEnvironmentReader.Instance;
     }
 
-    /// <summary>Loads layered manifests, then overlays native definitions. Imports require private approval.</summary>
-    public async Task<IReadOnlyList<McpServerOptions>> LoadAsync(string projectRoot, IReadOnlyList<McpServerOptions> nativeServers,
-        CancellationToken cancellationToken = default)
+    /// <summary>Loads layered manifests and native definitions, suppressing plugin endpoints already provided by enabled servers. Imports require private approval.</summary>
+    public Task<IReadOnlyList<McpServerOptions>> LoadAsync(string projectRoot, IReadOnlyList<McpServerOptions> nativeServers,
+        CancellationToken cancellationToken = default) => LoadDefinitionsAsync(projectRoot, nativeServers, true, cancellationToken);
+
+    private async Task<IReadOnlyList<McpServerOptions>> LoadDefinitionsAsync(string projectRoot, IReadOnlyList<McpServerOptions> nativeServers,
+        bool suppressDuplicates, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(nativeServers);
         var metadata = await DiscoveryDirectories.LoadMetadataAsync(projectRoot, _fileSystem, _home, cancellationToken).ConfigureAwait(false);
         var sources = new List<(string Path, string Scope)>();
+        foreach (var plugin in await InstalledPluginCatalog.LoadAsync(projectRoot, _fileSystem, cancellationToken).ConfigureAwait(false))
+            sources.AddRange(plugin.Mcp.Select(path => (path, "plugin")));
         if (_home is not null && _globalDirectory is not null)
         {
             sources.Add((Path.Combine(_home, ".claude", ".config.json"), "user"));
@@ -111,7 +116,32 @@ public sealed class McpManifestCatalog
         {
             throw new IOException("MCP discovery exceeded its 200-server limit.");
         }
-        return servers.Values.OrderBy(server => server.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        var result = suppressDuplicates ? SuppressPluginDuplicates(servers.Values) : servers.Values.ToList();
+        return result.OrderBy(server => server.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static List<McpServerOptions> SuppressPluginDuplicates(IReadOnlyCollection<McpServerOptions> servers)
+    {
+        var result = servers.Where(server => server.DiscoveryScope != "plugin").ToList();
+        var endpoints = result.Where(server => server.Enabled).Select(EndpointKey).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        foreach (var plugin in servers.Where(server => server.DiscoveryScope == "plugin")
+            .OrderByDescending(server => server.Enabled))
+        {
+            var endpoint = EndpointKey(plugin);
+            if (endpoint is not null && endpoints.Contains(endpoint)) continue;
+            result.Add(plugin);
+            if (plugin.Enabled && endpoint is not null) endpoints.Add(endpoint);
+        }
+        return result;
+    }
+
+    private static string? EndpointKey(McpServerOptions server)
+    {
+        if (server.Transport == "stdio")
+            return string.IsNullOrWhiteSpace(server.Command) ? null : "stdio:" + JsonSerializer.Serialize(new[] { server.Command }.Concat(server.Args));
+        if (!Uri.TryCreate(server.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return null;
+        return "remote:" + uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped) +
+            uri.AbsolutePath.TrimEnd('/') + uri.Query;
     }
 
     /// <summary>Saves explicit startup approval privately, bound to project and definition.</summary>
@@ -127,7 +157,7 @@ public sealed class McpManifestCatalog
         {
             throw new IOException("MCP approval state must be stored outside the project repository.");
         }
-        var current = (await LoadAsync(projectRoot, [], cancellationToken).ConfigureAwait(false))
+        var current = (await LoadDefinitionsAsync(projectRoot, [], false, cancellationToken).ConfigureAwait(false))
             .FirstOrDefault(candidate => string.Equals(candidate.Name, server.Name, StringComparison.OrdinalIgnoreCase));
         if (current?.DiscoveryFingerprint != server.DiscoveryFingerprint)
         {

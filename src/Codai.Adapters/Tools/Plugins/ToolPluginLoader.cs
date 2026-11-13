@@ -32,7 +32,7 @@ public static class ToolPluginLoader
                 ? Directory.EnumerateFiles(
                     Path.Combine(baseDirectory, ".codai", "plugins"),
                     "*.dll",
-                    SearchOption.TopDirectoryOnly)
+                    SearchOption.AllDirectories)
                 : [])
             .Select(path => Path.GetFullPath(path, baseDirectory))
             .Distinct(StringComparer.OrdinalIgnoreCase);

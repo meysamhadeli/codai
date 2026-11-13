@@ -40,6 +40,37 @@ must await `IAsyncToolRegistry.InitializeAsync` before building model requests.
 The optional `serverSource` callback supplies fresh definitions at deferred
 initialization; eager registration continues to use the supplied `McpOptions`.
 
+## Duplicate plugin servers
+
+When a plugin supplies an MCP server equivalent to an enabled directly configured
+or imported server, Codai keeps the existing server and suppresses the plugin
+duplicate. Only the winning connection and tool names are registered; its
+credentials, settings, and approval remain unchanged. Other plugin contributions,
+including skills and commands, remain available.
+
+Remote endpoints match by URL, normalizing scheme/host capitalization, default
+ports, and trailing path slashes. Different paths, query strings, and non-default
+ports remain distinct. HTTP and SSE definitions at the same endpoint count as
+duplicates. Local stdio servers match by exact executable and ordered arguments.
+As in Claude Code, headers, environment variables, and working directories do not
+distinguish duplicates; the winner's whole definition is used, not a combination.
+
+Enabled manual definitions take precedence over plugin definitions. Between
+enabled plugins sharing an endpoint, the first loaded wins, in stable bundle and
+manifest order. Existing name-based precedence among manual definitions remains
+unchanged. Disabled manual servers do not suppress a plugin connection.
+
+This check runs whenever discovery reloads, including before the first deferred
+connection. It does not edit manifests or transfer approval. If the winning server
+is disabled or removed, a previously suppressed plugin definition becomes visible
+again and connects only if its own fingerprint-bound approval is still valid.
+Removing a plugin never deletes the direct server's configuration or approval.
+Already initialized connections still require a restart after configuration changes.
+
+For example, directly configured `context7` and plugin-provided
+`context7/context7` pointing at `https://mcp.context7.com/mcp` produce only the
+direct connection and its tools in `/mcps` and the runtime.
+
 ## Automatic selection
 
 Agent-session guidance asks the model to choose relevant offered capabilities from
@@ -233,7 +264,12 @@ for OAuth and restart after connection changes.
 
 ### Review before connection
 
-New imports start disabled. `/mcps` shows imported definitions with their transport,
+New imports start disabled, except contributions installed through the interactive
+plugin publisher-trust workflow: choosing **Install** selects that bundle's skills
+and saves private startup consent for its MCP definitions automatically. Other
+imports remain unchanged. Before the first model request these servers connect
+without restarting; existing initialized connections still require a restart.
+`/mcps` shows imported definitions with their transport,
 executable or endpoint origin, working directory, and source path. Check the desired
 servers with Enter, then save and close with Escape. Saving the checklist is startup
 consent for selected imports; there is no second confirmation dialog. Unchecked
@@ -265,7 +301,8 @@ settings need no conversion. See [selection storage](/customization/configuratio
 
 Startup approval is not tool-call approval. Imported `read_only` and `auto_approve`
 claims are ignored; mode, access, budget, and ordinary tool approvals still apply.
-Restart Codai after approval changes to rebuild connections.
+Selection changes made before the first connection apply to that initialization;
+after connections have initialized, restart to rebuild them.
 
 ### HTTP response compatibility
 
@@ -296,6 +333,8 @@ Codai opens the browser, receives an authorization code through a loopback callb
 exchanges it using PKCE, and sends the bearer token to the MCP endpoint.
 When required, supply a client secret through `oauth_client_secret_environment`,
 not as a literal in project configuration.
+`oauth_callback_port` defaults to `0`, choosing an available loopback port; set it
+only when your registered redirect URI requires a particular local port.
 
 ## Inspect and manage
 
@@ -321,7 +360,8 @@ change saved configuration.
 The footer contains only Enter to confirm and Esc to close, without a second toggle
 or restart hint. A restart notice appears after saved changes. Checkmarks represent
 saved availability or matching private import approval, not connection health;
-new checks are provisional until saved and, for imports, separately approved.
+new checks are provisional until saved. Saving is the private startup consent for
+selected imports; there is no separate approval dialog.
 CLI mutation commands edit native configuration entries only. Restart Codai to
 rebuild tool connections after changes. Removal remains available through
 `codai config mcp remove <name>`.
@@ -362,6 +402,38 @@ Codai supports tool discovery and invocation, including the local Codai MCP serv
 The local server does not expose resource subscriptions or server-side
 resource/prompt registration. Remote resources and prompts remain available as
 read-only capabilities.
+
+## Serve Codai tools
+
+Codai can also act as an MCP stdio server for another client:
+
+```bash
+cd your-project
+codai mcp
+```
+
+Configure the client to start executable `codai` with argument `mcp` and the desired
+project working directory. This host uses the process working directory as its
+root; CLI-agent `--cwd` routing is not applied. An explicit `--config <path>` can
+select runtime configuration. It does not open chat, use a coding model, or show
+the interactive CLI workspace-trust screen. The calling host must authorize the
+directory before starting the process.
+
+| Protocol tool | Purpose |
+| --- | --- |
+| `codai_list_tools` | Return names, descriptions, read-only status, and argument schemas for registered Codai tools |
+| `codai_call_tool` | Invoke a named tool with `arguments` supplied as a JSON-encoded object string |
+
+For example, `codai_call_tool` accepts `name: "list_files"` and `arguments: "{}"`.
+Its result contains `IsSuccess` and `Content`. A successful MCP exchange does not
+mean the underlying tool succeeded; inspect that result.
+
+Shell tools and subagents are disabled in this host. State-changing calls use the
+default deny-all approver; it does not offer a permission dialog. Agent CLI flags
+such as `--auto-approve` do not replace this host's approval services. Configured
+plugins and MCP connections can initialize during composition, so review their
+configuration too. Server-side resource/prompt registration and subscriptions
+are not implemented. See [hosting](/resources/hosting) when you need custom policy.
 
 See [Permissions](/usage/permissions) for approval behavior and
 [Troubleshooting](/resources/troubleshooting#mcp-or-plugin-changes-are-not-active)

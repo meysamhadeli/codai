@@ -78,6 +78,10 @@ public interface IUserInterface
     /// <summary>Updates discovered skill names offered by slash-command completion, including unchecked skills.</summary>
     void SetSkills(IReadOnlyList<string> skillNames) { }
 
+    /// <summary>Updates open conversation tabs and restores the active view when supported.</summary>
+    /// <returns>Whether the host renders the active conversation itself.</returns>
+    bool SetSessionTabs(IReadOnlyList<SessionTab> tabs, string activeId, IReadOnlyList<ChatTurn> turns) => false;
+
     void InsertInput(string text) { }
 
     void WriteLine(string message);
@@ -121,6 +125,11 @@ public interface IUserInterface
     void Clear();
 }
 
+/// <summary>An open conversation displayed in a terminal session tab.</summary>
+/// <param name="Id">Stable identity for the open tab.</param>
+/// <param name="Title">Short conversation title derived from its first request.</param>
+public sealed record SessionTab(string Id, string Title);
+
 /// <summary>A selectable session row with optional grouping and state indicators.</summary>
 public sealed record SessionMenuItem(string Label, string Description, string Value)
 {
@@ -135,6 +144,8 @@ public sealed record SessionMenuItem(string Label, string Description, string Va
 /// <summary>Presentation and keyboard behavior of a searchable session picker.</summary>
 public sealed record SessionMenuOptions
 {
+    /// <summary>Gets the active plugin-browser tab; null uses the ordinary picker.</summary>
+    public string? PluginTab { get; init; }
     /// <summary>Gets whether left/right adjusts a single value instead of searching a list.</summary>
     public bool HorizontalSelection { get; init; }
     /// <summary>Gets explanatory text displayed above a horizontal value selector.</summary>

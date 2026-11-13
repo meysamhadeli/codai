@@ -1,4 +1,5 @@
 using System.Globalization;
+using Codai.Application.Abstractions;
 using Codai.Application.Inspection;
 using Codai.Configuration;
 using Codai.Core.Abstractions;
@@ -34,6 +35,7 @@ public sealed class SessionCommandHandler
     private readonly SessionFootprint? _footprint;
     private readonly IProcessRunner? _processes;
     private readonly ConfigurationInspectionContext? _inspectionContext;
+    private readonly IApplicationUpdater? _updater;
     private readonly Dictionary<string, List<string>> _recentModels = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _favoriteModels = new(StringComparer.Ordinal);
 
@@ -64,7 +66,8 @@ public sealed class SessionCommandHandler
         SessionSettingsWorkflow? settings = null,
         SessionFootprint? footprint = null,
         IProcessRunner? processes = null,
-        ConfigurationInspectionContext? inspectionContext = null)
+        ConfigurationInspectionContext? inspectionContext = null,
+        IApplicationUpdater? updater = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(history);
@@ -94,6 +97,57 @@ public sealed class SessionCommandHandler
         _footprint = footprint;
         _processes = processes;
         _inspectionContext = inspectionContext;
+        _updater = updater;
+    }
+
+    private async Task UpdateApplicationAsync(CancellationToken cancellationToken)
+    {
+        if (_updater is null)
+        {
+            _ui.WriteError("Application updates are unavailable in this host.");
+            return;
+        }
+
+        try
+        {
+            var update = await _ui.RunWithProgressAsync("Checking for updates...", _updater.CheckAsync,
+                cancellationToken).ConfigureAwait(false);
+            if (!update.UpdateAvailable)
+            {
+                _ui.WriteSuccess($"Codai {update.CurrentVersion} is already up to date.");
+                return;
+            }
+
+            _ui.WriteInfo($"Codai {update.LatestVersion} is available (running {update.CurrentVersion}).");
+            if (update.InstallUnavailableReason is not null)
+            {
+                _ui.WriteInfo(update.InstallUnavailableReason);
+                return;
+            }
+
+            var choice = await _ui.ChooseAsync("Update Codai",
+                [new("Update", $"Install version {update.LatestVersion}", "update"),
+                 new("Skip", "Keep the current version", "skip")], cancellationToken).ConfigureAwait(false);
+            if (choice != "update")
+            {
+                return;
+            }
+
+            await _ui.RunWithProgressAsync($"Updating Codai to {update.LatestVersion}...", async token =>
+            {
+                await _updater.InstallAsync(update.LatestVersion, token).ConfigureAwait(false);
+                return true;
+            }, cancellationToken).ConfigureAwait(false);
+            _ui.WriteSuccess($"Codai {update.LatestVersion} installed. Restart Codai to use the new version.");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _ui.WriteInfo("Update cancelled.");
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _ui.WriteError($"Could not update Codai: {exception.Message}");
+        }
     }
 
     /// <summary>
@@ -110,6 +164,10 @@ public sealed class SessionCommandHandler
         cancellationToken.ThrowIfCancellationRequested();
         switch (command)
         {
+            case SlashCommand.Update:
+                await UpdateApplicationAsync(cancellationToken).ConfigureAwait(false);
+                return false;
+
             case SlashCommand.Agents:
                 var agent = string.IsNullOrWhiteSpace(arguments)
                     ? await _ui.ChooseAsync("Select agent",
@@ -135,6 +193,7 @@ public sealed class SessionCommandHandler
             case SlashCommand.Connect:
             case SlashCommand.Themes:
             case SlashCommand.Mcps:
+            case SlashCommand.Plugins:
             case SlashCommand.Skills:
                 if (_settings is null)
                 {
@@ -146,6 +205,7 @@ public sealed class SessionCommandHandler
                     SlashCommand.Connect => "connect",
                     SlashCommand.Themes => "theme",
                     SlashCommand.Mcps => "mcp",
+                    SlashCommand.Plugins => "plugins",
                     _ => "skills",
                 }, cancellationToken).ConfigureAwait(false);
                 return false;

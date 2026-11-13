@@ -7,8 +7,9 @@ import { Callout } from "nextra/components";
 
 # CLI reference
 
-Run `codai --help` for the installed version's full option list and `:help` for
-session commands. Flags also accept legacy snake_case spellings such as `--base_url`.
+Run `codai --help` for the installed version's option list and `/help` for
+session commands. Value flags accept `--name value` and `--name=value`.
+Flags also accept legacy snake_case spellings such as `--base_url`.
 
 ## Entry points
 
@@ -21,10 +22,11 @@ session commands. Flags also accept legacy snake_case spellings such as `--base_
 | `codai --json "prompt"` | Emit JSON Lines events and a final result |
 | `codai config [target]` | Inspect configuration without starting external tools |
 | `codai --acp` | Start the [ACP compatibility adapter](/acp-compatibility) |
+| `codai mcp` | Serve local Codai tools through the separate [MCP stdio host](/mcp#serve-codai-tools) |
 | `codai --version` | Print the installed version |
 
 ```bash
-codai --mode plan "Explain the request pipeline"
+codai --trust-directory --mode plan "Explain the request pipeline"
 codai code --continue
 codai config model --json
 ```
@@ -32,8 +34,8 @@ codai config model --json
 Pipe task text to Codai, or use `--` before literal prompt text beginning with a dash.
 Piped input and positional prompt text are combined into one task.
 
-Agent launches ask for workspace access before loading project content. **Leave**
-is selected by default; trust lasts for that run only. Redirected and JSON runs
+Agent launches ask for workspace access before loading project content. **Yes**
+is selected by default; **No** or Escape declines. Trust lasts for that run only. Redirected and JSON runs
 require `--trust-directory`. See [workspace trust](/usage/permissions#authorize-workspace-access).
 
 ## Project and configuration
@@ -43,8 +45,14 @@ require `--trust-directory`. See [workspace trust](/usage/permissions#authorize-
 | `--cwd <path>` | Select the project root without changing the host directory |
 | `-c, --config <path>` | Use an explicit YAML/JSON configuration file |
 | `--config-dir <path>` | Select configuration discovery scope |
-| `--data-dir <path>` | Isolate conversation, task, and transcript state |
+| `--data-dir <path>` | Isolate conversation, task, and transcript state; overrides `CODAI_DATA_DIR` |
 | `--continue` | Continue conversation stored for this project |
+| `--continue=<task-id>` | Resume a specific saved task; the ID must use the equals form |
+| `--theme <name>` | Override the terminal theme for this invocation |
+| `--help` | Show CLI help without starting a session |
+| `-v, --version` | Print the installed version without starting a session |
+| `--json` | Emit structured JSON Lines rather than terminal presentation |
+| `--acp` | Serve the ACP compatibility protocol on standard input/output |
 
 See [Configuration](/customization/configuration) for discovery and override order.
 
@@ -60,6 +68,9 @@ See [Configuration](/customization/configuration) for discovery and override ord
 | `--reasoning-effort <level>` | Request `low`, `medium`, or `high` effort |
 | `--stream <bool>` | Enable/disable streaming; default true |
 | `--api-version <version>` | Override provider version metadata |
+| `--api-key <key>` | Override the provider credential; prefer `API_KEY` to avoid exposing it in process arguments |
+| `--plan-provider <name>` / `--plan-model <id>` | Override the Plan-mode connection defaults |
+| `--agent-provider <name>` / `--agent-model <id>` | Override the Agent-mode connection defaults |
 
 Prefer the `API_KEY` environment variable over `--api-key`, which can expose a
 secret through command history or process arguments.
@@ -71,7 +82,9 @@ Provider support for sampling and reasoning options varies.
 | --- | --- |
 | `--mode plan` / `--mode agent` | Choose capability policy; default Agent |
 | `--no-shell` | Remove command, build, and test tools |
+| `--allow-shell` | Re-enable shell capability if an earlier flag disabled it; shell is enabled by default |
 | `--no-sub-agents` | Disable delegation |
+| `--sub-agents` | Re-enable delegation if an earlier flag disabled it; delegation is enabled by default |
 | `--disable-tool <name>` | Hide and block a tool; repeatable |
 | `--auto-approve <bool>` | Approve writes/commands automatically; default true in interactive terminal sessions, false for headless runs. Explicit false starts manual review. |
 | `--trust-directory` | Explicitly authorize workspace access for this invocation; required for redirected or JSON agent runs. Does not approve tools. |
@@ -92,7 +105,9 @@ Provider support for sampling and reasoning options varies.
 | `--execute-plan` | Execute the latest completed Plan after explicit consent |
 | `--compaction agentic\|basic\|off` | Choose automatic compaction strategy; default agentic |
 | `--no-auto-compact` | Disable automatic summarization |
+| `--auto-compact` | Re-enable automatic summarization; enabled by default |
 | `--no-checkpoints` | Disable new workspace snapshot capture |
+| `--checkpoint-retention <n>` | Set the number of retained workspace snapshots; default 10 |
 | `-s, --system <prompt>` | Replace the default prompt template, not enforced policy |
 
 ## Configuration inspection
@@ -108,6 +123,9 @@ codai config mcp disable local-tools
 
 The mutation form is `codai config mcp|plugin enable|disable|remove <name-or-path>`.
 It changes configuration entries only, not plugin binaries or active connections.
+
+See [lifecycle hooks](/customization/hooks) for `hooks.json` and
+[hosting and automation](/resources/hosting) for JSON event fields and custom .NET hosts.
 
 ## Exit codes
 
@@ -126,7 +144,9 @@ For automation, inspect the reported outcome and verification results as well.
 | Task | Commands |
 | --- | --- |
 | Change agent or model | `/agents [agent\|plan]`, `/models` |
-| Authenticate or customize | `/auth`, `/settings [config\|status\|usage\|stats]`, `/themes`, `/mcps`, `/skills` |
+| Authenticate or customize | `/auth`, `/settings [config\|status\|usage\|stats]`, `/themes`, `/mcps`, `/plugins`, `/skills` |
+| Manage context | `/compact [focus]`, `/autocompact [auto\|tokens]` |
+| Update Codai | `/update`; checks stable releases and offers explicit Update / Skip consent |
 | Inspect changes | `/diff` |
 | Prepare repository guidance | `/init [focus]` |
 | Work with saved state | `/new`, `/session` (`/sessions` alias accepted) |
@@ -135,7 +155,8 @@ For automation, inspect the reported outcome and verification results as well.
 `/debug`, `/editor`, `/review`, `/status`, and `/variants` were removed. `/auth`
 replaced `/connect` without retaining an alias. Legacy colon commands remain callable for
 existing workflows, including advanced context/task/checkpoint operations, but
-are no longer part of slash completion or the command palette. `/move` and
-`/update` are not implemented. See [Terminal](/usage/terminal#slash-commands) for
+are no longer part of slash completion or the command palette. `/move` is
+not implemented. See [updating Codai](/usage/terminal#updates) for supported installation
+types and restart requirements. See [Terminal](/usage/terminal#slash-commands) for
 command behavior and compatibility limits, [Sessions](/usage/sessions), and
 [Context](/usage/context) for complete workflows rather than isolated command names.

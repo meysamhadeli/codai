@@ -41,7 +41,18 @@ public sealed class CodeSession
     private readonly AgentModeState _mode;
     private readonly IAgentProgressSink _progress;
     private string? _conversationTaskId;
+    private readonly List<ConversationTab> _tabs = [new()];
+    private int _activeTab;
     public const int MaxPlanChars = 32_768;
+
+    private sealed class ConversationTab
+    {
+        public string Id { get; } = Guid.NewGuid().ToString("N");
+        public ChatTurn[] Turns { get; set; } = [];
+        public string Title { get; set; } = "New session";
+        public string? TaskId { get; set; }
+        public AgentMode Mode { get; set; }
+    }
 
     /// <summary>Creates the session from its collaborators.</summary>
     /// <remarks>
@@ -130,6 +141,8 @@ public sealed class CodeSession
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            CaptureActiveTab();
+            PublishTabs();
             skillNames = (await _guidanceLoader.LoadCommandSkillsAsync(cancellationToken).ConfigureAwait(false))
                 .Select(skill => skill.Name).ToArray();
             _ui.SetSkills(skillNames);
@@ -161,7 +174,7 @@ public sealed class CodeSession
                         await ManageSessionAsync(command switch
                         {
                             SlashCommand.New => "new",
-                            SlashCommand.Sessions => "history",
+                            SlashCommand.Sessions => string.IsNullOrWhiteSpace(arguments) ? "history" : arguments,
                             _ => arguments,
                         }, cancellationToken).ConfigureAwait(false);
                         continue;
@@ -385,7 +398,9 @@ public sealed class CodeSession
         string instructions, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var plan = await _taskStore.LoadAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false);
+        var plan = _conversationTaskId is { } taskId
+            ? (await _taskStore.ListAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false)).FirstOrDefault(task => task.Id == taskId)
+            : await _taskStore.LoadAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false);
         if (plan is not { Mode: AgentMode.Plan, Status: AgentTaskStatus.Completed } ||
             string.IsNullOrWhiteSpace(plan.ProposedPlan) || plan.ProposedPlan.Length > MaxPlanChars ||
             plan.Request.Length > MaxPlanChars || instructions.Length > MaxPlanChars)
@@ -499,7 +514,7 @@ public sealed class CodeSession
                 .ConfigureAwait(false);
 
             var latestTask = await _taskStore.LoadAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false);
-            var taskId = _conversationTaskId ?? latestTask?.Id;
+            var taskId = _conversationTaskId ?? (_history.Turns.Count > 0 ? latestTask?.Id : null);
             if (taskId is not null)
             {
                 await _sessionStore
@@ -521,6 +536,58 @@ public sealed class CodeSession
     {
         try
         {
+            CaptureActiveTab();
+            if (operation is "next" or "previous" or "close" || operation.StartsWith("tab:", StringComparison.Ordinal))
+            {
+                var target = operation switch
+                {
+                    "next" => (_activeTab + 1) % _tabs.Count,
+                    "previous" => (_activeTab + _tabs.Count - 1) % _tabs.Count,
+                    "close" => _tabs.Count == 1 ? -1 : (_activeTab + 1) % _tabs.Count,
+                    _ => _tabs.FindIndex(tab => tab.Id == operation[4..]),
+                };
+                if (target < 0 && operation != "close" || target == _activeTab && operation != "close")
+                {
+                    return;
+                }
+                await ArchiveConversationAsync(cancellationToken).ConfigureAwait(false);
+                if (operation == "close")
+                {
+                    if (target < 0)
+                    {
+                        await CreateConversationBranchAsync("Fresh conversation", [], _mode.Mode, cancellationToken).ConfigureAwait(false);
+                    }
+                    var next = target < 0 ? new ConversationTab { Mode = _mode.Mode, TaskId = _conversationTaskId } : _tabs[target];
+                    _tabs.RemoveAt(_activeTab);
+                    if (target < 0)
+                    {
+                        _tabs.Add(next);
+                    }
+                    target = _tabs.IndexOf(next);
+                }
+                _activeTab = target;
+                var active = _tabs[_activeTab];
+                _history.Clear();
+                foreach (var turn in active.Turns)
+                {
+                    _history.Add(turn);
+                }
+                _conversationTaskId = active.TaskId;
+                _mode.Mode = active.Mode;
+                if (!PublishTabs())
+                {
+                    ShowConversation();
+                }
+                return;
+            }
+            if (operation == "open")
+            {
+                await ArchiveConversationAsync(cancellationToken).ConfigureAwait(false);
+                await CreateConversationBranchAsync("Fresh conversation", [], _mode.Mode, cancellationToken).ConfigureAwait(false);
+                _history.Clear();
+                AddConversationTab();
+                return;
+            }
             if (operation is "new" or "fork")
             {
                 var confirmation = await _ui.ChooseAsync("Codai / " + (operation == "new" ? "Start an empty conversation?" : "Branch this conversation?"),
@@ -541,6 +608,11 @@ public sealed class CodeSession
                 _conversationTaskId = branch.Id;
                 if (operation == "new")
                 {
+                    _history.Clear();
+                }
+                AddConversationTab();
+                if (operation == "new")
+                {
                     await _commands.HandleAsync(SlashCommand.ClearHistory, cancellationToken: cancellationToken).ConfigureAwait(false);
                     _budget.BeginTask();
                     await _commands.HandleAsync(SlashCommand.ClearToken, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -551,7 +623,7 @@ public sealed class CodeSession
             }
             if (operation is not ("history" or "restore"))
             {
-                _ui.WriteError("Use :session [new|fork|history|restore].");
+                _ui.WriteError("Use :session [new|open|next|previous|close|fork|history|restore].");
                 return;
             }
             var tasks = (await _taskStore.ListAsync(_options.ProjectRoot, cancellationToken).ConfigureAwait(false))
@@ -628,13 +700,39 @@ public sealed class CodeSession
                 _history.Add(turn);
             }
             _mode.Mode = selected.Mode;
-            ShowConversation();
+            AddConversationTab();
             _ui.WriteSuccess($"Resumed conversation from {selected.Id} in a new branch.");
             await PersistAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
             _ui.WriteError($"Could not switch conversation: {exception.Message}");
+        }
+    }
+
+    private void CaptureActiveTab()
+    {
+        var tab = _tabs[_activeTab];
+        tab.Turns = _history.Turns.ToArray();
+        if (tab.Title == "New session" && tab.Turns.FirstOrDefault(turn => !turn.IsCompactionSummary) is { } first)
+        {
+            tab.Title = first.UserRequest;
+        }
+        tab.TaskId = _conversationTaskId;
+        tab.Mode = _mode.Mode;
+    }
+
+    private bool PublishTabs() => _ui.SetSessionTabs(_tabs.Select(tab => new SessionTab(tab.Id, tab.Title)).ToArray(),
+        _tabs[_activeTab].Id, _history.Turns);
+
+    private void AddConversationTab()
+    {
+        _tabs.Add(new ConversationTab());
+        _activeTab = _tabs.Count - 1;
+        CaptureActiveTab();
+        if (!PublishTabs())
+        {
+            ShowConversation();
         }
     }
 

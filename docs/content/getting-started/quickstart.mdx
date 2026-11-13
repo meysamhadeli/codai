@@ -24,7 +24,10 @@ indexing step is required before the composer opens.
 dotnet tool install --global Codai
 ```
 
-Update later with `dotnet tool update --global Codai`.
+Update later with `/update` inside Codai, or use `dotnet tool update --global Codai`.
+The in-app command checks nuget.org, offers **Update** or **Skip** when a newer
+stable release exists, and reports when your version is already up to date.
+Restart Codai after installation. See [update requirements](/usage/terminal#updates).
 
 ### Open your project
 
@@ -38,12 +41,14 @@ cd your-project
 codai
 ```
 
-First review the **Workspace access** screen. **Leave** is selected by default;
-choose **Trust and continue** only when you trust the displayed directory.
+First review the **Workspace access** screen. **Yes** is selected first;
+press Enter only when you trust the displayed directory. **No** or Escape leaves
+without opening the workspace. Directory trust is separate from tool approval.
 
 The first unconfigured run then asks for a theme, a provider, and a model, then **Save** or
 **Cancel**. After saving, chat starts immediately. Settings are written to
-`~/.codai/.codai.json` and reused across projects.
+the existing project configuration when one is selected; otherwise they use
+`~/.codai/.codai.json` and are reused by other unconfigured projects.
 
 <Callout type="warning">
   Own-provider credentials are stored as plaintext in the configuration file.
@@ -67,21 +72,27 @@ change the connection, or `:preferences theme` in a session to change the theme.
 Plan mode reads and searches without writing files or running commands.
 
 ```bash
-codai --mode plan "Explain this project and propose a small improvement"
+codai --trust-directory --mode plan "Explain this project and propose a small improvement"
 ```
 
-Agent is the default mode. Change modes in a session with `:mode plan` or `:mode agent`.
+Agent is the default mode. Change modes in a session with `/agents plan` or
+`/agents agent`, or press Tab when no completion is visible.
 
 ## Complete a small task
 
-Start with a change whose behavior you can check, review each proposed file change and
-command before approving, and expand action steps to read diffs and test output.
+Start with a change whose behavior you can check, and expand action steps to read
+diffs and test output. Interactive sessions start with automatic tool approval.
+For individual review of writes and commands, launch `codai --auto-approve false`
+or press Shift+Tab to select Manual approval. Plan remains read-only in either case.
 
 ## Pick up where you left off
 
 ```bash
 codai code --continue
 ```
+
+Use `/session` for saved conversations, or the top tab strip to open and switch
+independent conversations without losing drafts. See [sessions and recovery](/usage/sessions).
 
 ## Next steps
 

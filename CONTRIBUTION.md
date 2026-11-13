@@ -51,7 +51,7 @@ Before pushing a docs change:
 ```bash
 cd docs
 npm ci
-npm test        # documentation checker regression tests, including tool coverage and hydration nesting
+npm test        # source-backed command, flag, setting, provider, hook, tool, navigation, and hydration checks
 npm run check   # navigation, frontmatter, MDX links, README routes
 npm run build   # exports docs/out, indexes search, checks exported links, assets, and invalid block nesting
 npm run dev     # preview at http://localhost:3000/codai/

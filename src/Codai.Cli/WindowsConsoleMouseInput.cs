@@ -65,6 +65,7 @@ internal sealed class WindowsConsoleMouseInput
         4 when (short)(buttons >> 16) < 0 => TerminalMouseAction.ScrollDown,
         0 or 2 when (buttons & 1) != 0 => TerminalMouseAction.Press,
         1 when (buttons & 1) != 0 => TerminalMouseAction.Drag,
+        1 when buttons == 0 => TerminalMouseAction.Move,
         0 when (buttons & 2) != 0 => TerminalMouseAction.Paste,
         0 when buttons == 0 => TerminalMouseAction.Release,
         _ => null,

@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/.probe-work/" />
+  <Folder Name="/.probe-work/wx-sample/">
+    <Project Path=".probe-work/wx-sample/WeatherApi.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Codai.Adapters/Codai.Adapters.csproj" />
     <Project Path="src/Codai.Application/Codai.Application.csproj" />

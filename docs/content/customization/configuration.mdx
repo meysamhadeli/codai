@@ -84,7 +84,7 @@ Unknown discovery fields are preserved when the settings editor saves changes.
 | `--config <path>` | An explicit configuration file |
 | `--config-dir <path>` / `CODAI_CONFIG_DIR` | Configuration discovery scope |
 | `--cwd <path>` | The project working directory |
-| `--data-dir <path>` | Isolated conversation, task, and transcript state |
+| `--data-dir <path>` / `CODAI_DATA_DIR` | Isolated conversation, task, and transcript state |
 
 Selecting a configuration directory does not move your project.
 
@@ -141,12 +141,76 @@ From lowest to highest priority:
 3. Mapped environment variables.
 4. Command-line flags.
 
-Common environment overrides include `PROVIDER`, `MODEL`, `BASE_URL`, `API_KEY`,
-`TEMPERATURE`, `MAX_TOKENS`, `THEME`, `CHECKPOINTS_ENABLED`, and `CHECKPOINT_RETENTION`.
-Mode-specific overrides include `PLAN_PROVIDER`, `PLAN_MODEL`, `AGENT_PROVIDER`,
-and `AGENT_MODEL`.
+Mapped environment overrides are `PROVIDER`, `MODEL`, `BASE_URL`, `API_KEY`,
+`API_VERSION`, `TEMPERATURE`, `REASONING_EFFORT`, `MAX_TOKENS`, `THEME`,
+`CHECKPOINTS_ENABLED`, `CHECKPOINT_RETENTION`, `PLAN_PROVIDER`, `PLAN_MODEL`,
+`AGENT_PROVIDER`, and `AGENT_MODEL`.
+
+Nested configuration also accepts double-underscore environment paths, such as
+`AI_PROVIDER_CONFIG__STREAM=false`, `AI_PROVIDER_CONFIG__API_KEY`, and
+`BUDGET__MAXTOKENS=100000`. Nested overrides are applied after the short mapped
+names, so avoid setting both spellings for the same value.
+
+`CODAI_CONFIG_DIR` selects configuration storage rather than a runtime option.
+`CODAI_DATA_DIR` selects durable session state and `CODAI_HOOKS_DIR` adds a hook
+manifest directory; their corresponding CLI flags take precedence.
+`CODAI_ICONS=unicode` changes terminal glyph rendering only; it is not saved by the
+settings editor. See [icons and fonts](/usage/terminal#icons-and-fonts).
 
 A saved value may not become effective while an environment variable or flag overrides it.
+
+## Settings reference
+
+The provider fields below live inside `ai_provider_config`. Other keys are at the
+document root unless a section is shown. Provider/model defaults come from the
+[provider catalog](/providers#supported-providers).
+
+| Key | Default or behavior |
+| --- | --- |
+| `theme` | Graphite; one of the ten supported terminal themes |
+| `version` | Configuration metadata; does not install or select a Codai executable version |
+| `ai_provider_config.provider` | `openai` |
+| `ai_provider_config.model` | Provider-specific default; Azure uses your deployment ID |
+| `ai_provider_config.base_url` | Provider endpoint unless overridden |
+| `ai_provider_config.stream` | `true` |
+| `ai_provider_config.temperature` | Unset: provider default; supported range 0 to 2 |
+| `ai_provider_config.reasoning_effort` | Unset: provider default; `low`, `medium`, or `high` where supported |
+| `ai_provider_config.max_tokens` | `0`: provider default; a positive value limits generated output, not the context window |
+| `ai_provider_config.api_key` | Optional plaintext credential; prefer environment-based credentials |
+| `ai_provider_config.account` | Opaque reference created by ChatGPT account setup; tokens are stored separately |
+| `ai_provider_config.api_version` | Optional provider version metadata |
+| `plan_provider`, `plan_model` | Optional Plan-mode provider/model overrides |
+| `agent_provider`, `agent_model` | Optional Agent-mode provider/model overrides |
+| `auto_compact_window` | `0`: model-derived automatic window; explicit values must be at least `32000` |
+| `checkpoints_enabled` | `true`; disabling stops new snapshots, not access to existing ones |
+| `checkpoint_retention` | `10`; at least 1 |
+| `disabled_tools` | Empty list; exact tool names withheld from advertisement and execution |
+| `plugins` | Empty list of additional native .NET assembly paths |
+| `disabled_plugins` | Empty list of plugin paths withheld from composition |
+| `mcp.servers` | Empty list of native MCP definitions; see [MCP configuration](/mcp#configuration) |
+| `budget` | Per-request token, estimated cost, tool-call, and consecutive-failure controls below |
+
+### Request budgets
+
+These are stop conditions based on observed usage, not provider-side billing caps.
+Token and cost usage can arrive only after a provider call has spent resources.
+Unknown pricing cannot provide a reliable dollar limit. See [pricing limitations](/providers/pricing).
+
+Use these exact nested budget key spellings when writing a file directly:
+
+```yaml
+budget:
+  MaxTokens: 100000
+  MaxCost: 2
+  MaxToolCalls: 60
+  max_consecutive_tool_failures: 3
+```
+
+`MaxTokens` and `MaxCost` default to `0` (unlimited). `MaxToolCalls` defaults to
+60 effective calls per request; an unset or nonpositive configured value uses that
+default. `max_consecutive_tool_failures` defaults to 3 and must be at least 1;
+`--retries` overrides it. These counters restart for each task. They are separate
+from the model output limit and automatic-compaction window.
 
 ## Example
 

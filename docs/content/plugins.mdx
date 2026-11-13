@@ -7,11 +7,14 @@ import { Callout, Steps } from "nextra/components";
 
 # Plugins
 
-Codai plugins are .NET assemblies that register additional services and tools. Existing agent mode, approval, and budget policies still apply to tools contributed by a plugin.
+Codai runs installed Claude Code and GitHub Copilot plugin contributions, as well as native
+.NET plugins. Marketplace bundles can add skills, commands, MCP definitions, and supported
+synchronous command hooks. Existing mode, approval, and budget policies still apply.
 
 <Callout type="warning">
-  Install only trusted assemblies. Plugins execute in the host process with your
-  user's privileges; tool approval is not an assembly security sandbox.
+  Install only trusted publishers. Plugin hooks and MCP processes can run commands
+  with your user's privileges; .NET assemblies execute inside Codai's process.
+  Publisher confirmation and tool approval are not a security sandbox.
 </Callout>
 
 ## Choose plugins or MCP
@@ -60,6 +63,180 @@ plugins:
   - tools/ProjectPlugin.dll
 ```
 
+## Plugin marketplaces
+
+Codai can browse Claude Code and GitHub Copilot `marketplace.json` metadata. Discovery reads metadata
+only; it never loads an assembly, starts an MCP server, or executes a plugin.
+
+```json
+{
+  "name": "community-tools",
+  "description": "Community Codai plugins",
+  "plugins": [
+    {
+      "name": "reviewer",
+      "version": "1.2.0",
+      "description": "Review changes",
+      "source": "./reviewer"
+    }
+  ]
+}
+```
+
+Installable sources include local directories or ZIP files, HTTPS ZIP URLs, and
+public GitHub repositories. GitHub catalog-relative paths select a repository
+subdirectory; `github` and GitHub `url` source objects may specify `path`, `ref`,
+or `sha`. A bundle must contain `plugin.json`, `.claude-plugin/plugin.json`, or
+`.github/plugin/plugin.json`, with a name matching its marketplace entry.
+
+Downloads and selected extracted content are limited to 50 MB; installed content
+is limited to 10,000 entries. Extraction rejects traversal and symbolic links.
+Installation validates a staged bundle before replacing an existing destination.
+Remote URLs cannot contain credentials. Standalone .NET assemblies still use
+the native configuration or directory loader, not the marketplace ZIP installer.
+Hosts can install through `Codai.Tools.Plugins.PluginMarketplaceManager`.
+
+In an interactive session, run `/plugins` (or choose **Plugins** from the settings
+palette). The browser opens directly in **Discover**, loading these public
+catalogs over HTTPS:
+
+| Marketplace | Repository |
+| --- | --- |
+| `claude-plugins-official` | [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) |
+| `copilot-plugins` | [github/copilot-plugins](https://github.com/github/copilot-plugins) |
+| `awesome-copilot` | [github/awesome-copilot](https://github.com/github/awesome-copilot) |
+
+These are Codai's default catalogs; they do not imply endorsement or installation
+of their contents. GitHub documents `awesome-copilot` as a built-in marketplace
+for Copilot, and maintains the separate `copilot-plugins` collection.
+Search for `context7` or `tavily` to see live descriptions. Counts come from fetched catalogs, not fixed
+totals or simulated install statistics. Availability requires network access.
+
+The persistent header has **Discover**, **Installed**, and **Marketplaces**
+tabs. Tab or Left/Right changes views; Shift+Tab goes backwards. Type
+to search, use Up/Down or Page Up/Down to select, and Ctrl+S to cycle marketplace
+filters. Enter installs the selected supported plugin after an explicit
+publisher-trust choice, even when tool auto approval is on. Already installed
+plugins are not installed again. Space is ordinary search input, not an action.
+Escape closes the browser. Search fields, checkmarks, source labels, and selected
+rows use the same styling as the MCP picker.
+
+**Marketplaces** lets you add a GitHub repository, HTTPS metadata URL, or local
+source, refresh catalogs, or remove additional sources. Additional sources persist in
+`.codai/plugin-marketplaces.json` and combine with the default catalogs in
+**Discover**. **Installed** lists local bundle directories. Press Enter on an installed
+plugin to open an action page with **Uninstall** first and **Cancel** second; uninstalling
+removes the bundle and reports that Codai must restart. Catalog failures are reported as error notices without preventing other
+sources from loading; there is no separate Errors tab. Built-in catalogs cannot
+be removed through this menu.
+
+### Add a custom marketplace
+
+Open `/plugins`, switch to **Marketplaces**, select **Add marketplace**, and enter
+one of these source formats:
+
+| Input | Example |
+| --- | --- |
+| GitHub shorthand | `obra/superpowers-marketplace` |
+| GitHub repository URL | `https://github.com/obra/superpowers-marketplace` |
+| HTTPS catalog JSON | `https://example.com/plugins/marketplace.json` |
+| Local repository or directory | `C:\\work\\my-marketplace` |
+| Local JSON file | `/work/my-marketplace/marketplace.json` |
+
+For example, adding [Superpowers Marketplace](https://github.com/obra/superpowers-marketplace)
+makes its real entries available in **Discover**. Reopening `/plugins` reloads the
+saved source. Removing it unregisters the catalog, not installed bundle files.
+Custom-source registration only reads metadata; it never clones repositories or
+runs plugin code. GitHub repository inputs probe `.github/plugin/marketplace.json`
+and then `.claude-plugin/marketplace.json` on the default branch. Local directories
+also support a root `marketplace.json`. Other Git hosts require a direct HTTPS
+JSON URL or a local checkout, not a Git clone URL. Private repository authentication
+is not implemented; do not put credentials in URLs.
+
+At most 32 additional sources are saved per project. Standard local repository
+catalogs resolve relative plugin sources from the repository root; a standalone
+`marketplace.json` resolves them from its containing directory.
+
+### Install and use marketplace plugins
+
+1. Open `/plugins`, find a plugin, and press Enter to install it.
+2. Inspect its publisher and select **Install**, the first option. **Cancel** is second; Cancel or Escape installs nothing.
+3. Installed skills and MCP servers are automatically checked after publisher consent;
+  existing selections from other sources remain unchanged. Skills and commands are
+  available immediately. MCP connects on the first model request without a restart.
+  If MCP connections already initialized in this session, restart Codai to rebuild them.
+4. Ask for a bounded task using the installed skill or tool. Review actual tool results,
+   not only the model's description of what it intends to do.
+
+Imported skills and commands use `plugin:contribution` names, such as
+`microsoft-docs:microsoft-docs` and `/reviewer:audit`. Skills remain available through
+`read_skill` and the ordinary skill selection policy. MCP servers use `plugin/server`
+names, such as `context7/context7`. Choosing **Install** also approves the installed
+bundle's MCP connections in private, project- and definition-bound state. This requires
+a private global configuration directory. Tool-call approval remains independent.
+If an enabled direct or imported server already uses the same endpoint, Codai
+reuses that server by suppressing the plugin's duplicate connection and tools.
+The plugin's skills and commands remain available. See
+[duplicate plugin servers](/mcp#duplicate-plugin-servers) for identity and precedence rules.
+Private MCP approval is tied to the imported definition, so changed definitions
+require review again. Restart after removing plugins or changing native .NET code.
+
+A fresh live Codai terminal install of Context7 was verified without a restart or
+manual MCP selection: DeepSeek discovered `context7/context7`, resolved WSO2, and
+queried API Manager and Micro Integrator documentation for correlation IDs.
+
+A live `microsoft-docs` installation also automatically checked all three bundled
+skills and enabled its Microsoft Learn MCP connection. A normal ASP.NET Core JWT
+documentation question, without naming a skill, loaded
+`microsoft-docs:microsoft-docs` through `read_skill` before Microsoft Learn search
+and fetch calls. Checked skills are eligible for task-relevant model selection;
+unrelated skills are not loaded for every request.
+
+The installer writes a vendor-neutral `codai-plugin.json` receipt inside each
+`.codai/plugins/<name>` bundle. `InstalledPluginCatalog.LoadAsync` reads enabled
+receipts without executing code and confines contribution paths to their bundle.
+Codai normalizes MCP and supported hook definitions into adjacent receipt files.
+`${CLAUDE_PLUGIN_ROOT}`, `${COPILOT_PLUGIN_ROOT}`, and `${PLUGIN_ROOT}` expand to
+the final install directory in Markdown and imported definitions.
+
+### Compatibility
+
+| Component | Support |
+| --- | --- |
+| Skills and Markdown commands | Default folders and declared contribution paths; namespaced discovery and invocation |
+| MCP | stdio, HTTP, and SSE definitions through Codai's MCP catalog and private approval |
+| Synchronous command hooks | Supported events below, bounded execution, existing shell and approval policies |
+| Native .NET tools | Existing trusted assembly loader; restart required |
+| Client-specific agents, LSP servers, editor extensions | Not activated or translated |
+| Async or prompt hooks, unsupported hook events | Installation rejected |
+| Hook context injection or input mutation | Rejected when requested by hook output |
+| Private repositories, non-GitHub Git URLs, `git-subdir` source objects | Not supported by this installer |
+
+Command hooks map `SessionStart` to `TaskStarted`, `UserPromptSubmit` or
+`UserPromptSubmitted` to `UserPromptSubmitted`, `PreToolUse` and `PostToolUse` to
+their corresponding events, `PreCompact` to `PreCompact`, `Stop` or `SessionEnd`
+to `TaskCompleted`, and `ErrorOccurred` to `TaskFailed`. These are Codai task
+boundaries, not exact emulation of another client's session lifecycle. Tool
+matchers operate on Codai tool names. Structured denial and nonzero command exit
+block execution; unsupported response formats fail closed. Use `--no-hooks` to
+disable command hooks.
+
+Some plugins depend on their original client's tools or authentication and need
+changes before they work in Codai. No universal Claude/Copilot compatibility is
+implied. For Context7's public endpoint, Codai removes the known Claude/Copilot
+`client` query hint rather than impersonating either client; other query settings
+are preserved. Publisher-specific authentication may still be required.
+
+### Live verification
+
+The actual Codai terminal was exercised with `context7` from
+`claude-plugins-official` and `microsoft-docs` from `awesome-copilot`. A real
+DeepSeek model read `microsoft-docs:microsoft-docs`, discovered imported tools,
+searched Microsoft Learn for ASP.NET Core minimal APIs, and resolved React to
+`/reactjs/react.dev` through Context7. Both remote MCP services returned live
+results. The check used isolated project/private state with shell, hooks, and
+subagents disabled; it did not use mocked provider or MCP responses.
+
 ## Inspect and manage
 
 ```bash
@@ -73,10 +250,9 @@ Inspection reports configured/discovered paths without loading assemblies.
 Mutations update an existing configuration document; removing an entry never
 deletes a binary. Codai's configuration manager is not a package installer.
 
-The legacy colon command `:preferences plugins` remains callable with **Save / Cancel**
-confirmation, but is not advertised in the replacement slash menu or command
-palette. Restart after changing plugin availability; active DI composition is not
-reloaded by configuration inspection.
+The legacy colon command `:preferences plugins` opens the same plugin browser.
+Restart after changing plugin availability; active DI composition is not reloaded
+by configuration inspection.
 
 ## Verify a plugin
 

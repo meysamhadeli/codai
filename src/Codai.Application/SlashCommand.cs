@@ -70,6 +70,7 @@ public enum SlashCommand
     Editor,
     Init,
     Mcps,
+    Plugins,
     Models,
     New,
     Review,
@@ -80,6 +81,8 @@ public enum SlashCommand
     Variants,
     /// <summary><c>/autocompact</c> — choose the automatic-compaction window.</summary>
     AutoCompact,
+    /// <summary><c>/update</c> — check for and install a newer Codai release.</summary>
+    Update,
 }
 
 /// <summary>
@@ -98,12 +101,14 @@ public static class SlashCommandParser
         "/help  Help\n" +
         "/init [focus]  Guided AGENTS.md setup\n" +
         "/mcps  Manage MCPs\n" +
+              "/plugins  Browse and manage plugins\n" +
         "/models [model]  Switch model\n" +
         "/new  New session\n" +
-        "/session  Switch session\n" +
+        "/session [open|next|previous|close]  Saved sessions and open tabs\n" +
         "/settings [config|status|usage|stats]  Configuration and runtime views\n" +
         "/skills  Skills\n" +
-        "/themes  Switch theme";
+        "/themes  Switch theme\n" +
+        "/update  Check for a newer Codai version";
 
     /// <summary>Maps a raw input line onto a <see cref="SlashCommand"/>.</summary>
     /// <remarks>
@@ -167,12 +172,14 @@ public static class SlashCommandParser
         "help" => SlashCommand.Help,
         "init" => SlashCommand.Init,
         "mcps" => SlashCommand.Mcps,
+        "plugins" => SlashCommand.Plugins,
         "models" => SlashCommand.Models,
         "new" => SlashCommand.New,
         "session" or "sessions" => SlashCommand.Sessions,
         "settings" => SlashCommand.Settings,
         "skills" => SlashCommand.Skills,
         "themes" => SlashCommand.Themes,
+        "update" => SlashCommand.Update,
         _ => SlashCommand.None,
     };
 
@@ -199,6 +206,7 @@ public static class SlashCommandParser
         "config" or "settings" => SlashCommand.Config,
         "preferences" => SlashCommand.Settings,
         "session" => SlashCommand.Session,
+        "update" => SlashCommand.Update,
         _ => SlashCommand.None,
     };
 }

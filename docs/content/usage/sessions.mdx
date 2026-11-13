@@ -39,7 +39,9 @@ Changing `--config-dir` selects configuration, not the project root or state dir
 ## Branch or start fresh
 
 Use `/session` to browse saved conversations from the main screen. `/sessions`
-remains an accepted alias; no top navigation tabs are needed.
+remains an accepted alias. Interactive terminals also offer
+[session tabs](/usage/terminal#session-tabs) for quick navigation between open
+conversations, with separate histories, modes, transcripts, and drafts.
 
 | Command | Result |
 | --- | --- |
@@ -47,6 +49,9 @@ remains an accepted alias; no top navigation tabs are needed.
 | `:session new` | Archive history and clear conversation and active token counters |
 | `:session history` | Browse up to 100 recent saved tasks |
 | `:session restore` | Choose a saved task, checkpoint, and restore scope |
+| `/session open` | Save the current conversation and open an empty tab |
+| `/session next` / `/session previous` | Switch between open tabs |
+| `/session close` | Save and close the active tab without deleting its history |
 
 Fork and new require explicit consent. Starting fresh does not change workspace
 files or the session's tool policy.
@@ -54,6 +59,15 @@ files or the session's tool policy.
 Continuing a task from history creates a new branch without overwriting the saved
 source. The terminal restores the latest 20 turns for display; full saved history
 remains available to the conversation.
+
+Open tabs are maintained for the current process, not restored as a window layout
+on restart. Use `/session` to reopen saved conversations. Tabs share workspace files
+and tool policy; changing tabs never restores a checkpoint or grants new permissions.
+Requests run in the active tab only; interrupt or finish one before switching.
+
+Custom hosts can implement `IUserInterface.SetSessionTabs` to present the open-tab
+list and restore their own active conversation view. Returning `false` retains the
+ordinary conversation-replay fallback; noninteractive hosts need not implement it.
 
 ## Find a saved task
 

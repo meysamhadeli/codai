@@ -136,20 +136,24 @@ runs. Keyboard controls and the usage footer are covered in
 
 ### Approvals
 
-Review the command, path, or patch before approving. Allow one call, remember
-approval for that tool this session, or refuse with guidance.
-See [Permissions](/usage/permissions) before enabling automatic approval.
+Interactive sessions default to automatic tool approval. Use Shift+Tab or
+`--auto-approve false` for manual review of commands, paths, and patches. In Manual
+approval, allow one call, remember approval for that tool this session, or refuse
+with guidance. Neither approval mode relaxes Plan restrictions.
+See [Permissions](/usage/permissions) before choosing an approval policy.
 
 ### Configuration controls
 
-Use `:preferences` to edit saved configuration. Provider fields and the default
+Use `/settings` to edit saved configuration, or Ctrl+P / F1 for the action palette.
+Legacy `:preferences` remains available. Provider fields and the default
 model require **Save**; **Cancel** leaves them unchanged. **Theme** also applies
 only after saving. The session-only model selector changes immediately on Enter.
 See [Configuration](/customization/configuration) for the distinction.
 
 ### Conversation controls
 
-Fork a conversation, start fresh, or continue saved history with `:session`.
+Use `/session` and the top tab strip to open, switch, close, or resume conversations.
+Advanced fork and restore controls remain available through `:session`.
 See [Sessions and recovery](/usage/sessions).
 
 ## Checkpoints
