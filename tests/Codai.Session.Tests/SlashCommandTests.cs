@@ -8,6 +8,13 @@ namespace Codai.Session.Tests;
 
 public class SlashCommandTests
 {
+    [Fact]
+    public void Update_is_a_builtin_command_advertised_in_help()
+    {
+        SlashCommandParser.Parse("/update").Should().NotBe(SlashCommand.None);
+        SlashCommandParser.HelpText.Should().Contain("/update");
+    }
+
     [Theory]
     [InlineData("/init Focus on tests", "AGENTS.md", AgentMode.Agent)]
     public async Task Prompt_commands_run_through_normal_request_pipeline(string input, string expected, AgentMode mode)
@@ -159,7 +166,7 @@ public class SlashCommandTests
     [Fact]
     public void Slash_menu_matches_the_supported_command_set()
     {
-        string[] names = ["agents", "auth", "autocompact", "compact", "diff", "exit", "help", "init", "mcps", "models", "new", "session", "settings", "skills", "themes"];
+        string[] names = ["agents", "auth", "autocompact", "compact", "diff", "exit", "help", "init", "mcps", "plugins", "models", "new", "session", "settings", "skills", "themes", "update"];
         var advertised = SlashCommandParser.HelpText.Split('\n')
             .Select(line => line.Split(' ', 2)[0].TrimStart('/')).ToArray();
 

@@ -37,8 +37,9 @@ Inspect or change the mode-specific selection:
 
 `/models` retains the active provider, endpoint, credential, and account reference.
 Its picker offers bundled suggestions and a custom ID, not live discovery.
-Suggestions are grouped under the provider, with session Recent and Favorites
-sections and a dot beside the current model. Ctrl+F adds or removes the highlighted
+Suggestions appear in one flat numbered list, with a checkmark beside the current
+model and no Recent/Favorites/provider headings. Recent and favorite choices
+still affect ordering. Ctrl+F adds or removes the highlighted
 model from Favorites; Ctrl+A opens provider setup. Recents and favorites are not
 persisted across processes. The picker does not label unknown model pricing as free.
 Use `/auth` or `codai auth` to authenticate provider connections, then restart.

@@ -9,6 +9,12 @@ public sealed class ComposerBuffer(IReadOnlyList<string> history)
 
     public int Cursor { get; private set; }
 
+    internal void Restore(string text, int cursor)
+    {
+        Text = text;
+        Cursor = Math.Clamp(cursor, 0, text.Length);
+    }
+
     public void Insert(string value)
     {
         Text = Text.Insert(Cursor, value);

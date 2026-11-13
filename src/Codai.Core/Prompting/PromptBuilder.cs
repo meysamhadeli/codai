@@ -226,7 +226,7 @@ public sealed class PromptBuilder : IPromptBuilder
     public static string RenderSkills(IReadOnlyList<SkillDefinition> skills, bool loadOnDemand) =>
         new StringBuilder()
             .AppendLine(loadOnDemand
-                ? "Match these enabled skill descriptions to the current task. Before following a relevant skill, call read_skill with its exact name to load its full instructions. Load supporting resources only when needed. Do not load unrelated skills."
+                ? "Match these enabled skill descriptions to the current task. When a skill matches, you must call read_skill with its exact name to load its full instructions before other tools or answering. Do not skip a matching skill because you already know the topic or can call its tools directly. Load supporting resources only when needed. Do not load unrelated skills."
                 : "These enabled skills are active instructions for every request. Consider each skill and follow it where applicable.")
             .AppendLine("They do not override project instructions, the current mode, or tool permissions.")
             .AppendLine()

@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
+using Codai.Core.Customization;
 using Codai.Core.Tools;
 
 namespace Codai.Application;
@@ -40,9 +42,10 @@ public sealed class HookRunner(
         HookCommand? activeHook = null;
         try
         {
-            foreach (var directory in directories.Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal))
+            var installed = await InstalledPluginCatalog.LoadAsync(context.ProjectRoot, fileSystem, cancellationToken).ConfigureAwait(false);
+            var manifests = directories.Select(directory => Path.Combine(directory, ManifestFileName)).Concat(installed.SelectMany(plugin => plugin.Hooks));
+            foreach (var path in manifests.Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal))
             {
-                var path = Path.Combine(directory, ManifestFileName);
                 if (!fileSystem.FileExists(path))
                 {
                     continue;
@@ -95,6 +98,11 @@ public sealed class HookRunner(
                     {
                         continue;
                     }
+                    if (hook.Matcher is { Length: > 0 } matcher &&
+                        !Regex.IsMatch(context.ToolName ?? string.Empty, matcher, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+                    {
+                        continue;
+                    }
 
                     configured.Add((path, hook));
                 }
@@ -109,7 +117,12 @@ public sealed class HookRunner(
                     return AgentHookDecision.Block($"Hook '{hook.Name}' requires Agent mode with shell execution enabled.");
                 }
 
-                var payload = JsonSerializer.Serialize(context, HookJsonContext.Default.AgentHookContext);
+                var payload = hook.InputFormat == "external" ? JsonSerializer.Serialize(new
+                {
+                    hook_event_name = hook.ExternalEvent, cwd = context.ProjectRoot, session_id = context.TaskId ?? "foreground",
+                    tool_name = context.ToolName, tool_input = context.Arguments, tool_response = context.Result,
+                    context.Prompt, timestamp = context.Timestamp, toolName = context.ToolName, toolArgs = context.Arguments,
+                }) : JsonSerializer.Serialize(context, HookJsonContext.Default.AgentHookContext);
                 if (payload.Length > MaxPayloadChars)
                 {
                     return AgentHookDecision.Block($"Hook '{hook.Name}' payload exceeds {MaxPayloadChars} characters.");
@@ -123,7 +136,7 @@ public sealed class HookRunner(
 
                 activeHook = hook;
                 await PublishAsync(AgentProgressEventKind.HookStarted, context, hook, cancellationToken).ConfigureAwait(false);
-                var result = await processes.RunWithInputAsync(hook.Command!, context.ProjectRoot, payload,
+                var result = await processes.RunWithInputAsync(hook.Command!, hook.WorkingDirectory ?? context.ProjectRoot, payload,
                     TimeSpan.FromSeconds(timeoutSeconds), cancellationToken).ConfigureAwait(false);
                 if (!result.Succeeded)
                 {
@@ -135,6 +148,26 @@ public sealed class HookRunner(
 
                 if (!string.IsNullOrWhiteSpace(result.StandardOutput))
                 {
+                    if (hook.InputFormat == "external")
+                    {
+                        using var externalResponse = JsonDocument.Parse(result.StandardOutput);
+                        var output = externalResponse.RootElement;
+                        if (output.TryGetProperty("continue", out var continuation) && continuation.ValueKind == JsonValueKind.False ||
+                            output.TryGetProperty("decision", out var decision) && decision.GetString() is "block" or "deny")
+                        {
+                            return AgentHookDecision.Block($"Plugin hook '{hook.Name}' blocked {eventName}.");
+                        }
+                        if (output.TryGetProperty("hookSpecificOutput", out var specific))
+                        {
+                            if (specific.TryGetProperty("permissionDecision", out var permission) && permission.GetString() == "deny")
+                                return AgentHookDecision.Block($"Plugin hook '{hook.Name}' denied tool execution.");
+                            if (specific.TryGetProperty("additionalContext", out _) || specific.TryGetProperty("updatedInput", out _))
+                                return AgentHookDecision.Block($"Plugin hook '{hook.Name}' requested context/input mutation, which is not supported.");
+                        }
+                        await PublishAsync(AgentProgressEventKind.HookCompleted, context, hook, cancellationToken).ConfigureAwait(false);
+                        activeHook = null;
+                        continue;
+                    }
                     var response = JsonSerializer.Deserialize(result.StandardOutput, HookJsonContext.Default.HookResponse);
                     if (response?.Allow is null)
                     {
@@ -188,6 +221,10 @@ internal sealed record HookCommand
     public string? Command { get; init; }
     public bool? Enabled { get; init; }
     public int? TimeoutSeconds { get; init; }
+    public string? WorkingDirectory { get; init; }
+    public string? InputFormat { get; init; }
+    public string? ExternalEvent { get; init; }
+    public string? Matcher { get; init; }
 }
 
 internal sealed record HookResponse

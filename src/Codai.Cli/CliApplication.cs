@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Codai.Application;
+using Codai.Application.Abstractions;
 using Codai.Application.Acp;
 using Codai.Application.Inspection;
 using Codai.Cli.Ui;
@@ -479,6 +480,7 @@ public sealed class CliApplication
         services.AddSingleton<IUserInterface>(effectiveApprovalState is null
             ? ui
             : new AutoApprovingUserInterface(ui, effectiveApprovalState));
+        services.AddSingleton<IApplicationUpdater, ApplicationUpdater>();
 
         // The CLI can ask before every change and every command, so it is one of the
         // hosts that may offer run_command; --no-shell is how a user takes that back

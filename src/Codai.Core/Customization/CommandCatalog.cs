@@ -55,6 +55,16 @@ public sealed class CommandCatalog : ICommandCatalog
             .Concat(_pluginProviders.SelectMany(provider => provider.Commands))
             .OrderBy(command => command.Name, StringComparer.Ordinal)
             .ToList();
+        foreach (var plugin in await InstalledPluginCatalog.LoadAsync(rootDirectory, _fileSystem, cancellationToken).ConfigureAwait(false))
+        {
+            foreach (var path in plugin.Commands)
+            {
+                var contributed = _fileSystem.FileExists(path)
+                    ? new[] { await TryReadAsync(rootDirectory, path, Path.GetFileNameWithoutExtension(path), false, cancellationToken).ConfigureAwait(false) }.OfType<CommandDefinition>()
+                    : await LoadDirectoryAsync(rootDirectory, path, false, cancellationToken).ConfigureAwait(false);
+                project.AddRange(contributed.Select(command => command with { Name = plugin.Name + ":" + command.Name }));
+            }
+        }
         if (_globalConfigurationDirectory is null || project.Count >= MaxCommands)
         {
             return project;
@@ -202,4 +212,7 @@ internal static partial class CustomizationNames
         !string.IsNullOrEmpty(name) &&
         name.Length <= CommandCatalog.MaxNameLength &&
         NameRegex().IsMatch(name);
+
+    internal static bool IsInvocationName(string? name) => IsValid(name) || name?.Split(':') is { Length: 2 } parts &&
+        parts[0].Length <= 80 && NameRegex().IsMatch(parts[0]) && IsValid(parts[1]);
 }

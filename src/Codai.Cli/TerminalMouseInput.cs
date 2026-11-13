@@ -15,6 +15,7 @@ public enum TerminalMouseAction
     Drag,
     Release,
     Paste,
+    Move,
 }
 
 internal sealed class TerminalMouseParser
@@ -67,6 +68,7 @@ internal sealed class TerminalMouseParser
                     65 => TerminalMouseAction.ScrollDown,
                     0 => key.KeyChar == 'm' ? TerminalMouseAction.Release : TerminalMouseAction.Press,
                     32 => key.KeyChar == 'm' ? TerminalMouseAction.Release : TerminalMouseAction.Drag,
+                    35 => TerminalMouseAction.Move,
                     2 => key.KeyChar == 'm' ? TerminalMouseAction.Release : TerminalMouseAction.Paste,
                     _ => (TerminalMouseAction?)null,
                 };

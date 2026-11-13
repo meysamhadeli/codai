@@ -41,6 +41,9 @@ internal sealed class AutoApprovingUserInterface(IUserInterface inner, ApprovalS
 
     public void SetSkills(IReadOnlyList<string> skillNames) => inner.SetSkills(skillNames);
 
+    public bool SetSessionTabs(IReadOnlyList<SessionTab> tabs, string activeId, IReadOnlyList<ChatTurn> turns) =>
+        inner.SetSessionTabs(tabs, activeId, turns);
+
     public void InsertInput(string text) => inner.InsertInput(text);
 
     public Task<bool> ConfirmAsync(string question, CancellationToken cancellationToken = default)

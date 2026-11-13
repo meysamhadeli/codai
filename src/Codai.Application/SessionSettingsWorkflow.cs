@@ -6,6 +6,7 @@ using Codai.Core;
 using Codai.Core.Abstractions;
 using Codai.Core.Customization;
 using Codai.Mcp.Client;
+using Codai.Tools.Plugins;
 
 namespace Codai.Application;
 
@@ -15,7 +16,8 @@ public sealed class SessionSettingsWorkflow(
     ConfigurationInspectionContext context,
     IFileSystem fileSystem,
     ISkillCatalog? skillCatalog = null,
-    McpManifestCatalog? mcpCatalog = null)
+    McpManifestCatalog? mcpCatalog = null,
+    PluginMarketplaceManager? pluginMarketplaces = null)
 {
     private static readonly SessionMenuItem[] Fields =
     [
@@ -34,7 +36,10 @@ public sealed class SessionSettingsWorkflow(
     ];
     private readonly CodaiConfigurationManager _manager = new(fileSystem);
     private readonly Dictionary<string, string> _saved = new(StringComparer.Ordinal);
+    private readonly PluginMarketplaceManager _pluginMarketplaces = pluginMarketplaces ?? new PluginMarketplaceManager();
+    private readonly List<string> _pluginErrors = [];
     private string ConfigurationFile => context.ConfigurationFile ?? Path.Combine(context.ConfigurationDirectory, CodaiOptions.FileName + ".json");
+    private string MarketplaceSourcesFile => Path.Combine(context.ProjectRoot, ".codai", "plugin-marketplaces.json");
 
     internal Task SaveAutoCompactWindowAsync(int tokens, CancellationToken cancellationToken) =>
         _manager.SetValueAsync(ConfigurationFile, "auto_compact_window", tokens.ToString(CultureInfo.InvariantCulture),
@@ -61,7 +66,7 @@ public sealed class SessionSettingsWorkflow(
                     await ManageMcpsAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case "plugins":
-                    await ManageIntegrationsAsync(ConfigurationMutationTarget.Plugin, cancellationToken).ConfigureAwait(false);
+                    await BrowsePluginsAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case "skills":
                     await BrowseSkillsAsync(cancellationToken).ConfigureAwait(false);
@@ -322,6 +327,223 @@ public sealed class SessionSettingsWorkflow(
             var action = operation switch { "enable" => ConfigurationMutationAction.Enable, "disable" => ConfigurationMutationAction.Disable, _ => ConfigurationMutationAction.Remove };
             await _manager.MutateAsync(ConfigurationFile, new(target, action), selected.Identifier, context.ConfigurationDirectory, cancellationToken).ConfigureAwait(false);
             ui.WriteSuccess("Integration configuration saved. Restart Codai to rebuild tool connections.");
+        }
+    }
+
+    private async Task BrowsePluginsAsync(CancellationToken cancellationToken)
+    {
+        var catalogs = new List<(string Source, PluginMarketplace Catalog)>();
+        var tab = "Discover";
+        await RefreshPluginCatalogsAsync(catalogs, cancellationToken).ConfigureAwait(false);
+        while (true)
+        {
+            var plugins = catalogs.SelectMany(catalog => catalog.Catalog.Plugins.Select(plugin =>
+                (catalog.Source, Marketplace: catalog.Catalog.Name, Plugin: plugin))).ToArray();
+            var directory = Path.Combine(context.ProjectRoot, ".codai", "plugins");
+            var installed = Directory.Exists(directory) ? Directory.EnumerateDirectories(directory).ToArray() : [];
+            IReadOnlyList<SessionMenuItem> items = tab switch
+            {
+                "Discover" => plugins.Select((entry, index) => new SessionMenuItem(entry.Plugin.Name,
+                    entry.Plugin.Description ?? "No description", index.ToString(CultureInfo.InvariantCulture))
+                {
+                    Group = entry.Marketplace,
+                    RightLabel = entry.Plugin.Version ?? string.Empty,
+                    IsCurrent = installed.Any(path => Path.GetFileName(path) == entry.Plugin.Name),
+                }).ToArray(),
+                "Installed" => installed.Select(path => new SessionMenuItem(Path.GetFileName(path),
+                    "Installed bundle; restart after removal", path) { IsCurrent = true }).ToArray(),
+                "Marketplaces" => new SessionMenuItem[] { new("Add marketplace", "GitHub owner/repo, repository URL, HTTPS JSON, or local directory", "add") }
+                    .Concat(catalogs.Select(catalog => new SessionMenuItem(catalog.Catalog.Name,
+                        catalog.Source, catalog.Source) { RightLabel = $"{catalog.Catalog.Plugins.Count} plugins", IsCurrent = true })).ToArray(),
+                _ => [],
+            };
+            var selected = await ui.ChooseAsync("Plugins", items,
+                new SessionMenuOptions { PluginTab = tab }, cancellationToken).ConfigureAwait(false);
+            if (selected is null)
+            {
+                return;
+            }
+            if (selected.StartsWith("@plugins:tab:", StringComparison.Ordinal))
+            {
+                var next = selected["@plugins:tab:".Length..];
+                if (next is "Discover" or "Installed" or "Marketplaces") tab = next;
+                continue;
+            }
+            var install = selected.StartsWith("@plugins:install:", StringComparison.Ordinal);
+            var value = selected.StartsWith("@plugins:view:", StringComparison.Ordinal) ? selected["@plugins:view:".Length..]
+                : install ? selected["@plugins:install:".Length..] : string.Empty;
+            if (!items.Any(item => item.Value == value)) continue;
+            switch (tab)
+            {
+                case "Discover":
+                    if (int.TryParse(value, CultureInfo.InvariantCulture, out var index) && index >= 0 && index < plugins.Length)
+                    {
+                        var entry = plugins[index];
+                        await InstallPluginAsync(entry.Source, entry.Marketplace, entry.Plugin, cancellationToken).ConfigureAwait(false);
+                    }
+                    break;
+                case "Installed":
+                    var pluginOperation = await ui.ChooseAsync("Plugin", [
+                        new("Uninstall", "Remove installed plugin bundle", "uninstall"),
+                        new("Cancel", "Keep plugin installed", "cancel"),
+                    ], cancellationToken).ConfigureAwait(false);
+                    if (pluginOperation == "uninstall")
+                    {
+                        Directory.Delete(value, recursive: true);
+                        ui.WriteSuccess("Plugin removed. Restart Codai to apply the change.");
+                    }
+                    break;
+                case "Marketplaces" when value == "add":
+                    if (await AddMarketplaceAsync(cancellationToken).ConfigureAwait(false))
+                        await RefreshPluginCatalogsAsync(catalogs, cancellationToken).ConfigureAwait(false);
+                    break;
+                case "Marketplaces":
+                    var actions = new List<SessionMenuItem> { new("Refresh", "Reload public catalog metadata", "refresh") };
+                    if (!PluginMarketplaceManager.DefaultMarketplaceSources.Contains(value, StringComparer.Ordinal))
+                        actions.Add(new("Remove", "Remove this additional marketplace source", "remove"));
+                    var operation = await ui.ChooseAsync("Marketplace", actions, cancellationToken).ConfigureAwait(false);
+                    if (operation == "remove" && !PluginMarketplaceManager.DefaultMarketplaceSources.Contains(value, StringComparer.Ordinal) &&
+                        await ui.ConfirmAsync("Remove marketplace source? Installed bundles remain unchanged.", cancellationToken).ConfigureAwait(false))
+                    {
+                        var sources = await LoadMarketplaceSourcesAsync(cancellationToken).ConfigureAwait(false);
+                        sources.RemoveAll(source => source == value);
+                        await SaveMarketplaceSourcesAsync(sources, cancellationToken).ConfigureAwait(false);
+                    }
+                    if (operation is "refresh" or "remove") await RefreshPluginCatalogsAsync(catalogs, cancellationToken).ConfigureAwait(false);
+                    break;
+            }
+        }
+    }
+
+    private async Task RefreshPluginCatalogsAsync(List<(string Source, PluginMarketplace Catalog)> catalogs, CancellationToken cancellationToken)
+    {
+        catalogs.Clear();
+        _pluginErrors.Clear();
+        var savedSources = await LoadMarketplaceSourcesAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var source in PluginMarketplaceManager.DefaultMarketplaceSources.Concat(savedSources).Distinct(StringComparer.Ordinal))
+        {
+            try
+            {
+                var catalog = await ui.RunWithProgressAsync("Loading plugin marketplace", token =>
+                    _pluginMarketplaces.LoadAsync(source, context.ProjectRoot, token), cancellationToken).ConfigureAwait(false);
+                catalogs.Add((source, catalog));
+            }
+            catch (Exception exception) when (exception is IOException or InvalidOperationException or HttpRequestException or JsonException or UnauthorizedAccessException ||
+                exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _pluginErrors.Add("Could not load " + MarketplaceDisplaySource(source) + ". Check connectivity and marketplace JSON.");
+            }
+        }
+        foreach (var error in _pluginErrors) ui.WriteError(error);
+    }
+
+    private async Task InstallPluginAsync(string source, string marketplace, PluginMarketplaceEntry plugin, CancellationToken cancellationToken)
+    {
+        var installable = plugin.Source.ValueKind == JsonValueKind.String ||
+            plugin.Source.ValueKind == JsonValueKind.Object && plugin.Source.TryGetProperty("source", out var sourceKind) &&
+            sourceKind.ValueKind == JsonValueKind.String && sourceKind.GetString() is "github" or "url";
+        if (!installable)
+        {
+            ui.WriteError("Unsupported plugin source. Use a public GitHub repository, local bundle, or HTTPS ZIP.");
+            return;
+        }
+        if (Directory.Exists(Path.Combine(context.ProjectRoot, ".codai", "plugins", plugin.Name)))
+        {
+            ui.WriteInfo("Plugin already installed.");
+            return;
+        }
+        var consent = await ui.ChooseAsync($"Install '{plugin.Name}' from '{marketplace}'? Trust this publisher before loading any code.", [
+            new("Install", "Enable plugin skills, commands, hooks, and MCP connections", "install"),
+            new("Cancel", "Keep this plugin uninstalled", "cancel"),
+        ], cancellationToken).ConfigureAwait(false);
+        if (consent != "install") return;
+        try
+        {
+            await ui.RunWithProgressAsync("Installing plugin", token =>
+                _pluginMarketplaces.InstallAsync(source, plugin.Name, context.ProjectRoot, cancellationToken: token), cancellationToken).ConfigureAwait(false);
+            var installed = (await InstalledPluginCatalog.LoadAsync(context.ProjectRoot, fileSystem, cancellationToken).ConfigureAwait(false))
+                .Single(bundle => bundle.Name == plugin.Name);
+            var catalog = mcpCatalog ?? new McpManifestCatalog(fileSystem, context.GlobalConfigurationDirectory);
+            var servers = await catalog.LoadAsync(context.ProjectRoot, [], cancellationToken).ConfigureAwait(false);
+            foreach (var server in servers.Where(server => server.DiscoveryScope == "plugin" &&
+                installed.Mcp.Contains(server.DiscoverySourcePath, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)))
+            {
+                await catalog.SetEnabledAsync(context.ProjectRoot, server, true, cancellationToken).ConfigureAwait(false);
+            }
+            var skills = skillCatalog ?? new SkillCatalog(fileSystem, context.GlobalConfigurationDirectory);
+            var available = await skills.LoadAllAsync(context.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            await skills.SaveEnabledAsync(context.ProjectRoot, available.Where(skill => skill.IsEnabled ||
+                skill.Name.StartsWith(installed.Name + ":", StringComparison.OrdinalIgnoreCase)).Select(skill => skill.Name).ToArray(), cancellationToken).ConfigureAwait(false);
+            ui.WriteSuccess("Plugin installed. Skills and MCP servers are enabled. MCP connects on the first model request; restart Codai if connections already initialized or to load .NET tools.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or HttpRequestException or JsonException)
+        {
+            _pluginErrors.Add($"Could not install '{plugin.Name}' from '{marketplace}'. Check the bundle format and local file access.");
+            ui.WriteError("Could not install plugin bundle.");
+        }
+    }
+
+    private static string MarketplaceDisplaySource(string source) => Uri.TryCreate(source, UriKind.Absolute, out var uri) && !uri.IsFile
+        ? uri.Host : Path.GetFileName(source);
+
+    private async Task<bool> AddMarketplaceAsync(CancellationToken cancellationToken)
+    {
+        var source = await ui.ReadValueAsync("Add marketplace: owner/repo, HTTPS URL, or local path", cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return false;
+        }
+
+        try
+        {
+            source = await _pluginMarketplaces.ResolveSourceAsync(source, context.ProjectRoot, cancellationToken).ConfigureAwait(false);
+            var marketplace = await ui.RunWithProgressAsync("Validating marketplace", token =>
+                _pluginMarketplaces.DiscoverAsync(source, context.ProjectRoot, token), cancellationToken).ConfigureAwait(false);
+            var sources = await LoadMarketplaceSourcesAsync(cancellationToken).ConfigureAwait(false);
+            if (!sources.Contains(source, StringComparer.Ordinal) && !PluginMarketplaceManager.DefaultMarketplaceSources.Contains(source, StringComparer.Ordinal))
+            {
+                if (sources.Count >= 32) throw new InvalidDataException("At most 32 additional marketplaces are supported.");
+                sources.Add(source);
+                await SaveMarketplaceSourcesAsync(sources, cancellationToken).ConfigureAwait(false);
+            }
+            ui.WriteSuccess($"Marketplace loaded with {marketplace.Count} plugins. Use Discover to browse it again.");
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or HttpRequestException or JsonException or ArgumentException or UnauthorizedAccessException ||
+            exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            _pluginErrors.Add("Could not add " + MarketplaceDisplaySource(source) + ". Check the metadata source.");
+            ui.WriteError("Could not add marketplace.");
+            return false;
+        }
+    }
+
+    private async Task SaveMarketplaceSourcesAsync(List<string> sources, CancellationToken cancellationToken)
+    {
+        fileSystem.CreateDirectory(Path.GetDirectoryName(MarketplaceSourcesFile)!);
+        await fileSystem.WriteAllTextAtomicallyAsync(MarketplaceSourcesFile, JsonSerializer.Serialize(sources), cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<List<string>> LoadMarketplaceSourcesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!fileSystem.FileExists(MarketplaceSourcesFile))
+            {
+                return [];
+            }
+
+            if (fileSystem.GetFileSize(MarketplaceSourcesFile) > 64 * 1024)
+                throw new InvalidDataException("Saved marketplace source list is too large.");
+            var sources = JsonSerializer.Deserialize<List<string>>(await fileSystem.ReadAllTextAsync(MarketplaceSourcesFile, cancellationToken).ConfigureAwait(false)) ?? [];
+            if (sources.Count > 32 || sources.Any(string.IsNullOrWhiteSpace))
+                throw new InvalidDataException("Saved marketplace source list is invalid.");
+            return sources;
+        }
+        catch (Exception exception) when (exception is IOException or JsonException)
+        {
+            _pluginErrors.Add($"{MarketplaceSourcesFile}: {exception.Message}");
+            return [];
         }
     }
 

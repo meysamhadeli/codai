@@ -16,12 +16,11 @@ The open source coding agent for your terminal.
 
 ## Installation
 
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+
 ```bash
 dotnet tool install --global codai
 ```
-
-## Documentation
-For full instructions on how to use Codai, see the [docs](https://meysamhadeli.github.io/codai).
 
 ## What it does
 
@@ -33,13 +32,19 @@ For full instructions on how to use Codai, see the [docs](https://meysamhadeli.g
 | **On-demand context** | Open sessions without a full-project indexing pass; discover files through tools as needed. |
 | **Workspace trust** | Review directory access before every CLI launch with Yes selected first; No or Escape declines. Scripted runs require `--trust-directory`; tool approvals stay separate. [Permissions](https://meysamhadeli.github.io/codai/usage/permissions). |
 | **Controlled execution** | Validate tool arguments and bound repeated calls. Interactive terminals start with auto approval; use Shift+Tab or `--auto-approve false` to review writes and commands. Headless runs require explicit approval. |
-| **Focused terminal UI** | Read numbered, syntax-colored code panes; scroll the transcript and expand action steps, command output, and file diffs. |
+| **Focused terminal UI** | Read syntax-colored code panes and recognizable Nerd Font action icons; expand tool output and diffs. Use `CODAI_ICONS=unicode` without a Nerd Font. [Terminal](https://meysamhadeli.github.io/codai/usage/terminal#icons-and-fonts). |
+| **Session tabs** | Open, switch, and close conversations from the terminal's top strip, keeping separate histories, modes, transcripts, scroll positions, and drafts. [Session tabs](https://meysamhadeli.github.io/codai/usage/terminal#session-tabs). |
+| **In-app updates** | Check the latest stable release with `/update` or the Update menu action; approve installation or see that your version is already up to date. [Updating](https://meysamhadeli.github.io/codai/usage/terminal#updates). |
 | **Terminal commands** | Stay in one conversation screen; use `/session` to switch saved chats and `/settings` for configuration and runtime views. Browse numbered model, agent, and theme menus, matching multi-select Skills and MCP managers, full-screen diffs, and the settings action palette. Menus share a concise Enter/Escape footer. [Command reference](https://meysamhadeli.github.io/codai/usage/terminal#slash-commands). |
 | **Your choice of models** | Connect hosted providers or local servers, including Ollama. |
 | **Configuration and state** | Keep runtime settings and discovery metadata in configuration; Codai manages per-project MCP/skill selections in private state. [Configuration](https://meysamhadeli.github.io/codai/customization/configuration). |
 | **Reusable workflows** | Match checked skill descriptions to your task in foreground and read-only subagents, loading relevant instructions on demand. Include shared repository, personal, and nested skills with invocation/path metadata. Manage availability in `/skills`; manual workflows remain in `/` completion. [Skills](https://meysamhadeli.github.io/codai/skills). |
+| **Read-only delegation** | Give focused investigations separate context; manage background agents and bounded specialist teams without granting write access. [Context and delegation](https://meysamhadeli.github.io/codai/usage/context). |
+| **Sessions and recovery** | Resume or branch saved conversations, inspect task history, and restore workspace checkpoints with explicit consent. [Recovery](https://meysamhadeli.github.io/codai/usage/sessions). |
 | **Long-running work** | Budget context for the selected model, compact growing tool output between model calls, summarize with `/compact`, and adjust windows with `/autocompact`. Resume with `codai code --continue`. [Context](https://meysamhadeli.github.io/codai/usage/context). |
-| **Extensible tools** | Read layered and VS Code-style MCP definitions; open interactive workspaces without waiting for MCP connections, then connect enabled servers on the first model request and discover relevant schemas on demand. Add .NET plugins and hooks under the same approval policy. [MCP](https://meysamhadeli.github.io/codai/mcp). |
+| **Lifecycle policy** | Run bounded, approved task/tool hooks and inspect them without execution. Disable hooks independently from model guidance. [Hooks](https://meysamhadeli.github.io/codai/customization/hooks). |
+| **Automation and hosting** | Run one-shot tasks with JSON Lines, use the documented ACP subset, or supply your own .NET UI and approval policy. [Hosting](https://meysamhadeli.github.io/codai/resources/hosting). |
+| **Extensible tools** | Discover MCP tools on demand; install Claude and GitHub Copilot marketplace skills, commands, MCP definitions, and supported command hooks. Explicitly trust publishers and approve imported MCP servers. Native .NET plugins remain available. [MCP](https://meysamhadeli.github.io/codai/mcp) · [Plugins and compatibility](https://meysamhadeli.github.io/codai/plugins). |
 
 ## Supported providers
 
@@ -86,19 +91,22 @@ required. See [documentation development](CONTRIBUTION.md#documentation) for loc
 | [Sessions and recovery](https://meysamhadeli.github.io/codai/usage/sessions) | Saved conversations, tasks, and checkpoints |
 | [Providers and models](https://meysamhadeli.github.io/codai/providers) | Connections, model selection, usage, and pricing |
 | [Configuration](https://meysamhadeli.github.io/codai/customization/configuration) | Saved settings, scopes, and overrides |
+| [Context and delegation](https://meysamhadeli.github.io/codai/usage/context) | Compaction, context windows, background agents, and specialist teams |
 | [Project instructions](https://meysamhadeli.github.io/codai/customization/instructions) | Repository conventions, rules, and memory |
+| [Custom commands](https://meysamhadeli.github.io/codai/customization/commands) | Named prompt workflows and arguments |
+| [Lifecycle hooks](https://meysamhadeli.github.io/codai/customization/hooks) | Native manifests, events, consent, and fail-closed limits |
 | [CLI reference](https://meysamhadeli.github.io/codai/resources/cli) | Entry points, flags, and exit codes |
+| [Hosting and automation](https://meysamhadeli.github.io/codai/resources/hosting) | JSON Lines, .NET runtime composition, and host responsibilities |
 | [Troubleshooting](https://meysamhadeli.github.io/codai/resources/troubleshooting) | Setup, models, permissions, and terminal issues |
 | [Skills](https://meysamhadeli.github.io/codai/skills) | Project and global skills |
-| [Plugins](https://meysamhadeli.github.io/codai/plugins) | Custom tools and lifecycle hooks |
+| [Plugins](https://meysamhadeli.github.io/codai/plugins) | Claude/Copilot bundle installation, runtime contributions, compatibility, and .NET tools |
 | [MCP integrations](https://meysamhadeli.github.io/codai/mcp) | External tool servers |
 | [ACP compatibility](https://meysamhadeli.github.io/codai/acp-compatibility) | Supported editor integration and current limits |
-| [Roadmap](https://meysamhadeli.github.io/codai/agent-mode-roadmap) | Planned VS Code extension and editor workflows |
 
 ## Contributing
 
 Bug reports, feature requests and pull requests are welcome. Start with
-[CONTRIBUTION.md](CONTRIBUTION.md); report security issues through
+[CONTRIBUTION.md](CONTRIBUTION.md).
 
 ## License
 

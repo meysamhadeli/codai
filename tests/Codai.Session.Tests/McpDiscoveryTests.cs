@@ -12,6 +12,116 @@ namespace Codai.Session.Tests;
 public sealed class McpDiscoveryTests
 {
     [Theory]
+    [InlineData("https://mcp.context7.com/mcp", true, true)]
+    [InlineData("https://MCP.CONTEXT7.COM:443/mcp/", true, true)]
+    [InlineData("https://mcp.context7.com/mcp?client=other", true, false)]
+    [InlineData("https://mcp.context7.com/MCP", true, false)]
+    [InlineData("https://mcp.context7.com:8443/mcp", true, false)]
+    [InlineData("https://mcp.context7.com/mcp", false, false)]
+    public async Task Enabled_direct_server_suppresses_only_matching_plugin_endpoint(string url, bool enabled, bool duplicate)
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-plugin-mcp-dedup", "repo"));
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-plugin-mcp-dedup-home", ".codai"));
+        var harness = new SessionHarness(root);
+        var plugin = Path.Combine(root, ".codai", "plugins", "context7");
+        harness.FileSystem.AddFile(Path.Combine(plugin, "codai-plugin.json"),
+            """{"name":"context7","mcp":["codai-mcp.json"]}""");
+        harness.FileSystem.AddFile(Path.Combine(plugin, "codai-mcp.json"),
+            """{"mcpServers":{"context7/context7":{"type":"http","url":"https://mcp.context7.com/mcp"}}}""");
+        var catalog = new McpManifestCatalog(harness.FileSystem, global);
+        var imported = (await catalog.LoadAsync(root, [])).Single();
+        await catalog.SetEnabledAsync(root, imported, true);
+        var direct = new McpServerOptions
+        {
+            Name = "context7", Enabled = enabled, Transport = "streamableHttp", Url = url,
+            Headers = new() { ["X-Custom-Setting"] = "preserve-me" },
+        };
+
+        var servers = await catalog.LoadAsync(root, [direct]);
+
+        servers.Should().HaveCount(duplicate ? 1 : 2);
+        servers.Should().Contain(server => ReferenceEquals(server, direct));
+        direct.Headers.Should().ContainKey("X-Custom-Setting");
+        if (duplicate) servers.Should().NotContain(server => server.DiscoveryScope == "plugin");
+        (await catalog.LoadAsync(root, [])).Should().ContainSingle().Which.Enabled.Should().BeTrue();
+        var discoverer = new RecordingDiscoverer();
+        new ServiceCollection().AddCodaiMcpClientTools(new McpOptions { Servers = servers.ToList() }, root, discoverer);
+        discoverer.Servers.Should().HaveCount(duplicate || !enabled ? 1 : 2);
+    }
+
+    [Theory]
+    [InlineData("@upstash/context7-mcp", true)]
+    [InlineData("@example/another-server", false)]
+    public async Task Plugin_process_identity_uses_command_and_arguments_without_merging_environment(string package, bool duplicate)
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-plugin-stdio-dedup", "repo"));
+        var harness = new SessionHarness(root);
+        var plugin = Path.Combine(root, ".codai", "plugins", "context7");
+        harness.FileSystem.AddFile(Path.Combine(plugin, "codai-plugin.json"),
+            """{"name":"context7","mcp":["codai-mcp.json"]}""");
+        harness.FileSystem.AddFile(Path.Combine(plugin, "codai-mcp.json"),
+            """{"mcpServers":{"context7/context7":{"command":"npx","args":["-y","@upstash/context7-mcp"],"env":{"PLUGIN_ROOT":"bundle"}}}}""");
+        var catalog = new McpManifestCatalog(harness.FileSystem);
+        var direct = new McpServerOptions
+        {
+            Name = "context7", Command = "npx", Args = ["-y", package],
+            WorkingDirectory = root, Environment = new() { ["CUSTOM_SETTING"] = "preserve-me" },
+        };
+
+        var servers = await catalog.LoadAsync(root, [direct]);
+
+        servers.Should().HaveCount(duplicate ? 1 : 2);
+        servers.Should().Contain(server => ReferenceEquals(server, direct));
+        direct.Environment.Should().NotContainKey("PLUGIN_ROOT");
+        direct.Environment.Should().ContainKey("CUSTOM_SETTING");
+    }
+
+    [Fact]
+    public async Task Manual_manifest_takes_precedence_over_same_named_plugin_definition()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-plugin-name-dedup", "repo"));
+        var harness = new SessionHarness(root);
+        var plugin = Path.Combine(root, ".codai", "plugins", "context7");
+        harness.FileSystem.AddFile(Path.Combine(plugin, "codai-plugin.json"),
+            """{"name":"context7","mcp":["codai-mcp.json"]}""");
+        harness.FileSystem.AddFile(Path.Combine(plugin, "codai-mcp.json"),
+            """{"mcpServers":{"context7/context7":{"type":"http","url":"https://plugin.example/mcp"}}}""");
+        harness.FileSystem.AddFile(Path.Combine(root, ".mcp.json"),
+            """{"mcpServers":{"context7/context7":{"type":"http","url":"https://manual.example/mcp"}}}""");
+
+        var server = (await new McpManifestCatalog(harness.FileSystem).LoadAsync(root, [])).Should().ContainSingle().Subject;
+
+        server.Url.Should().Be("https://manual.example/mcp");
+        server.DiscoveryScope.Should().Be("project");
+        server.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Matching_enabled_plugin_servers_are_connected_once_without_changing_saved_selection()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-plugin-shared-dedup", "repo"));
+        var global = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "codai-plugin-shared-dedup-home", ".codai"));
+        var harness = new SessionHarness(root);
+        foreach (var name in new[] { "first", "second" })
+        {
+            var plugin = Path.Combine(root, ".codai", "plugins", name);
+            harness.FileSystem.AddFile(Path.Combine(plugin, "codai-plugin.json"),
+                System.Text.Json.JsonSerializer.Serialize(new { name, mcp = new[] { "codai-mcp.json" } }));
+            harness.FileSystem.AddFile(Path.Combine(plugin, "codai-mcp.json"),
+                "{\"mcpServers\":{\"" + name + "/docs\":{\"type\":\"http\",\"url\":\"https://example.com/mcp\"}}}");
+        }
+        var catalog = new McpManifestCatalog(harness.FileSystem, global);
+        var imported = await catalog.LoadAsync(root, []);
+        foreach (var server in imported) await catalog.SetEnabledAsync(root, server, true);
+
+        var selected = (await catalog.LoadAsync(root, [])).Should().ContainSingle().Subject;
+        selected.Name.Should().Be("first/docs");
+        await catalog.SetEnabledAsync(root, selected, false);
+
+        (await catalog.LoadAsync(root, [])).Should().ContainSingle().Which.Name.Should().Be("second/docs");
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Deferred_initialization_uses_latest_selection_instead_of_startup_snapshot(bool initiallyEmpty)

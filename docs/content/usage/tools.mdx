@@ -144,6 +144,16 @@ the failed result reports changes that already reached disk; it is not an atomic
 Builds and tests can write artifacts, so they are not read-only operations.
 Disable all three with `--no-shell`.
 
+### Bounded .NET repair
+
+The legacy `:repair` command runs `dotnet_test` and `dotnet_build`, asks the model
+for a small repair when diagnostics fail, and validates again. The default allows
+at most three diagnostic passes, with repair requests between passes. It stops
+when both tools succeed or the limit is reached; success is not assumed from the
+model's reply. This is a .NET workflow, not automatic detection of every language's
+build system. Agent mode, enabled shell tools, budgets, and ordinary approvals
+still apply. It is unavailable with `--no-shell`; `/repair` is not a built-in.
+
 <Callout type="warning">
   Commands run with your user's privileges. Review the exact command and working
   context before approval. Tool policy is not an operating-system sandbox.

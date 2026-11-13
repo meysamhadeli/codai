@@ -1,4 +1,5 @@
 using Codai.Application.Inspection;
+using Codai.Application.Abstractions;
 using Codai.Configuration;
 using Codai.Core.Abstractions;
 using Codai.Core.Agents;
@@ -105,6 +106,8 @@ internal sealed class SessionHarness
 
     public SessionSettingsWorkflow? Settings { get; set; }
 
+    public IApplicationUpdater? Updater { get; set; }
+
     /// <summary>The mode the session is running in. Tests change it the way the user does.</summary>
     public AgentModeState Mode { get; } = new();
 
@@ -189,7 +192,8 @@ internal sealed class SessionHarness
                 models: CreateModelState(),
                 settings: Settings,
                 fileSystem: FileSystem,
-                checkpoints: Checkpoints),
+                checkpoints: Checkpoints,
+                updater: Updater),
             new UserCommandResolver(commands, new SkillCatalog(FileSystem), Options),
             History,
             SessionStore,

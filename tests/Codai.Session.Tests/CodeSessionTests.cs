@@ -252,6 +252,26 @@ public class CodeSessionTests
     }
 
     [Fact]
+    public async Task Session_tabs_restore_separate_histories_when_traversing_and_closing()
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("first answer");
+        harness.Chat.Enqueue("second answer");
+        harness.Chat.Enqueue("first follow-up answer");
+        harness.Chat.Enqueue("second follow-up answer");
+        harness.QueueInputs("first topic", "/session open", "second topic",
+            "/session previous", "first follow-up", "/session close", "second follow-up", ":exit");
+
+        (await harness.Build().RunAsync()).Should().Be(0);
+
+        harness.Chat.Requests.Should().HaveCount(4);
+        harness.Chat.Requests[1].SystemPrompt.Should().NotContain("first topic");
+        harness.Chat.Requests[2].SystemPrompt.Should().Contain("first topic").And.NotContain("second topic");
+        harness.Chat.Requests[3].SystemPrompt.Should().Contain("second topic").And.NotContain("first topic");
+        harness.History.Turns.Select(turn => turn.UserRequest).Should().Equal("second topic", "second follow-up");
+    }
+
+    [Fact]
     public async Task History_picker_continues_saved_conversation_in_new_branch_without_overwriting_source()
     {
         var harness = new SessionHarness();
@@ -271,6 +291,52 @@ public class CodeSessionTests
         var current = (await harness.TaskStore.ListAsync(harness.Root)).Single(task => task.Request == "current question");
         (await harness.SessionStore.LoadAsync(harness.Root, current.Id)).Should().ContainSingle().Which.UserRequest.Should().Be("current question");
         harness.Chat.Requests[1].SystemPrompt.Should().Contain("saved question").And.NotContain("current question");
+    }
+
+    [Fact]
+    public async Task Closing_last_tab_keeps_its_saved_history_after_later_commands()
+    {
+        var harness = new SessionHarness();
+        harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
+        harness.Chat.Enqueue("saved answer");
+        harness.QueueInputs("saved topic", "/session close", "/help", ":exit");
+
+        await harness.Build().RunAsync();
+
+        harness.History.Turns.Should().BeEmpty();
+        var saved = (await harness.TaskStore.ListAsync(harness.Root)).Single(task => task.Request == "saved topic");
+        (await harness.SessionStore.LoadAsync(harness.Root, saved.Id)).Should().ContainSingle()
+            .Which.UserRequest.Should().Be("saved topic");
+    }
+
+    [Fact]
+    public async Task Returning_to_original_empty_tab_does_not_overwrite_other_saved_conversation()
+    {
+        var harness = new SessionHarness();
+        harness.TaskStore = new FileAgentTaskStore(harness.FileSystem);
+        harness.Chat.Enqueue("saved answer");
+        harness.QueueInputs("/session open", "saved topic", "/session previous", "/help", ":exit");
+
+        await harness.Build().RunAsync();
+
+        var saved = (await harness.TaskStore.ListAsync(harness.Root)).Single(task => task.Request == "saved topic");
+        (await harness.SessionStore.LoadAsync(harness.Root, saved.Id)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Session_tabs_restore_each_conversations_agent_mode()
+    {
+        var harness = new SessionHarness();
+        harness.Chat.Enqueue("agent answer");
+        harness.Chat.Enqueue("plan answer");
+        harness.QueueInputs("/session open", "/agents plan", "/session previous", "first topic",
+            "/session next", "second topic", ":exit");
+
+        await harness.Build().RunAsync();
+
+        harness.Chat.Requests[0].SystemPrompt.Should().Contain("Current mode: Agent");
+        harness.Chat.Requests[1].SystemPrompt.Should().Contain("Current mode: Plan");
+        harness.Mode.Mode.Should().Be(AgentMode.Plan);
     }
 
     [Fact]

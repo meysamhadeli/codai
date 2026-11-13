@@ -1,0 +1,111 @@
+---
+title: "Lifecycle hooks"
+description: "Run bounded, approved lifecycle commands and enforce local policy with native hooks.json manifests."
+---
+
+import { Callout } from "nextra/components";
+
+# Lifecycle hooks
+
+Hooks run local commands at task, tool, or compaction boundaries. Use them for
+auditing or policy checks, not as instructions that silently expand permissions.
+For reusable model guidance without command execution, use [skills](/skills).
+
+<Callout type="warning">
+  Hook commands run with your user's privileges and receive task or tool content
+  on standard input. Review commands and destinations before enabling them.
+  Do not log secrets or send private project content to an untrusted service.
+</Callout>
+
+## Discovery and control
+
+The CLI reads `hooks.json` from these directories, in order:
+
+1. `hooks` under the global configuration directory, normally `~/.codai/hooks`.
+2. The project's `.codai/hooks` directory.
+3. An additional directory selected by `--hooks-dir` or `CODAI_HOOKS_DIR`.
+
+Approved installed plugins can contribute normalized hook manifests too. Duplicate
+manifest paths are read once. Native .NET `IPluginAgentHook` implementations run
+before external command hooks; a blocked decision stops the pipeline.
+
+```bash
+codai config hooks
+codai --hooks-dir ./team-hooks --auto-approve false
+codai --no-hooks
+```
+
+Inspection does not run hooks. `--no-hooks` disables the lifecycle pipeline,
+including project, global, and plugin hooks. Matching external commands require
+Agent mode, enabled shell access, and approval for the `hook` action. A matching
+command in Plan or with `--no-shell` blocks the event; it is not silently skipped.
+Interactive Auto approval can approve hook commands, so select Manual approval
+when you want to review each command. Hooks cannot grant Plan write access.
+
+## Native manifest
+
+```json filename=".codai/hooks/hooks.json"
+{
+  "hooks": [
+    {
+      "name": "review-file-writes",
+      "event": "PreToolUse",
+      "command": "node scripts/review-tool.mjs",
+      "matcher": "^(write_file|edit_file|apply_patch)$",
+      "timeoutSeconds": 10,
+      "enabled": true
+    }
+  ]
+}
+```
+
+The example expects your own `scripts/review-tool.mjs`; Codai does not install it.
+The command runs in the project root unless `workingDirectory` is supplied.
+`matcher` is an optional regular expression against the Codai-facing tool name;
+it is mainly useful for tool events. Event names are case-sensitive.
+
+| Event | Boundary |
+| --- | --- |
+| `TaskStarted` | A foreground task starts |
+| `UserPromptSubmitted` | A user request is submitted |
+| `PreToolUse` | Before an approved tool executes |
+| `PostToolUse` | After a tool reports its result |
+| `PreCompact` | Before conversation compaction |
+| `PostCompact` | After conversation compaction |
+| `TaskCompleted` | A task completes |
+| `TaskFailed` | A task fails |
+
+Commands receive a JSON object on stdin with `event`, `projectRoot`, `timestamp`,
+and optional `taskId`, `prompt`, `toolName`, `arguments`, and `result`. Not every
+event has every field. Native response forms are:
+
+```json
+{"allow": true}
+```
+
+```json
+{"allow": false, "reason": "This operation is not allowed by project policy."}
+```
+
+Exit code 0 with empty stdout also allows continuation. Write diagnostic text to
+stderr, not stdout: nonempty stdout must be a valid response with an `allow`
+boolean. Nonzero exit, timeout, malformed output, denied approval, and invalid
+enabled definitions block the event. Blocking a post-action event does not undo
+an action already completed; hooks are not transactions or rollback handlers.
+
+## Limits and compatibility
+
+Each manifest is limited to 64 KiB, and all discovered manifests together can
+declare at most 32 hooks per invocation, including disabled entries. `enabled`
+defaults to true. A timeout defaults to 10 seconds and must be 1 to 300 seconds.
+Serialized input is limited to 262,144 characters; matcher evaluation is bounded
+to one second. Oversized or invalid data blocks execution rather than bypassing
+policy. Cancellation propagates to the running command.
+
+Marketplace hooks use a separate normalized compatibility format. Supported
+Claude/Copilot events and denial responses are listed under
+[plugin compatibility](/plugins#compatibility). Async hooks, prompt hooks, and
+hook-driven context/input mutation are not supported.
+
+SDK hosts opt in with `hookDirectories` when composing the runtime. Leaving it
+null or empty disables hooks. See [hosting and automation](/resources/hosting).

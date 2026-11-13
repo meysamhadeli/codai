@@ -1,5 +1,6 @@
 using Codai.Cli;
 using Codai.Cli.Ui;
+using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Tokens;
 using FluentAssertions;
@@ -9,6 +10,178 @@ namespace Codai.Session.Tests;
 
 public class ComposerBufferTests
 {
+    [Theory]
+    [InlineData(" Hi ")]
+    [InlineData(" [topic] ")]
+    [InlineData(" e\u0301 topic ")]
+    public void Tab_hover_changes_text_style_without_reusing_selected_background(string title)
+    {
+        var segment = new SessionTabBar.Segment(title, "/session tab:first");
+        List<string> frames = [];
+        foreach (var (active, hovered) in new[] { (true, false), (true, true), (false, true) })
+        {
+            using var writer = new StringWriter();
+            var console = AnsiConsole.Create(new AnsiConsoleSettings
+            {
+                Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes,
+            });
+            console.Write(SessionTabBar.Render(segment with { Active = active }, hovered));
+            PlainOutput(writer).Should().Be(title);
+            frames.Add(writer.ToString());
+        }
+        frames[0].Should().Be(frames[1]);
+        frames.Distinct().Should().HaveCount(2);
+    }
+
+    [Theory]
+    [InlineData(44, 22)]
+    [InlineData(110, 40)]
+    public async Task Tab_hover_highlights_only_under_pointer_and_never_switches_session(int width, int height)
+    {
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes, Interactive = InteractionSupport.Yes,
+        });
+        console.Profile.Width = width;
+        console.Profile.Height = height;
+        using var ui = new SpectreUserInterface(console, new SubmittedInput("question"));
+        SessionTab[] tabs = [new("first", "Hi"), new("second", "New session")];
+        ui.SetSessionTabs(tabs, "second", []);
+        await ui.ReadInputAsync();
+        writer.GetStringBuilder().Clear();
+
+        ui.HandleMouse(new(4, 1, TerminalMouseAction.Move)).Should().BeFalse();
+        var hovered = writer.ToString();
+        hovered.Should().StartWith("\u001b[?2026h\u001b[?25l")
+            .And.EndWith("\u001b[?25h\u001b[?2026l");
+        hovered.Should().Contain("\u001b[1;1H").And.NotContain("\u001b[2K").And.NotContain("\u001b[2;1H");
+        PlainOutput(writer).Should().Contain("Hi").And.Contain("question");
+        writer.GetStringBuilder().Clear();
+        ui.HandleMouse(new(5, 1, TerminalMouseAction.Move));
+        writer.ToString().Should().BeEmpty();
+
+        ui.HandleMouse(new(5, 2, TerminalMouseAction.Move));
+        var restored = writer.ToString();
+        restored.Should().StartWith("\u001b[?2026h\u001b[?25l")
+            .And.EndWith("\u001b[?25h\u001b[?2026l");
+        restored.Should().NotBe(hovered);
+        writer.GetStringBuilder().Clear();
+        ui.HandleMouse(new(5, 3, TerminalMouseAction.Move));
+        writer.ToString().Should().BeEmpty();
+        ui.HandleMouse(new(4, 1, TerminalMouseAction.Press)).Should().BeTrue();
+        writer.ToString().Should().BeEmpty();
+        ui.SetSessionTabs(tabs, "first", []);
+        var switched = writer.ToString();
+        switched.Should().StartWith("\u001b[?2026h\u001b[?25l")
+            .And.Contain("\u001b[2;1H\u001b[J")
+            .And.NotContain("\u001b[2J")
+            .And.NotContain("\u001b[1;1H\u001b[2K")
+            .And.EndWith("\u001b[?2026l");
+    }
+
+    [Fact]
+    public async Task Suspended_tab_draft_restores_cursor_before_typing()
+    {
+        var keys = new Queue<ConsoleKeyInfo>([new('X', ConsoleKey.X, false, false, false), new('\r', ConsoleKey.Enter, false, false, false)]);
+        var input = new SystemConsoleInput(() => null, () => keys.TryDequeue(out var key) ? key : null)
+        {
+            SuspendedDraft = ("draft", 2),
+            ComposerRedrawHandler = (_, _, _, _) => { },
+        };
+
+        (await input.ReadInteractiveLineAsync(true, CancellationToken.None)).Should().Be("drXaft");
+        input.SuspendedDraft.Should().BeNull();
+    }
+
+    [Fact]
+    public void Session_tab_views_restore_tools_and_suspended_draft_without_leaking_other_tab()
+    {
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes, Interactive = InteractionSupport.Yes,
+        });
+        console.Profile.Width = 100;
+        console.Profile.Height = 30;
+        var input = new SystemConsoleInput(() => null);
+        using var ui = new SpectreUserInterface(console, input);
+        SessionTab[] tabs = [new("first", "First topic"), new("second", "Second topic")];
+        ui.SetSessionTabs(tabs, "first", []).Should().BeTrue();
+        ui.WriteToolStarted("read_file", "first-file.cs");
+        ui.WriteToolCompleted("read_file", true, "first result");
+        input.SuspendedDraft = ("first draft", 3);
+
+        ui.SetSessionTabs(tabs, "second", []).Should().BeTrue();
+        input.SuspendedDraft.Should().BeNull();
+        ui.WriteToolStarted("read_file", "second-file.cs");
+        ui.WriteToolCompleted("read_file", true, "second result");
+        input.SuspendedDraft = ("second draft", 5);
+        ui.SetSessionTabs(tabs, "first", []).Should().BeTrue();
+
+        input.SuspendedDraft.Should().Be(("first draft", 3));
+        var field = typeof(SpectreUserInterface).GetField("_transcript", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var transcript = (ChatTranscript)field.GetValue(ui)!;
+        var restored = string.Join('\n', transcript.GetLines(90));
+        restored.Should().Contain("first-file.cs").And.NotContain("second-file.cs");
+        input.KeyHandler!(new ConsoleKeyInfo('\0', ConsoleKey.PageDown, false, false, true)).Should().BeTrue();
+        input.PaletteCommandHandler!().Should().Be("/session next");
+        input.KeyHandler!(new ConsoleKeyInfo('\0', ConsoleKey.T, false, false, true)).Should().BeTrue();
+        input.PaletteCommandHandler!().Should().Be("/session open");
+    }
+
+    [Theory]
+    [InlineData(24, 12)]
+    [InlineData(80, 30)]
+    public async Task Session_tab_strip_stays_on_first_row_and_mouse_selects_new_tab(int width, int height)
+    {
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes, Interactive = InteractionSupport.Yes,
+        });
+        console.Profile.Width = width;
+        console.Profile.Height = height;
+        using var ui = new SpectreUserInterface(console, new SubmittedInput("question"));
+        SessionTab[] tabs = [new("first", "First topic"), new("second", "Second topic")];
+        ui.SetSessionTabs(tabs, "first", []);
+        await ui.ReadInputAsync();
+
+        var layout = SessionTabBar.Layout(width, tabs, "first");
+        var plusColumn = layout.Take(layout.Count - 1).Sum(segment => segment.Text.GetCellWidth()) + 2;
+        ui.HandleMouse(new(plusColumn, 1, TerminalMouseAction.Press)).Should().BeTrue();
+        PlainOutput(writer).Should().Contain("First");
+        writer.GetStringBuilder().Clear();
+        ui.WriteMarkdown("answer");
+        writer.ToString().Should().Contain("\u001b[2;1H").And.Contain("\u001b[1;1H");
+    }
+
+    [Theory]
+    [InlineData(12)]
+    [InlineData(24)]
+    [InlineData(80)]
+    [InlineData(160)]
+    public void Session_tabs_keep_active_title_and_actions_within_terminal_width(int width)
+    {
+        SessionTab[] tabs = Enumerable.Range(0, 10)
+            .Select(index => new SessionTab("tab-" + index, "Topic " + index + " with a long title\nsecond line")).ToArray();
+
+        var segments = SessionTabBar.Layout(width, tabs, "tab-8");
+
+        segments.Sum(segment => segment.Text.GetCellWidth()).Should().BeLessThanOrEqualTo(width);
+        segments.Should().Contain(segment => segment.Command == "/session tab:tab-8" && segment.Active);
+        segments.Should().Contain(segment => segment.Command == "/session close");
+        segments.Should().Contain(segment => segment.Command == "/session open");
+        string.Concat(segments.Select(segment => segment.Text)).Should().NotContain("\n");
+        var column = 1;
+        foreach (var segment in segments)
+        {
+            SessionTabBar.HitTest(column, segments).Should().Be(segment.Command);
+            column += segment.Text.GetCellWidth();
+        }
+        SessionTabBar.HitTest(column, segments).Should().BeNull();
+    }
+
     [Fact]
     public async Task Interactive_reader_keeps_pasted_newlines_and_waits_for_real_enter()
     {
@@ -1970,7 +2143,7 @@ public class ComposerBufferTests
 
         writer.GetStringBuilder().Clear();
         ui.RestoreTerminal();
-        writer.ToString().Should().Be("\u001b[?2026l\u001b[r\u001b[0m\u001b[0 q\u001b[?25h\u001b[?2004l\u001b[?1002l\u001b[?1006l\u001b[?1049l");
+        writer.ToString().Should().Be("\u001b[?2026l\u001b[r\u001b[0m\u001b[0 q\u001b[?25h\u001b[?2004l\u001b[?1003l\u001b[?1006l\u001b[?1049l");
         writer.GetStringBuilder().Clear();
         ui.Dispose();
         writer.ToString().Should().BeEmpty();
@@ -2148,7 +2321,7 @@ public class ComposerBufferTests
     public void Settings_navigation_skips_headings_and_scrolls_across_every_category(int width, int height)
     {
         string[] labels = ["Session", "New", "Models", "Agents", "Compact", "Auto-compact", "Skills", "Diff", "Themes",
-            "Plugins", "MCPs", "Auth", "Help", "Docs", "Exit"];
+            "Plugins", "MCPs", "Auth", "Update", "Help", "Docs", "Exit"];
         using var writer = new StringWriter();
         var console = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes });
         console.Profile.Width = width;
@@ -2179,7 +2352,7 @@ public class ComposerBufferTests
         new SettingsPalette().Draw(console);
 
         foreach (var label in new[] { "Session", "New", "Models", "Agents", "Compact", "Auto-compact", "Skills", "Diff", "Themes",
-            "Plugins", "MCPs", "Auth", "Help", "Docs", "Exit" })
+            "Plugins", "MCPs", "Auth", "Update", "Help", "Docs", "Exit" })
         {
             PlainOutput(writer).Should().Contain(label);
         }
@@ -2196,9 +2369,10 @@ public class ComposerBufferTests
     [InlineData("Skills", "/skills")]
     [InlineData("Diff", "/diff")]
     [InlineData("Themes", "/themes")]
-    [InlineData("Plugins", ":preferences plugins")]
+    [InlineData("Plugins", "/plugins")]
     [InlineData("MCPs", "/mcps")]
     [InlineData("Auth", "/auth")]
+    [InlineData("Update", "/update")]
     [InlineData("Help", "/help")]
     [InlineData("Docs", ":docs")]
     [InlineData("Exit", "/exit")]
@@ -2226,7 +2400,7 @@ public class ComposerBufferTests
     public void Settings_catalog_contains_only_requested_actions_and_dispatches_existing_workflows()
     {
         string[] commands = ["/session", "/new", "/models", "/agents", "/compact", "/autocompact", "/skills", "/diff", "/themes",
-            ":preferences plugins", "/mcps", "/auth", "/help", ":docs", "/exit"];
+            "/plugins", "/mcps", "/auth", "/update", "/help", ":docs", "/exit"];
         for (var index = 0; index < commands.Length; index++)
         {
             var palette = new SettingsPalette();

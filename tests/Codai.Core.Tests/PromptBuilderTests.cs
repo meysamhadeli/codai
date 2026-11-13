@@ -67,6 +67,9 @@ public class PromptBuilderTests
 
         request.SystemPrompt.Should().Contain("review: Review changes and risks")
             .And.Contain("call read_skill with its exact name")
+            .And.Contain("When a skill matches, you must call read_skill")
+            .And.Contain("before other tools or answering")
+            .And.Contain("Do not skip a matching skill because you already know the topic or can call its tools directly")
             .And.Contain("Load supporting resources only when needed")
             .And.NotContain("LARGE_REVIEW_BODY")
             .And.NotContain("DISABLED_DESCRIPTION")

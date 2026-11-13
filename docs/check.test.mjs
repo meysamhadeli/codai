@@ -54,6 +54,7 @@ test("publishes focused guides with valid navigation and README links", async ()
     "usage/sessions", "usage/context", "providers", "providers/models",
     "providers/pricing", "customization/configuration", "customization/instructions",
     "customization/commands", "resources/cli", "resources/troubleshooting",
+    "customization/hooks", "resources/hosting",
   ]) {
     assert.ok(routes.has(route), `${route} must be reachable through navigation`);
   }
@@ -73,19 +74,14 @@ test("preserves published Agent mode section anchors", () => {
   }
 });
 
-test("keeps the published roadmap focused on planned VS Code extension delivery", () => {
-  const source = fs.readFileSync(new URL("./content/agent-mode-roadmap.mdx", import.meta.url), "utf8");
-  assert.match(source, /^title: "VS Code Extension Roadmap"$/m);
-  assert.match(source, /^# VS Code extension roadmap$/m);
-  assert.match(source, /planned extension work only/);
-  for (const heading of [
-    "Phase 1: Extension Foundation", "Phase 2: Contextual Coding And Review",
-    "Phase 3: Integrated Agent Tools", "Phase 4: Skills And Workspace Customization",
-    "Phase 5: Long-Running Tasks And Recovery", "Phase 6: Distribution And Release Quality",
-  ]) {
-    assert.ok(source.includes(`## ${heading}`), `${heading} must be covered`);
+test("does not publish or link to the removed roadmap", async () => {
+  const root = fileURLToPath(new URL(".", import.meta.url));
+  const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const result = await checkDocumentation(root, readme);
+  assert.ok(!result.pages.some(page => pageRoute(page) === "agent-mode-roadmap"));
+  for (const file of ["./content/_meta.js", "./content/index.mdx", "../README.md"]) {
+    assert.doesNotMatch(fs.readFileSync(new URL(file, import.meta.url), "utf8"), /agent-mode-roadmap/);
   }
-  assert.doesNotMatch(source, /^## (Current foundations|Phase 1: Core Reliability|Phase 2: Workflow And Integration|Explicit Non-Goals)$/m);
 });
 
 test("documents every named built-in tool", () => {
@@ -100,6 +96,85 @@ test("documents every named built-in tool", () => {
   assert.ok(tools.length > 1, "the tool source directory must not be empty");
   for (const name of tools) {
     assert.ok(reference.includes(`\`${name}\``), `${name} must appear in the tool reference`);
+  }
+});
+
+test("documents every advertised session command", () => {
+  const source = fs.readFileSync(new URL("../src/Codai.Application/SlashCommand.cs", import.meta.url), "utf8");
+  const reference = fs.readFileSync(new URL("./content/usage/terminal.mdx", import.meta.url), "utf8");
+  const help = source.slice(source.indexOf("public const string HelpText"), source.indexOf("public static SlashCommand Parse"));
+  const commands = [...help.matchAll(/"\/([a-z-]+)\b/g)].map(([, name]) => name);
+  assert.ok(commands.length > 10, "the advertised command catalog must not be empty");
+  for (const command of commands) {
+    assert.ok(reference.includes(`| \`/${command}`), `/${command} must appear in the terminal command table`);
+  }
+});
+
+test("documents every supported long CLI flag", () => {
+  const source = fs.readFileSync(new URL("../src/Codai.Adapters/Configuration/CommandLineParser.cs", import.meta.url), "utf8");
+  const reference = fs.readFileSync(new URL("./content/resources/cli.mdx", import.meta.url), "utf8");
+  const flags = new Set([
+    ...[...source.matchAll(/\("([a-z-]+)", ConfigKeys\./g)].map(([, name]) => name),
+    ...[...source.matchAll(/^                case "([a-z][a-z-]+)":/gm)].map(([, name]) => name),
+  ]);
+  assert.ok(flags.size > 30, "the CLI flag catalog must not be empty");
+  for (const flag of flags) {
+    assert.ok(reference.includes(`--${flag}`), `--${flag} must appear in the CLI reference`);
+  }
+});
+
+test("documents runtime configuration keys and mapped environment overrides", () => {
+  const reference = fs.readFileSync(new URL("./content/customization/configuration.mdx", import.meta.url), "utf8");
+  for (const file of ["CodaiOptions.cs", "AiProviderOptions.cs", "AgentBudgetOptions.cs"]) {
+    const source = fs.readFileSync(new URL(`../src/Codai.Adapters/Configuration/${file}`, import.meta.url), "utf8");
+    const keys = [...source.matchAll(/ConfigurationKeyName\("([^"]+)"\)/g)].map(([, name]) => name);
+    assert.ok(keys.length > 0, `${file} must expose configuration keys`);
+    for (const key of keys) assert.ok(reference.includes(key), `${key} must appear in configuration reference`);
+  }
+  for (const key of ["MaxTokens", "MaxCost", "MaxToolCalls"]) {
+    assert.ok(reference.includes(key), `budget.${key} must use its actual binding name`);
+  }
+  const loader = fs.readFileSync(new URL("../src/Codai.Adapters/Configuration/CodaiConfigurationLoader.cs", import.meta.url), "utf8");
+  const variables = [...loader.matchAll(/\("([A-Z_]+)", ConfigKeys\./g)].map(([, name]) => name);
+  assert.ok(variables.length > 10, "environment mapping must not be empty");
+  for (const variable of variables) {
+    assert.ok(reference.includes(`\`${variable}\``), `${variable} must appear in environment reference`);
+  }
+});
+
+test("keeps README and provider guide aligned with bundled defaults", () => {
+  const source = fs.readFileSync(new URL("../src/Codai.Adapters/Configuration/ProviderCatalog.cs", import.meta.url), "utf8");
+  const names = new Map([...source.matchAll(/public const string (\w+) = "([^"]+)";/g)]
+    .map(([, symbol, name]) => [symbol, name]));
+  const providers = [...source.matchAll(/new\((\w+), "[^"]+", "([^"]+)"/g)];
+  assert.ok(providers.length >= 10, "provider catalog must not be empty");
+  for (const file of ["../README.md", "./content/providers/index.mdx"]) {
+    const reference = fs.readFileSync(new URL(file, import.meta.url), "utf8");
+    for (const [, symbol, model] of providers) {
+      const name = names.get(symbol);
+      assert.ok(name, `${symbol} must resolve to a provider name`);
+      const row = reference.split(/\r?\n/).find(line => line.includes(`\`${name}\``));
+      assert.ok(row, `${name} must appear in ${file}`);
+      if (name === "azure-openai") assert.match(row, /deployment ID/);
+      else assert.ok(row.includes(`\`${model}\``), `${name} default must be ${model} in ${file}`);
+    }
+  }
+});
+
+test("documents every native hook event and separate hosting entry points", () => {
+  const source = fs.readFileSync(new URL("../src/Codai.Core/Agents/AgentHookContracts.cs", import.meta.url), "utf8");
+  const hooks = fs.readFileSync(new URL("./content/customization/hooks.mdx", import.meta.url), "utf8");
+  const events = /enum AgentHookEvent\s*\{([^}]+)\}/.exec(source)?.[1].split(",").map(name => name.trim()).filter(Boolean);
+  assert.ok(events?.length >= 8, "hook event catalog must not be empty");
+  for (const event of events) assert.ok(hooks.includes(`\`${event}\``), `${event} must be documented`);
+  const hosting = fs.readFileSync(new URL("./content/resources/hosting.mdx", import.meta.url), "utf8");
+  const mcp = fs.readFileSync(new URL("./content/mcp.mdx", import.meta.url), "utf8");
+  for (const name of ["finishReason", "exitCode", "durationMs", "inputTokens", "outputTokens"]) {
+    assert.ok(hosting.includes(`\`${name}\``), `${name} must retain its JSON spelling`);
+  }
+  assert.ok(hosting.includes("Codai.Application.ICodaiSession"));
+  for (const name of ["codai mcp", "codai_list_tools", "codai_call_tool"]) {
+    assert.ok(mcp.includes(name), `${name} must be documented`);
   }
 });
 

@@ -19,9 +19,10 @@ public sealed class SettingsPalette : IOverlay
         ("Skills", "Enabled skill availability", "/skills", "Session"),
         ("Diff", "Working tree and staged", "/diff", "Session"),
         ("Themes", "Terminal colors", "/themes", "Customization"),
-        ("Plugins", "Plugin availability", ":preferences plugins", "Customization"),
+        ("Plugins", "Browse and manage plugin marketplaces", "/plugins", "Customization"),
         ("MCPs", "MCP server availability", "/mcps", "Customization"),
         ("Auth", "Authenticate provider", "/auth", "Customization"),
+        ("Update", "Check for Codai updates", "/update", "System"),
         ("Help", "Session commands", "/help", "System"),
         ("Docs", "Open documentation", ":docs", "System"),
         ("Exit", "Leave Codai", "/exit", "System"),
@@ -500,7 +501,8 @@ public sealed class SettingsPalette : IOverlay
         var labelWidth = width < 50 && _title is null ? width - 2 : Math.Min(46, Math.Max(8, width * 2 / 5));
         for (var index = first; index < Math.Min(matches.Length, first + capacity); index++)
         {
-            var label = ComposerLayout.Clip(matches[index].Title, Math.Max(1, labelWidth - 2));
+            var icon = TerminalIcons.Prefix(TerminalIcons.Command(matches[index].Command), unicode);
+            var label = ComposerLayout.Clip(icon + matches[index].Title, Math.Max(1, labelWidth - 2));
             var value = _items.FirstOrDefault(item => item.Value == matches[index].Command && item.Label == matches[index].Title)?.RightLabel;
             var detail = width < 50 && value is null ? string.Empty : ComposerLayout.Clip(value ?? matches[index].Detail, Math.Max(0, width - labelWidth - 3));
             rows.Add(((index == Selected ? unicode ? "❯ " : "> " : "  ") + label +
@@ -528,13 +530,13 @@ public sealed class SettingsPalette : IOverlay
                 continue;
             }
             var line = row < rows.Count ? rows[row] : (string.Empty, "default");
-            console.Write(new Text(ComposerLayout.Clip(line.Item1, width), Style.Parse(line.Item2)));
+            console.Write(TerminalIcons.Render(ComposerLayout.Clip(line.Item1, width), line.Item2));
         }
         var cursorRow = _searchingSettings ? searchRow : firstItemRow + Selected - first;
         console.Write(new ControlCode($"\u001b[{top + Math.Min(cursorRow, height - 1)};{Math.Min(console.Profile.Width, _searchingSettings ? 5 + query.GetCellWidth() : 3)}H"));
     }
 
-    private static (string Text, string Style) SearchField(string text, int width)
+    internal static (string Text, string Style) SearchField(string text, int width)
     {
         var label = ComposerLayout.Clip("  " + text, width);
         return (label + new string(' ', Math.Max(0, width - label.GetCellWidth())), "grey62 on grey7");

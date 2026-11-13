@@ -36,8 +36,8 @@ import { Cards, Callout, Steps } from "nextra/components";
 
 ### Open your project
 
-Run `codai` from your repository. First-run setup saves a theme and connection;
-later runs open chat with those settings.
+Run `codai` from your repository and review workspace access. First-run setup
+saves a theme and connection; later runs open chat with those settings.
 
 ### Describe the outcome
 
@@ -51,8 +51,10 @@ Add a regression test, fix the parser, and run the relevant checks.
 
 ### Review the work
 
-Inspect proposed commands and edits before approval. Expand action steps to read
-results and diffs. Continue, refine, or restore deliberately.
+Interactive sessions default to Auto approval. Choose Manual with Shift+Tab or
+`--auto-approve false` when you want to inspect each write or command before it
+runs. Expand action steps to read results and diffs. Continue, refine, or restore
+deliberately.
 
 </Steps>
 
@@ -99,6 +101,12 @@ results and diffs. Continue, refine, or restore deliberately.
   <Cards.Card title="MCP and external tools" href="/mcp" arrow>
     Connect local or remote capabilities under the same tool policy.
   </Cards.Card>
+  <Cards.Card title="Plugins" href="/plugins" arrow>
+    Install supported Claude/Copilot bundles or trusted native .NET tools.
+  </Cards.Card>
+  <Cards.Card title="Lifecycle hooks" href="/customization/hooks" arrow>
+    Configure bounded, approved task and tool policy commands.
+  </Cards.Card>
 </Cards>
 
 ## Find an answer
@@ -106,5 +114,5 @@ results and diffs. Continue, refine, or restore deliberately.
 Use search for a tool, command, or setting. The [CLI reference](/resources/cli)
 collects entry points and exit codes; [Troubleshooting](/resources/troubleshooting)
 covers setup, models, permissions, and terminal issues.
-The [VS Code extension roadmap](/agent-mode-roadmap) describes Codai's next product
-direction; its planned editor workflows are separate from current capabilities.
+For scripting, structured events, or a custom .NET UI, see
+[Hosting and automation](/resources/hosting).

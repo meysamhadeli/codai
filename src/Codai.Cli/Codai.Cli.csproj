@@ -17,6 +17,7 @@
     <PackageReference Include="ColorCode.Core" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="NuGet.Versioning" />
     <PackageReference Include="Spectre.Console" />
   </ItemGroup>
 

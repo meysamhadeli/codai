@@ -28,9 +28,15 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     private readonly AgentModeState _modeState;
     private readonly ApprovalState _approvalState;
     private readonly string? _projectRoot;
-    private readonly ChatTranscript _transcript = new();
+    private ChatTranscript _transcript = new();
     private readonly object _renderLock = new();
-    private readonly SessionDisplayState _state = new();
+    private SessionDisplayState _state = new();
+    private IReadOnlyList<SessionTab> _sessionTabs = [];
+    private IReadOnlyList<SessionTabBar.Segment> _tabSegments = [];
+    private readonly Dictionary<string, TabView> _tabViews = new(StringComparer.Ordinal);
+    private string? _activeSessionId;
+    private string? _hoveredTabCommand;
+    private int TabRows => !ConnectionSetup && _sessionTabs.Count > 0 && _console.Profile.Width >= 12 && TerminalHeight() >= 12 ? 1 : 0;
     private const int ComposerRows = 8;
     private const int FrameIntervalMs = 60;
     private static readonly TimeSpan MinimumDrawInterval = TimeSpan.FromMilliseconds(45);
@@ -305,7 +311,9 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     }
 
     public Task<string?> ChooseAsync(string title, IReadOnlyList<SessionMenuItem> items, SessionMenuOptions options, CancellationToken cancellationToken = default) =>
-        RunDialogAsync(new SettingsPalette(title, items, options: options), cancellationToken);
+        RunDialogAsync(options.PluginTab is not null
+            ? new PluginBrowser(items, options.PluginTab)
+            : new SettingsPalette(title, items, options: options), cancellationToken);
 
     public Task<string?> ReadValueAsync(string title, string initialValue = "", bool secret = false, CancellationToken cancellationToken = default) =>
         RunDialogAsync(new SettingsPalette(title, initialValue: initialValue, secret: secret), cancellationToken);
@@ -462,6 +470,71 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     }
 
     /// <inheritdoc />
+    public bool SetSessionTabs(IReadOnlyList<SessionTab> tabs, string activeId, IReadOnlyList<ChatTurn> turns)
+    {
+        if (!_console.Profile.Capabilities.Ansi || !_console.Profile.Capabilities.Interactive || ConnectionSetup)
+        {
+            return false;
+        }
+        lock (_renderLock)
+        {
+            _sessionTabs = tabs;
+            if (_activeSessionId != activeId)
+            {
+                var input = _input as SystemConsoleInput;
+                if (_activeSessionId is not null)
+                {
+                    _tabViews[_activeSessionId] = new TabView(_transcript, _state, _draft, _welcomeShown, input?.SuspendedDraft);
+                }
+                if (_tabViews.TryGetValue(activeId, out var saved))
+                {
+                    _transcript = saved.Transcript;
+                    _state = saved.State;
+                    _draft = saved.Draft;
+                    _welcomeShown = saved.WelcomeShown;
+                    if (input is not null)
+                    {
+                        input.SuspendedDraft = saved.InputDraft;
+                    }
+                }
+                else if (_activeSessionId is not null || turns.Count > 0)
+                {
+                    _transcript = new ChatTranscript { Accent = Accent };
+                    _state = new SessionDisplayState { Model = _model ?? "configured model", Turn = turns.Count };
+                    _draft = new ComposerBuffer([]);
+                    _welcomeShown = turns.Count > 0;
+                    foreach (var turn in turns.TakeLast(20))
+                    {
+                        _transcript.AddUser(turn.UserRequest);
+                        _transcript.AppendMarkdown(turn.AiResponse);
+                    }
+                    if (input is not null)
+                    {
+                        input.SuspendedDraft = null;
+                    }
+                }
+                _activeSessionId = activeId;
+                _hoveredTabCommand = null;
+                foreach (var closed in _tabViews.Keys.Where(id => !tabs.Any(tab => tab.Id == id)).ToArray())
+                {
+                    _tabViews.Remove(closed);
+                }
+                _transcript.Accent = Accent;
+                _transcript.Invalidate();
+                if (_viewportInitialized)
+                {
+                    _restorePaletteBackground = true;
+                }
+            }
+            if (_viewportInitialized)
+            {
+                RefreshComposer();
+            }
+            return true;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<string?> ReadInputAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -491,6 +564,11 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                     {
                         _console.Write(new ControlCode("\u001b[r\u001b[2J\u001b[H"));
                         _composerTop = 0;
+                    }
+                    if (_activeSessionId is not null)
+                    {
+                        _sessionTabs = _sessionTabs.Select(tab => tab.Id == _activeSessionId && tab.Title == "New session"
+                            ? tab with { Title = input } : tab).ToArray();
                     }
                     _transcript.AddUser(input);
                     RefreshComposer();
@@ -649,7 +727,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         lock (_renderLock)
         {
             _transcript.CompleteActivity("failed");
-            Present("! " + message, "red");
+            var marker = TerminalIcons.Prefix(TerminalIcon.Error, _console.Profile.Capabilities.Unicode && _console.Profile.Capabilities.Interactive);
+            Present((marker.Length > 0 ? marker : "! ") + message, "red");
         }
     }
 
@@ -657,7 +736,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     public void WriteSuccess(string message)
     {
         _state.Activity = "ready";
-        Present(message, Accent);
+        Present(TerminalIcons.Prefix(TerminalIcon.Check,
+            _console.Profile.Capabilities.Unicode && _console.Profile.Capabilities.Interactive) + message, Accent);
     }
 
     /// <inheritdoc />
@@ -688,7 +768,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             return;
         }
-        Present(message, "white");
+        Present(TerminalIcons.Prefix(TerminalIcon.Info,
+            _console.Profile.Capabilities.Unicode && _console.Profile.Capabilities.Interactive) + message, "white");
     }
 
     /// <inheritdoc />
@@ -1032,6 +1113,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         if (IsHomeView())
         {
             _console.Write(new ControlCode("\u001b[2J\u001b[H"));
+            DrawSessionTabs();
         }
     }
 
@@ -1053,7 +1135,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             else
             {
-                _console.Write(new Text(TranscriptMarkdown.Clean(message), Style.Parse(style)));
+                _console.Write(TerminalIcons.Render(TranscriptMarkdown.Clean(message), style));
                 _console.WriteLine();
             }
         }
@@ -1185,7 +1267,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     {
         var area = Math.Max(1, TerminalHeight() - ComposerRows);
         var block = HeaderRows + 1 + ComposerRows;
-        return Math.Max(1, (area - block) / 2);
+        return Math.Max(1 + TabRows, (area - block) / 2);
     }
 
     private void RedrawInput(string text, int cursor) => RedrawComposer(text, cursor, [], 0);
@@ -1207,7 +1289,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             {
                 if (ansi)
                 {
-                    _console.Write(new ControlCode(_palette is IInlineDecision { ShowCursor: false } or SettingsPalette { ShowCursor: false }
+                    _console.Write(new ControlCode(_palette is IInlineDecision { ShowCursor: false } or SettingsPalette { ShowCursor: false } or PluginBrowser
                         ? "\u001b[?25l\u001b[?2026l" : "\u001b[2 q\u001b[?25h\u001b[?2026l"));
                 }
             }
@@ -1227,11 +1309,12 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             _renderHeight = TerminalHeight();
             var height = decision.MeasureHeight(_console.Profile.Width, Math.Max(1, TerminalHeight() - 4));
             var transcriptRows = _transcript.GetLines(Math.Max(4, _console.Profile.Width - 3)).Count;
-            var decisionTop = Math.Max(2, Math.Min(transcriptRows + 2, TerminalHeight() - height));
+            var decisionTop = Math.Max(2 + TabRows, Math.Min(transcriptRows + 2 + TabRows, TerminalHeight() - height));
             _composerTop = decisionTop;
             _composerRows = TerminalHeight() - decisionTop + 1;
             _console.Write(new ControlCode("\u001b[r"));
-            _transcript.Draw(_console, decisionTop - 1);
+            _transcript.Draw(_console, decisionTop - 1 - TabRows, 1 + TabRows);
+            DrawSessionTabs();
             decision.Draw(_console, _theme, decisionTop);
             return;
         }
@@ -1250,7 +1333,8 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         _renderHeight = TerminalHeight();
         if (_restorePaletteBackground && _console.Profile.Capabilities.Ansi)
         {
-            _console.Write(new ControlCode("\u001b[r\u001b[2J\u001b[H"));
+            _console.Write(new ControlCode(TabRows > 0
+                ? "\u001b[r\u001b[2;1H\u001b[J" : "\u001b[r\u001b[2J\u001b[H"));
             _composerTop = 0;
             _transcript.InvalidateDisplay();
             _restorePaletteBackground = false;
@@ -1281,7 +1365,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         var top = homeView
             ? Math.Min(HomeTop() + HeaderRows + 1, Math.Max(1, TerminalHeight() - _composerRows + 1))
             : Math.Min(Math.Max(1, TerminalHeight() - _composerRows + 1),
-                _transcript.GetLines(Math.Max(4, _console.Profile.Width - 3)).Count + 2);
+                _transcript.GetLines(Math.Max(4, _console.Profile.Width - 3)).Count + 2 + TabRows);
         var moved = _composerTop != top;
         _composerTop = top;
 
@@ -1340,15 +1424,36 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             var transcriptBottom = homeView ? Math.Max(1, TerminalHeight() - _composerRows) : Math.Max(1, top - 1);
             if (_viewportInitialized && !homeView)
             {
-                _transcript.Draw(_console, top - 1);
+                _transcript.Draw(_console, top - 1 - TabRows, 1 + TabRows);
             }
-            _console.Write(new ControlCode($"\u001b[1;{transcriptBottom}r\u001b[{top + inputPadding + layout.CursorRow};{indent + PromptBlock.ContentOffset + 1 + layout.CursorColumn}H"));
+            DrawSessionTabs();
+            _console.Write(new ControlCode($"\u001b[{1 + TabRows};{transcriptBottom}r\u001b[{top + inputPadding + layout.CursorRow};{indent + PromptBlock.ContentOffset + 1 + layout.CursorColumn}H"));
             if (_palette is not null)
             {
                 _console.Write(new ControlCode("\u001b[r"));
                 _palette.Draw(_console, _theme);
             }
         }
+    }
+
+    private void DrawSessionTabs(bool clear = true)
+    {
+        if (TabRows == 0)
+        {
+            _tabSegments = [];
+            return;
+        }
+        _tabSegments = SessionTabBar.Layout(_console.Profile.Width, _sessionTabs, _activeSessionId ?? string.Empty);
+        _console.Write(new ControlCode("\u001b[s\u001b[1;1H"));
+        foreach (var segment in _tabSegments)
+        {
+            _console.Write(SessionTabBar.Render(segment,
+                _palette is null && _busyDepth == 0 && !_waitingForResponse &&
+                segment.Command is not null && segment.Command == _hoveredTabCommand));
+        }
+        if (clear)
+            _console.Write(new ControlCode("\u001b[K"));
+        _console.Write(new ControlCode("\u001b[1;1H\u001b[u"));
     }
 
     private void RenderConnectionPage()
@@ -1367,7 +1472,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         }
         var notice = ComposerLayout.Clip(TranscriptMarkdown.Clean(_setupNotice).Replace('\n', ' '), Math.Max(1, _console.Profile.Width - 4));
         _console.Write(new ControlCode($"\u001b[{Math.Max(1, TerminalHeight() - 1)};1H\u001b[2K"));
-        _console.Write(new Text("  " + notice, Style.Parse(_setupNoticeStyle)));
+        _console.Write(TerminalIcons.Render("  " + notice, _setupNoticeStyle));
         if (_palette is not null)
         {
             _palette.Draw(_console, _theme, Math.Min(menuTop, Math.Max(1, TerminalHeight() - 6)));
@@ -1423,7 +1528,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         }
         _viewportInitialized = true;
         var transcriptBottom = Math.Max(1, TerminalHeight() - ComposerRows);
-        _console.Write(new ControlCode($"\u001b[?1049h\u001b[2 q\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[2J\u001b[1;1H\u001b[1;{transcriptBottom}r"));
+        _console.Write(new ControlCode($"\u001b[?1049h\u001b[2 q\u001b[?1003h\u001b[?1006h\u001b[?2004h\u001b[2J\u001b[1;1H\u001b[1;{transcriptBottom}r"));
     }
 
     private void MoveToTranscriptEnd()
@@ -1449,7 +1554,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             }
             finally
             {
-                _console.Write(new ControlCode("\u001b[?2026l\u001b[r\u001b[0m\u001b[0 q\u001b[?25h\u001b[?2004l\u001b[?1002l\u001b[?1006l\u001b[?1049l"));
+                _console.Write(new ControlCode("\u001b[?2026l\u001b[r\u001b[0m\u001b[0 q\u001b[?25h\u001b[?2004l\u001b[?1003l\u001b[?1006l\u001b[?1049l"));
             }
         }
         _composerTop = 0;
@@ -1576,7 +1681,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
             _draft = new ComposerBuffer([]);
             input = await _input.ReadLineAsync(cancellationToken).ConfigureAwait(false);
         }
-        if (!string.IsNullOrWhiteSpace(input))
+        if (!string.IsNullOrWhiteSpace(input) && SlashCommandParser.Parse(input) is not (SlashCommand.New or SlashCommand.Session or SlashCommand.Sessions))
         {
             _state.Turn++;
             _state.Activity = "working";
@@ -1589,34 +1694,65 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     {
         lock (_renderLock)
         {
+            if (mouse.Action == TerminalMouseAction.Move)
+            {
+                var hovered = _viewportInitialized && TabRows > 0 && mouse.Row == 1 &&
+                    _busyDepth == 0 && !_waitingForResponse && _palette is null
+                    ? SessionTabBar.HitTest(mouse.Column, _tabSegments) : null;
+                if (hovered != _hoveredTabCommand)
+                {
+                    _hoveredTabCommand = hovered;
+                    if (_viewportInitialized && _palette is null)
+                    {
+                        _console.Write(new ControlCode("\u001b[?2026h\u001b[?25l"));
+                        try
+                        {
+                            DrawSessionTabs(clear: false);
+                        }
+                        finally
+                        {
+                            _console.Write(new ControlCode("\u001b[?25h\u001b[?2026l"));
+                        }
+                    }
+                }
+                return false;
+            }
             if (mouse.Action == TerminalMouseAction.Release)
             {
                 _draggingScrollbar = false;
                 return false;
+            }
+            if (TabRows > 0 && mouse.Row == 1 && mouse.Action == TerminalMouseAction.Press &&
+                _busyDepth == 0 && !_waitingForResponse && _palette is null &&
+                SessionTabBar.HitTest(mouse.Column, _tabSegments) is { } tabCommand)
+            {
+                _paletteCommand = tabCommand;
+                return true;
             }
             if (!_viewportInitialized || IsHomeView() || ConnectionSetup || _palette is not null)
             {
                 _draggingScrollbar = false;
                 return false;
             }
-            var rows = Math.Max(1, _composerTop - 1);
+            var rows = Math.Max(1, _composerTop - 1 - TabRows);
+            var transcriptRow = mouse.Row - TabRows;
             if (mouse.Action is TerminalMouseAction.ScrollUp or TerminalMouseAction.ScrollDown)
             {
                 _transcript.Scroll(mouse.Action == TerminalMouseAction.ScrollUp ? 3 : -3);
             }
             else if (mouse.Action == TerminalMouseAction.Press &&
-                mouse.Column == _console.Profile.Width && mouse.Row > 0 && mouse.Row <= rows)
+                mouse.Column == _console.Profile.Width && transcriptRow > 0 && transcriptRow <= rows)
             {
                 _draggingScrollbar = true;
-                _transcript.ScrollToRow(mouse.Row - 1, rows);
+                _transcript.ScrollToRow(transcriptRow - 1, rows);
             }
             else if (mouse.Action == TerminalMouseAction.Drag && _draggingScrollbar)
             {
-                _transcript.ScrollToRow(mouse.Row - 1, rows);
+                _transcript.ScrollToRow(transcriptRow - 1, rows);
             }
             else if (mouse.Action == TerminalMouseAction.Press && mouse.Column > 0 &&
-                mouse.Column < _console.Profile.Width && mouse.Row > 0 && mouse.Row <= rows &&
-                _transcript.ToggleStepAtRow(mouse.Row, rows))
+                mouse.Column < _console.Profile.Width && transcriptRow > 0 && transcriptRow <= rows &&
+                _transcript.ToggleStepAtRow(transcriptRow, rows))
             {
                 _draggingScrollbar = false;
             }
@@ -1636,6 +1772,21 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
     {
         if (HandlePaletteKey(key))
         {
+            return true;
+        }
+        if (_sessionTabs.Count > 0 && key.Modifiers.HasFlag(ConsoleModifiers.Control) &&
+            key.Key is ConsoleKey.PageUp or ConsoleKey.PageDown or ConsoleKey.T or ConsoleKey.F4)
+        {
+            if (_busyDepth == 0 && !_waitingForResponse)
+            {
+                _paletteCommand = key.Key switch
+                {
+                    ConsoleKey.PageUp => "/session previous",
+                    ConsoleKey.PageDown => "/session next",
+                    ConsoleKey.T => "/session open",
+                    _ => "/session close",
+                };
+            }
             return true;
         }
         if (key.Key is ConsoleKey.PageUp or ConsoleKey.PageDown)
@@ -1769,4 +1920,7 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
 
         public string Activity { get; set; } = "ready";
     }
+
+    private sealed record TabView(ChatTranscript Transcript, SessionDisplayState State, ComposerBuffer Draft,
+        bool WelcomeShown, (string Text, int Cursor)? InputDraft);
 }

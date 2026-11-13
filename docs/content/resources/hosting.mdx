@@ -1,0 +1,155 @@
+---
+title: "Hosting and automation"
+description: "Choose CLI JSON Lines, the ACP subset, or the host-neutral .NET runtime, with explicit workspace and approval ownership."
+---
+
+import { Callout } from "nextra/components";
+
+# Hosting and automation
+
+Codai supports terminal scripting and custom .NET hosts without embedding the
+Spectre terminal interface. Choose the smallest integration surface you need.
+
+| Integration | Use when |
+| --- | --- |
+| CLI task / `--json` | A script runs one task and consumes output or an exit code |
+| [ACP compatibility](/acp-compatibility) | An editor manages sessions over Codai's documented JSON-lines subset |
+| `Codai.Application` | A .NET host supplies UI, approvals, state, and runtime composition |
+| [Plugins](/plugins) or [MCP](/mcp) | Add tools to Codai rather than host the conversation loop |
+
+## Script a task
+
+```bash
+codai --trust-directory --json --mode plan "Explain the authentication flow"
+```
+
+Review the workspace before setting `--trust-directory`. One-shot, redirected,
+and JSON tasks cannot answer approval questions. They default to denying writes
+and commands; deliberate unattended edits additionally require
+`--auto-approve true` and Agent mode. `--timeout` bounds the run. Cancellation or
+timeout does not roll back completed edits.
+
+`--json` emits one JSON object per stdout line, not a single JSON document. Parse
+by line, tolerate optional fields and additional events, and keep diagnostic
+errors distinct from successful task content.
+
+| Event `type` | Content |
+| --- | --- |
+| `run_start` | Run initialization |
+| `agent_event` | Nested `event` with iteration, content, notice, usage, progress, or completion information |
+| `hook_event` | Hook lifecycle progress |
+| `error` | Structured diagnostic error |
+| `run_result` | Final `finishReason`, `exitCode`, `text`, `durationMs`, `model`, `usage`, and `iterations` |
+| `run_aborted` | Timeout or cancellation reason after the final result |
+
+Content arrives through `content_start`, `content_update`, and `content_end`
+agent events. Other nested types include `iteration_start`, `iteration_end`,
+`notice`, `usage`, `progress`, and `done`. Do not treat partial text as completion:
+inspect the final result and process exit code. Diagnostic `error` objects are
+written on stderr, while run events use stdout; parse the streams separately.
+Exit codes are listed in the
+[CLI reference](/resources/cli#exit-codes). A completed model answer alone does
+not prove edits or tests succeeded; inspect actual tool outcomes.
+
+Event timestamps use `ts`; nested progress can include `kind`, `taskId`,
+`description`, `text`, and `reason`. Usage objects contain `inputTokens`,
+`outputTokens`, and estimated USD `cost`. Unknown model prices remain unpriced,
+not free; see [pricing limitations](/providers/pricing).
+
+## Compose a .NET host
+
+Reference `Codai.Application` and `Microsoft.Extensions.DependencyInjection` in a
+.NET 10 project. Application references the Core and Adapters packages; no CLI
+or Spectre UI dependency is required. Implement `IUserInterface` for the host's
+output and user decisions. The following method runs one read-only task against
+a local Ollama server after your host authorizes the workspace:
+
+```csharp
+using Codai.Application;
+using Codai.Configuration;
+using Codai.Core.Abstractions;
+using Codai.Core.Agents;
+using Microsoft.Extensions.DependencyInjection;
+
+public static class CodaiHost
+{
+    public static async Task<int> RunAsync(
+        string projectRoot,
+        string request,
+        IUserInterface ui,
+        Func<string, CancellationToken, Task<bool>> authorizeWorkspace,
+        CancellationToken cancellationToken = default)
+    {
+        var root = Path.GetFullPath(projectRoot);
+        if (!await authorizeWorkspace(root, cancellationToken))
+            return 0;
+
+        var options = new CodaiOptions
+        {
+            AiProviderConfig = new AiProviderOptions
+            {
+                Provider = "ollama",
+                Model = "qwen3-coder",
+            },
+        };
+        var services = new ServiceCollection();
+        services.AddSingleton<IUserInterface>(ui);
+        services.AddCodaiApplicationRuntime(options, root,
+            mode: AgentMode.Plan, allowShell: false, allowSubAgents: false,
+            deferMcpStartup: true);
+        await using var host = services.BuildServiceProvider();
+        return await host.GetRequiredService<CodeSession>()
+            .RunTaskAsync(request, cancellationToken);
+    }
+}
+```
+
+Install and start the selected Ollama model separately. Your host supplies
+`authorizeWorkspace` and `ui`; this example does not bypass either decision.
+For an interactive host, call `CodeSession.RunAsync` and implement input on the
+same UI contract. `ExecutePlanAsync` runs a previously completed proposal after
+its separate consent step. Cancellation tokens reach model and tool work.
+
+## Own the boundaries
+
+- Authorize the workspace before configuration inspection or runtime composition.
+  Native plugin assemblies can load during composition; do not compose an untrusted
+  project just to show a trust prompt afterward.
+- Shell and subagents default to disabled in `AddCodaiApplicationRuntime`, unlike
+  the interactive CLI's opt-in composition. Enable them explicitly when appropriate.
+- Register an approval-capable UI for state-changing tools. No UI means the runtime
+  denies those tools; the CLI's Auto approval default is not an SDK default.
+- Supply `globalConfigurationDirectory` only when the host intends to discover
+  personal/global rules, skills, commands, MCP definitions, and private selections.
+- Use `dataDirectory` to isolate conversations, tasks, teams, and transcripts;
+  workspace files still belong to `projectRoot`. Checkpoint capture is enabled
+  unless configuration disables it.
+- Supply nonempty `hookDirectories` to enable lifecycle hooks. Choose
+  `deferMcpStartup: true` to defer enabled-server connection until the first exchange.
+- Do not log credentials or use model instructions as a replacement for enforced
+  mode, tool, and approval policy. Process tools are not an OS sandbox.
+
+## UI and extension contracts
+
+`IUserInterface` provides output, confirmation, clarification, picker, diff, and
+session-tab surfaces. Optional methods keep plain/default host behavior; implement
+them only when your UI supports the workflow. Decorators must forward optional
+methods and model request callbacks rather than silently falling back to defaults.
+
+`ModelRequestStarted`, `ModelRequestUpdated`, and `ModelRequestCompleted` report
+foreground model activity; they are not extra usage records. Read-only subagents,
+context budgets, and pricing are described in [Context](/usage/context#for-sdk-hosts)
+and [Pricing](/providers/pricing#for-sdk-hosts). In-app installation is CLI-specific;
+other hosts can supply `IApplicationUpdater` to `SessionCommandHandler`, or leave
+updates unavailable.
+
+`AddCodaiApplication` composes the same runtime and additionally registers
+`Codai.Application.ICodaiSession`. Hosts that prefer the interface can resolve
+it instead of the concrete `CodeSession`; it exposes `RunAsync`, `RunTaskAsync`,
+and `ExecutePlanAsync`.
+
+<Callout type="info">
+  ACP is a separate compatibility subset, not an automatic editor extension or
+  complete Agent Client Protocol implementation. Hosting the .NET runtime does
+  not install an extension or provide a UI for you.
+</Callout>
