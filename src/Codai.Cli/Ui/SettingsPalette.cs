@@ -103,7 +103,7 @@ public sealed class SettingsPalette : IOverlay
         }
         if (_inputOnly && key.Key is not (ConsoleKey.Enter or ConsoleKey.Escape))
         {
-            if (_valueEditor.Text.Length < 4096 || char.IsControl(key.KeyChar))
+            if (_valueEditor.Text.Length < OverlayPaste.MaxValueLength || char.IsControl(key.KeyChar))
             {
                 _valueEditor.HandleKey(key);
                 Query = _valueEditor.Text;
@@ -178,6 +178,23 @@ public sealed class SettingsPalette : IOverlay
             Query += key.KeyChar;
             Selected = 0;
         }
+    }
+
+    public bool AcceptsPaste => _inputOnly;
+
+    public bool HandlePaste(string text)
+    {
+        if (!_inputOnly)
+        {
+            return false;
+        }
+        if (OverlayPaste.TryAppend(_valueEditor, text))
+        {
+            Query = _valueEditor.Text;
+        }
+        // True even when nothing was inserted: a paste that falls through would be
+        // handled as a plain Ctrl+V keystroke.
+        return true;
     }
 
     public void Draw(IAnsiConsole console, string theme = "graphite", int minimumTop = 1)

@@ -21,6 +21,12 @@ internal interface IOverlay
     /// <summary>Handles one keystroke.</summary>
     void HandleKey(ConsoleKeyInfo key);
 
+    /// <summary>Whether the overlay has a text field that accepts paste payloads.</summary>
+    bool AcceptsPaste => false;
+
+    /// <summary>Handles a terminal paste payload. Overlays without text entry ignore it.</summary>
+    bool HandlePaste(string text) => false;
+
     /// <summary>Draws the overlay.</summary>
     /// <param name="console">Console to draw to.</param>
     /// <param name="theme">Palette name used for the selected row.</param>

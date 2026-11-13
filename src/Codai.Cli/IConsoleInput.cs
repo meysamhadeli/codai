@@ -10,6 +10,20 @@ public interface IConsoleInput
 {
     bool IsRedirected => false;
 
+    /// <summary>Whether the key is the paste shortcut (Ctrl+V).</summary>
+    static bool IsPasteKey(ConsoleKeyInfo key) =>
+        key.Key == ConsoleKey.V && key.Modifiers.HasFlag(ConsoleModifiers.Control);
+
+    /// <summary>
+    /// Takes the pending bracketed-paste payload, falling back to the system
+    /// clipboard. Sources without paste support return <c>false</c>.
+    /// </summary>
+    bool TryConsumePaste(out string? text)
+    {
+        text = null;
+        return false;
+    }
+
     Task<string> ReadToEndAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("This input source does not support redirected task input.");
 
@@ -105,17 +119,31 @@ public sealed class SystemConsoleInput : IConsoleInput
 
     internal bool TryPaste(ConsoleKeyInfo key, ComposerBuffer editor)
     {
-        if (key.Key != ConsoleKey.V || !key.Modifiers.HasFlag(ConsoleModifiers.Control))
+        if (!IConsoleInput.IsPasteKey(key))
         {
             return false;
         }
-        var text = _pasteText ?? _readClipboard();
-        _pasteText = null;
+        var text = ConsumePendingPaste();
         if (text is not null)
         {
             editor.InsertPaste(text);
         }
         return true;
+    }
+
+    /// <summary>Takes the pending bracketed-paste text, falling back to the system clipboard.</summary>
+    internal string? ConsumePendingPaste()
+    {
+        var text = _pasteText ?? _readClipboard();
+        _pasteText = null;
+        return text;
+    }
+
+    /// <inheritdoc />
+    public bool TryConsumePaste(out string? text)
+    {
+        text = ConsumePendingPaste();
+        return text is not null;
     }
 
     public bool IsRedirected => Console.IsInputRedirected;

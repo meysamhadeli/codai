@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Accepted terminal paste in dialog text fields, including provider setup fields
+  such as the server address and provider credential as well as free-form approval
+  answers. Pasted line breaks are stripped so the value stays single-line instead
+  of tripping control-character validation, and secret fields keep masking the
+  pasted text.
+
 - Reduced the gap between thinking/loading activity or result text and the input
   border by one row, preserving a clear separator and stable cursor alignment.
 

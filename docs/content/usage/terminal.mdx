@@ -332,6 +332,16 @@ or Codai's Windows clipboard handling; unframed simulated keystrokes retain norm
 Enter behavior. Terminal-specific shortcut and context-menu behavior is not
 overridden.
 
+Value entry dialogs — such as the server address and provider credential fields
+during provider registration, and free-form approval answers — accept the same
+paste bindings. Because a value submits on Enter, pasted line breaks are stripped
+so the value stays single-line instead of submitting early, and secret fields
+keep masking the pasted text. Stripping concatenates without a separator, which
+reassembles credentials that a source wraps across lines but also joins words of
+a truly multiline paste. Joining line breaks at all requires bracketed-paste
+framing; a terminal that ignores it delivers each line break as Enter, submitting
+the value early.
+
 | Key | Action |
 | --- | --- |
 | Enter | Send, run the selected command, or queue input during a response |
