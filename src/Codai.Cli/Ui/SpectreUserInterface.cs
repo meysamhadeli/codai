@@ -357,6 +357,24 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
         }
     }
 
+    /// <summary>
+    /// Routes a paste shortcut to an overlay with a text field. The payload is consumed
+    /// only after the overlay opts in, so an unhandled paste is not dropped silently.
+    /// </summary>
+    internal static bool TryRoutePalettePaste(IOverlay palette, IConsoleInput input, ConsoleKeyInfo key)
+    {
+        if (!IConsoleInput.IsPasteKey(key) || !palette.AcceptsPaste)
+        {
+            return false;
+        }
+        if (!input.TryConsumePaste(out var paste) || paste is not { Length: > 0 })
+        {
+            return false;
+        }
+        palette.HandlePaste(paste);
+        return true;
+    }
+
     private async Task<string?> RunDialogAsync(IOverlay palette, CancellationToken cancellationToken)
     {
         if (!_console.Profile.Capabilities.Ansi || !_console.Profile.Capabilities.Interactive)
@@ -381,7 +399,10 @@ public sealed class SpectreUserInterface : IUserInterface, IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_input.TryReadKey(out var key))
                 {
-                    HandlePaletteKey(key);
+                    if (!TryRoutePalettePaste(_palette, _input, key))
+                    {
+                        HandlePaletteKey(key);
+                    }
                     RedrawInput(_draft.Text, _draft.Cursor);
                 }
                 else

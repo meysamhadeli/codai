@@ -14,6 +14,19 @@ internal sealed class DecisionPanel(string title, string body, IReadOnlyList<Ses
     public bool Closed { get; private set; }
     public string? Command { get; private set; }
     public bool ShowCursor => items is null;
+    public bool AcceptsPaste => items is null;
+
+    public bool HandlePaste(string text)
+    {
+        if (items is not null)
+        {
+            return false;
+        }
+        OverlayPaste.TryAppend(_answer, text);
+        // True even when nothing was inserted: a paste that falls through would be
+        // handled as a plain Ctrl+V keystroke.
+        return true;
+    }
 
     public void HandleKey(ConsoleKeyInfo key)
     {
@@ -32,7 +45,7 @@ internal sealed class DecisionPanel(string title, string body, IReadOnlyList<Ses
         }
         else if (items is null)
         {
-            if (_answer.Text.Length < 4096 || char.IsControl(key.KeyChar))
+            if (_answer.Text.Length < OverlayPaste.MaxValueLength || char.IsControl(key.KeyChar))
             {
                 _answer.HandleKey(key);
             }

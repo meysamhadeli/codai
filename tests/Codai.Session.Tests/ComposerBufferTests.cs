@@ -1,5 +1,6 @@
 using Codai.Cli;
 using Codai.Cli.Ui;
+using Codai.Core.Abstractions;
 using Codai.Core.Agents;
 using Codai.Core.Tokens;
 using FluentAssertions;
@@ -79,6 +80,146 @@ public class ComposerBufferTests
         }
         parser.Reset();
         parser.TryRead(out _, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Dialog_value_field_paste_joins_lines_into_one_value_and_secret_stays_masked()
+    {
+        var palette = new SettingsPalette("Codai / Provider credential", initialValue: "sk-old", secret: true);
+
+        palette.HandlePaste("-abcdef\n\r\n-tail").Should().BeTrue();
+
+        palette.Query.Should().Be("sk-old-abcdef-tail");
+        using var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings { Out = new AnsiConsoleOutput(writer), Ansi = AnsiSupport.Yes });
+        console.Profile.Width = 60;
+        console.Profile.Height = 12;
+        palette.Draw(console);
+        PlainOutput(writer).Should().Contain(new string('*', palette.Query.Length))
+            .And.NotContain("sk-old-abcdef-tail");
+    }
+
+    [Fact]
+    public void Dialog_value_field_paste_respects_length_limit_and_empty_paste_keeps_value()
+    {
+        // Like typed keys, a paste is accepted while the field is below the limit,
+        // so the value stops growing at the same 4096 characters.
+        var palette = new SettingsPalette("Codai / Server address", initialValue: new string('a', 4090));
+        palette.HandlePaste(new string('b', 10)).Should().BeTrue();
+        palette.Query.Should().Be(new string('a', 4090) + new string('b', 6));
+        palette.Query.Length.Should().Be(4096);
+
+        var empty = new SettingsPalette("Codai / Server address");
+        empty.HandlePaste("\n\r\n").Should().BeTrue();
+        empty.Query.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Choice_palette_ignores_paste_so_shortcuts_still_apply()
+    {
+        var palette = new SettingsPalette("MCPs", [new("Server", "Enabled", "server")]);
+
+        palette.HandlePaste("anything").Should().BeFalse();
+        palette.Query.Should().BeEmpty();
+
+        palette.HandleKey(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false));
+        palette.Closed.Should().BeTrue();
+        palette.Command.Should().Be("server");
+    }
+
+    [Fact]
+    public void Dialog_value_field_paste_strips_control_characters_typed_input_rejects()
+    {
+        var palette = new SettingsPalette("Codai / Server address");
+
+        palette.HandlePaste("a\tb\u0001c").Should().BeTrue();
+
+        palette.Query.Should().Be("abc");
+    }
+
+    [Fact]
+    public void Dialog_value_field_paste_does_not_split_surrogate_pair_at_limit()
+    {
+        var palette = new SettingsPalette("Codai / Server address", initialValue: new string('a', 4095));
+
+        palette.HandlePaste("x😀y").Should().BeTrue();
+
+        // Only "x" fits; the emoji is dropped whole instead of leaving a dangling surrogate.
+        palette.Query.Should().Be(new string('a', 4095) + "x");
+    }
+
+    [Fact]
+    public void Decision_panel_paste_fills_answer_and_choice_panel_declines()
+    {
+        var answer = new DecisionPanel("Codai / Approval", "Proceed?");
+        answer.AcceptsPaste.Should().BeTrue();
+        answer.HandlePaste("line1\nline2").Should().BeTrue();
+        answer.HandleKey(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false));
+        answer.Command.Should().Be("line1line2");
+
+        var choice = new DecisionPanel("Codai / Approval", "Proceed?",
+            [new SessionMenuItem("Yes", "Approve", "yes"), new SessionMenuItem("No", "Decline", "no")]);
+        choice.AcceptsPaste.Should().BeFalse();
+        choice.HandlePaste("anything").Should().BeFalse();
+        choice.HandleKey(new ConsoleKeyInfo('\r', ConsoleKey.Enter, false, false, false));
+        choice.Command.Should().Be("yes");
+    }
+
+    [Fact]
+    public void Paste_routing_consumes_only_when_palette_accepts_payload()
+    {
+        var pasteKey = new ConsoleKeyInfo('v', ConsoleKey.V, false, false, true);
+
+        var accepting = new PasteOverlay(accepts: true);
+        var input = new PasteInput("payload");
+        SpectreUserInterface.TryRoutePalettePaste(accepting, input, pasteKey).Should().BeTrue();
+        accepting.Received.Should().Be("payload");
+        input.ConsumeCalls.Should().Be(1);
+
+        var declining = new PasteOverlay(accepts: false);
+        input = new PasteInput("payload");
+        SpectreUserInterface.TryRoutePalettePaste(declining, input, pasteKey).Should().BeFalse();
+        declining.Received.Should().BeNull();
+        input.ConsumeCalls.Should().Be(0);
+
+        accepting = new PasteOverlay(accepts: true);
+        input = new PasteInput("payload");
+        var typed = new ConsoleKeyInfo('a', ConsoleKey.A, false, false, false);
+        SpectreUserInterface.TryRoutePalettePaste(accepting, input, typed).Should().BeFalse();
+        accepting.Received.Should().BeNull();
+        input.ConsumeCalls.Should().Be(0);
+
+        accepting = new PasteOverlay(accepts: true);
+        input = new PasteInput(string.Empty);
+        SpectreUserInterface.TryRoutePalettePaste(accepting, input, pasteKey).Should().BeFalse();
+        accepting.Received.Should().BeNull();
+    }
+
+    private sealed class PasteOverlay(bool accepts) : IOverlay
+    {
+        public bool Closed => false;
+        public string? Command => null;
+        public bool AcceptsPaste => accepts;
+        public string? Received { get; private set; }
+        public void HandleKey(ConsoleKeyInfo key) { }
+        public bool HandlePaste(string text)
+        {
+            Received = text;
+            return true;
+        }
+        public void Draw(IAnsiConsole console, string theme = "graphite", int minimumTop = 1) { }
+    }
+
+    private sealed class PasteInput(string? payload) : IConsoleInput
+    {
+        public int ConsumeCalls { get; private set; }
+        public bool TryConsumePaste(out string? text)
+        {
+            ConsumeCalls++;
+            text = payload;
+            return text is not null;
+        }
+        public string? ReadLine() => null;
     }
 
     [Fact]
